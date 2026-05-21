@@ -74,7 +74,7 @@ export default function HomePage() {
   const workflowSteps = [
     {
       icon: Trophy,
-      image: 'public/assets/hali_sga_2025.jpg',
+      image: 'assets/hali_sga_2025.jpg',
       title: 'Select the Series',
       description: 'Select a live Game 7 or browse our deep historical archives.',
       descriptionFull: 'Select a live Game 7 or browse our deep historical archives. Every series is a new opportunity to decode greatness.',
@@ -83,7 +83,7 @@ export default function HomePage() {
     },
     {
       icon: TrendingUp,
-      image: 'public/assets/KLing_dashboards.jpg',
+      image: 'assets/KLing_dashboards.jpg',
       title: 'Choose the Strategy',
       description: 'Pick from multiple predictive models.',
       descriptionFull: 'Pick from multiple predictive models. Whether you prefer Bayesian logic or momentum-based Elo ratings, we have the tools.',
@@ -92,7 +92,7 @@ export default function HomePage() {
     },
     {
       icon: BarChart3,
-      image: 'public/assets/KLing_trophy.jpg',
+      image: 'assets/KLing_trophy.jpg',
       title: 'Reveal the Outcome',
       description: 'Instantly see the win probability and the key metrics driving it.',
       descriptionFull: 'Instantly see the win probability and the key metrics driving it. Information is power — now you have both.',
@@ -146,7 +146,7 @@ export default function HomePage() {
       <section className="pb-24">
         <div className="relative aspect-[21/9] w-full overflow-hidden rounded-[32px] border border-border/40">
           <img 
-            src="public/assets/nba_game7_moments.jpg" 
+            src="assets/nba_game7_moments.jpg" 
             alt="Iconic NBA Game 7 Moments"
             className="w-full h-full object-cover"
           />
@@ -271,7 +271,7 @@ export default function HomePage() {
               className="group relative aspect-[4/3] bg-muted rounded-2xl overflow-hidden flex items-center justify-center border border-border/50 transition-all duration-300 hover:border-primary/50"
             >
               <img 
-                src="public/assets/lal-bos-1969.jpeg"
+                src="assets/lal-bos-1969.jpeg"
                 alt="NBA History"
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
@@ -291,7 +291,7 @@ export default function HomePage() {
               className="group relative order-2 md:order-1 aspect-[4/3] bg-muted rounded-2xl overflow-hidden flex items-center justify-center border border-border/50 transition-all duration-300 hover:border-primary/50"
             >
               <img 
-                src="public/assets/\KLing_court.jpg"
+                src="assets/KLing_court.jpg"
                 alt="Statistical Patterns"
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
