@@ -6,8 +6,9 @@
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "predeploy": "npm run lint && npm run build",
+    "deploy": "gh-pages -d dist",
+    "lint": "biome lint ."
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
