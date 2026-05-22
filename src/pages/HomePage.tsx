@@ -145,10 +145,10 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
           {[
-            { caption: 'Cavs vs Warriors, 2016', seriesId: 'celtics-lakers-1984', x: '20%', y: '58%' },
-            { caption: 'Raptors vs 76ers, 2019', seriesId: 'thunder-pacers-2025', x: '43%', y: '27%' },
-            { caption: 'Thunder vs Pacers, 2025', seriesId: 'warriors-thunder-2016', x: '57%', y: '90%' },
-            { caption: 'Heat vs Spurs, 2013', seriesId: 'heat-celtics-2012', x: '79%', y: '30%' },
+            { caption: 'Cavs vs Warriors, 2016', seriesId: 'cavs-warriors-2016', x: '20%', y: '58%' },
+            { caption: 'Raptors vs 76ers, 2019', seriesId: 'raptors-76ers-2019', x: '43%', y: '27%' },
+            { caption: 'Thunder vs Pacers, 2025', seriesId: 'thunder-pacers-2025', x: '57%', y: '90%' },
+            { caption: 'Heat vs Spurs, 2013', seriesId: 'heat-spurs-2013', x: '79%', y: '30%' },
           ].map((hotspot, index) => (
             <Link
               key={index}

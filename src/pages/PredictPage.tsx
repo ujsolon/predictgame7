@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { PredictionInput, PredictionResult, GameSeven, CurrentGameSeven, TeamLogo } from '@/types/types';
@@ -23,6 +23,7 @@ interface SelectedSeries {
 
 
 export default function PredictPage() {
+  const [searchParams] = useSearchParams();
   const [selectedSeries, setSelectedSeries] = useState<SelectedSeries | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PredictionMethod | null>(null);
   const [isSeriesDialogOpen, setIsSeriesDialogOpen] = useState(false);
@@ -59,7 +60,13 @@ export default function PredictPage() {
     fetchCurrentGames();
     fetchHistoricalGames();
     fetchLogos();
-  }, []);
+    
+    // Load series from query parameter if provided
+    const seriesId = searchParams.get('series');
+    if (seriesId) {
+      loadSeriesById(seriesId);
+    }
+  }, [searchParams]);
 
   const fetchLogos = async () => {
     try {
@@ -107,6 +114,87 @@ export default function PredictPage() {
       setHistoricalGames(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error fetching historical games:', err);
+    }
+  };
+
+  const loadSeriesById = async (seriesId: string) => {
+    try {
+      // Parse seriesId: format is 'team-a-team-b-year' e.g., 'celtics-lakers-1984'
+      const parts = seriesId.split('-');
+      const year = parseInt(parts[parts.length - 1], 10);
+      const teamNames = parts.slice(0, -1);
+
+      // Try to load from current games first
+      let currentGame = currentGames.find(g => {
+        if (g.year !== year) return false;
+        return teamNames.some(t => 
+          g.team_a?.toLowerCase().includes(t.toLowerCase()) || 
+          g.team_b?.toLowerCase().includes(t.toLowerCase())
+        );
+      });
+
+      if (currentGame) {
+        setSelectedSeries({ source: 'current', data: currentGame });
+        return;
+      }
+
+      // Then try historical games
+      let historicalGame = historicalGames.find(g => {
+        if (g.year !== year) return false;
+        return teamNames.some(t => 
+          g.team_a?.toLowerCase().includes(t.toLowerCase()) || 
+          g.team_b?.toLowerCase().includes(t.toLowerCase())
+        );
+      });
+
+      if (historicalGame) {
+        setSelectedSeries({ source: 'historical', data: historicalGame });
+        return;
+      }
+
+      // If not found in loaded data, fetch directly from Supabase
+      const { data: currentData, error: currentError } = await supabase
+        .from('current_game_sevens')
+        .select('*')
+        .eq('year', year)
+        .limit(10);
+
+      if (!currentError && currentData && currentData.length > 0) {
+        const found = currentData.find(g =>
+          teamNames.some(t =>
+            g.team_a?.toLowerCase().includes(t.toLowerCase()) ||
+            g.team_b?.toLowerCase().includes(t.toLowerCase())
+          )
+        );
+        if (found) {
+          setSelectedSeries({ source: 'current', data: found });
+          return;
+        }
+      }
+
+      const { data: historicalData, error: historicalError } = await supabase
+        .from('game_sevens')
+        .select('*')
+        .eq('year', year)
+        .limit(10);
+
+      if (!historicalError && historicalData && historicalData.length > 0) {
+        const found = historicalData.find(g =>
+          teamNames.some(t =>
+            g.team_a?.toLowerCase().includes(t.toLowerCase()) ||
+            g.team_b?.toLowerCase().includes(t.toLowerCase())
+          )
+        );
+        if (found) {
+          setSelectedSeries({ source: 'historical', data: found });
+          return;
+        }
+      }
+
+      toast.error('Series not found');
+    } catch (err) {
+      console.error('Error loading series:', err);
+      toast.error('Failed to load series');
     }
   };
 
