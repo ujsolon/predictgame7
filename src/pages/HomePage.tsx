@@ -143,9 +143,31 @@ export default function HomePage() {
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-          <div className="absolute bottom-6 left-6 md:bottom-10 md:left-10">
-            <p className="text-white/80 text-xs md:text-sm font-medium uppercase tracking-[0.2em]">Iconic Moments</p>
-          </div>
+
+          {[
+            { caption: 'Cavs vs Warriors, 2016', seriesId: 'celtics-lakers-1984', x: '20%', y: '58%' },
+            { caption: 'Raptors vs 76ers, 2019', seriesId: 'thunder-pacers-2025', x: '43%', y: '27%' },
+            { caption: 'Thunder vs Pacers, 2025', seriesId: 'warriors-thunder-2016', x: '57%', y: '90%' },
+            { caption: 'Heat vs Spurs, 2013', seriesId: 'heat-celtics-2012', x: '79%', y: '30%' },
+          ].map((hotspot, index) => (
+            <Link
+              key={index}
+              to={`/predict?series=${hotspot.seriesId}`}
+              className="absolute group"
+              style={{ left: hotspot.x, top: hotspot.y, transform: 'translate(-50%, -50%)' }}
+            >
+              {/* Pulsing ring */}
+              <span className="absolute inset-0 rounded-full bg-white/40 animate-ping" />
+              
+              {/* Circle */}
+              <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-white/80 border border-white group-hover:bg-white transition-colors duration-200" />
+
+              {/* Tooltip */}
+              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-3 py-1.5 rounded-lg bg-black/80 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                {hotspot.caption}
+              </span>
+            </Link>
+          ))}
         </div>
       </section>
 
