@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,13 +8,11 @@ import { supabase } from '@/db/supabase';
 import {
   Trophy,
   TrendingUp,
-  History,
   BarChart3,
   ChevronRight,
   ChevronLeft,
   Mail,
   Send,
-  Users,
   ArrowRight,
   Loader2
 } from 'lucide-react';
@@ -58,11 +55,6 @@ export default function HomePage() {
   const onSelect = React.useCallback(() => {
     if (!emblaApi) return;
     setActiveStep(emblaApi.selectedScrollSnap());
-  }, [emblaApi]);
-
-  const handleSlideClick = React.useCallback((index: number) => {
-    if (!emblaApi) return;
-    emblaApi.scrollTo(index);
   }, [emblaApi]);
 
   React.useEffect(() => {
