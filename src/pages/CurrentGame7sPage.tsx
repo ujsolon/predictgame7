@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/db/supabase';
-import { CurrentGameSeven } from '@/types/types';
+import { GameSeven } from '@/types/types';
 import { Trophy, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CurrentGame7sPage() {
   const [loading, setLoading] = useState(true);
-  const [currentGames, setCurrentGames] = useState<CurrentGameSeven[]>([]);
+  const [currentGames, setCurrentGames] = useState<GameSeven[]>([]);
 
   useEffect(() => {
     fetchCurrentGames();
@@ -16,9 +16,9 @@ export default function CurrentGame7sPage() {
   const fetchCurrentGames = async () => {
     try {
       const { data, error } = await supabase
-        .from('current_game_sevens')
+        .from('game_sevens')
         .select('*')
-        .eq('is_active', true)
+        .eq('is_current', true)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -100,8 +100,8 @@ export default function CurrentGame7sPage() {
                   <p className="text-sm font-medium">Series Scores (Games 1-6)</p>
                   <div className="grid gap-3">
                     {[1, 2, 3, 4, 5, 6].map((gameNum) => {
-                      const scoreA = game[`game_${gameNum}_score_a` as keyof CurrentGameSeven] as number;
-                      const scoreB = game[`game_${gameNum}_score_b` as keyof CurrentGameSeven] as number;
+                      const scoreA = game[`game_${gameNum}_score_a` as keyof GameSeven] as number;
+                      const scoreB = game[`game_${gameNum}_score_b` as keyof GameSeven] as number;
                       const winner = scoreA > scoreB ? game.team_a : game.team_b;
                       
                       return (

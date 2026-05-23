@@ -8,7 +8,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo } from '@/lib/team-logos';
-import { PredictionInput, PredictionResult, GameSeven, CurrentGameSeven } from '@/types/types';
+import { PredictionInput, PredictionResult, GameSeven } from '@/types/types';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,7 +17,7 @@ type PredictionMethod = 'logistic_regression' | 'bayes' | 'elo' | 'exponential_s
 
 interface SelectedSeries {
   source: SeriesSource;
-  data?: GameSeven | CurrentGameSeven;
+  data?: GameSeven;
   customData?: PredictionInput;
 }
 
@@ -31,8 +31,7 @@ export default function PredictPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PredictionResult | null>(null);
   
-  const [currentGames, setCurrentGames] = useState<CurrentGameSeven[]>([]);
-  const [historicalGames, setHistoricalGames] = useState<GameSeven[]>([]);
+  const [games, setGames] = useState<GameSeven[]>([]);
   const [selectionLevel, setSelectionLevel] = useState<'decades' | 'years' | 'series'>('decades');
   const [selectedDecade, setSelectedDecade] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -55,8 +54,7 @@ export default function PredictPage() {
   });
 
   useEffect(() => {
-    fetchCurrentGames();
-    fetchHistoricalGames();
+    fetchAllGames();
     
     // Load series from query parameter if provided
     const seriesId = searchParams.get('series');
@@ -65,28 +63,13 @@ export default function PredictPage() {
     }
   }, [searchParams]);
 
-  
+
   useEffect(() => {
     setResult(null);
     setShowDetails(false);
   }, [selectedSeries, selectedMethod, customInput]);
 
-  const fetchCurrentGames = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('current_game_sevens')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCurrentGames(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error('Error fetching current games:', err);
-    }
-  };
-
-  const fetchHistoricalGames = async () => {
+  const fetchAllGames = async () => {
     try {
       const { data, error } = await supabase
         .from('game_sevens')
@@ -94,87 +77,28 @@ export default function PredictPage() {
         .order('year', { ascending: false });
 
       if (error) throw error;
-      setHistoricalGames(Array.isArray(data) ? data : []);
+      setGames(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching historical games:', err);
+      console.error('Error fetching games:', err);
     }
   };
 
   const loadSeriesById = async (seriesId: string) => {
     try {
-      // Parse seriesId: format is 'team-a-team-b-year' e.g., 'celtics-lakers-1984'
-      const parts = seriesId.split('-');
-      const year = parseInt(parts[parts.length - 1], 10);
-      const teamNames = parts.slice(0, -1);
-
-      // Try to load from current games first
-      let currentGame = currentGames.find(g => {
-        if (g.year !== year) return false;
-        return teamNames.some(t => 
-          g.team_a?.toLowerCase().includes(t.toLowerCase()) || 
-          g.team_b?.toLowerCase().includes(t.toLowerCase())
-        );
-      });
-
-      if (currentGame) {
-        setSelectedSeries({ source: 'current', data: currentGame });
-        return;
-      }
-
-      // Then try historical games
-      let historicalGame = historicalGames.find(g => {
-        if (g.year !== year) return false;
-        return teamNames.some(t => 
-          g.team_a?.toLowerCase().includes(t.toLowerCase()) || 
-          g.team_b?.toLowerCase().includes(t.toLowerCase())
-        );
-      });
-
-      if (historicalGame) {
-        setSelectedSeries({ source: 'historical', data: historicalGame });
-        return;
-      }
-
-      // If not found in loaded data, fetch directly from Supabase
-      const { data: currentData, error: currentError } = await supabase
-        .from('current_game_sevens')
-        .select('*')
-        .eq('year', year)
-        .limit(10);
-
-      if (!currentError && currentData && currentData.length > 0) {
-        const found = currentData.find(g =>
-          teamNames.some(t =>
-            g.team_a?.toLowerCase().includes(t.toLowerCase()) ||
-            g.team_b?.toLowerCase().includes(t.toLowerCase())
-          )
-        );
-        if (found) {
-          setSelectedSeries({ source: 'current', data: found });
-          return;
-        }
-      }
-
-      const { data: historicalData, error: historicalError } = await supabase
+      // Load directly from Supabase by game_sevens.id
+      const { data, error } = await supabase
         .from('game_sevens')
         .select('*')
-        .eq('year', year)
-        .limit(10);
+        .eq('id', seriesId)
+        .single();
 
-      if (!historicalError && historicalData && historicalData.length > 0) {
-        const found = historicalData.find(g =>
-          teamNames.some(t =>
-            g.team_a?.toLowerCase().includes(t.toLowerCase()) ||
-            g.team_b?.toLowerCase().includes(t.toLowerCase())
-          )
-        );
-        if (found) {
-          setSelectedSeries({ source: 'historical', data: found });
-          return;
-        }
+      if (error) throw error;
+
+      if (data) {
+        setSelectedSeries({ source: data.is_current ? 'current' : 'historical', data });
+      } else {
+        toast.error('Series not found');
       }
-
-      toast.error('Series not found');
     } catch (err) {
       console.error('Error loading series:', err);
       toast.error('Failed to load series');
@@ -501,10 +425,8 @@ export default function PredictPage() {
                               <span className="text-[10px] uppercase font-bold">Go Back</span>
                             </Button>
                             {(() => {
-                              const allYears = Array.from(new Set([
-                                ...currentGames.map(g => g.year),
-                                ...historicalGames.map(g => g.year)
-                              ])).filter(y => y >= selectedDecade! && y < selectedDecade! + 10)
+                              const allYears = Array.from(new Set([...games.map(g => g.year)]))
+                                .filter(y => y >= selectedDecade! && y < selectedDecade! + 10)
                                 .sort((a, b) => b - a);
 
                               return allYears.map(year => (
@@ -519,7 +441,7 @@ export default function PredictPage() {
                                 >
                                   <span className="text-xl font-bold">{year}</span>
                                   <span className="text-[10px] uppercase opacity-60">
-                                    {currentGames.some(g => g.year === year) ? 'Current' : 'View Series'}
+                                    {games.some(g => g.year === year && g.is_current) ? 'Current' : 'View Series'}
                                   </span>
                                 </Button>
                               ));
@@ -541,18 +463,15 @@ export default function PredictPage() {
                               <span className="text-[10px] uppercase font-bold">Go Back</span>
                             </Button>
                             {(() => {
-                              const games = [
-                                ...currentGames.filter(g => g.year === selectedYear),
-                                ...historicalGames.filter(g => g.year === selectedYear)
-                              ];
+                              const yearGames = games.filter(g => g.year === selectedYear);
 
-                              return games.map((game) => (
+                              return yearGames.map((game) => (
                                 <Button
                                   key={game.id}
                                   variant="outline"
                                   className="h-24 sm:h-20 flex flex-col gap-2 p-3 transition-all duration-200 hover:border-primary/50"
                                   onClick={() => {
-                                    const isCurrent = currentGames.some(cg => cg.id === game.id);
+                                    const isCurrent = game.is_current;
                                     setSelectedSeries({ 
                                       source: isCurrent ? 'current' : 'historical', 
                                       data: game 

@@ -16,38 +16,16 @@ export interface GameSeven {
   game_5_score_b: number;
   game_6_score_a: number;
   game_6_score_b: number;
-  game_7_score_a: number;
-  game_7_score_b: number;
-  winner: string;
+  game_7_score_a?: number;
+  game_7_score_b?: number;
+  winner?: string;
   home_team: string | null;
+  is_current?: boolean;
+  predicted_winner?: string | null;
+  win_probability_a?: number | null;
+  win_probability_b?: number | null;
   created_at: string;
-}
-
-export interface CurrentGameSeven {
-  id: string;
-  year: number;
-  round: string;
-  team_a: string;
-  team_b: string;
-  game_1_score_a: number;
-  game_1_score_b: number;
-  game_2_score_a: number;
-  game_2_score_b: number;
-  game_3_score_a: number;
-  game_3_score_b: number;
-  game_4_score_a: number;
-  game_4_score_b: number;
-  game_5_score_a: number;
-  game_5_score_b: number;
-  game_6_score_a: number;
-  game_6_score_b: number;
-  predicted_winner: string | null;
-  win_probability_a: number | null;
-  win_probability_b: number | null;
-  home_team: string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface PredictionInput {
