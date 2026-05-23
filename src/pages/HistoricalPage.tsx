@@ -5,15 +5,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/db/supabase';
-import { GameSeven, TeamLogo } from '@/types/types';
+import { GameSeven } from '@/types/types';
 import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
+import { getTeamLogo } from '@/lib/team-logos';
 
 export default function HistoricalPage() {
   const [loading, setLoading] = useState(true);
   const [games, setGames] = useState<GameSeven[]>([]);
-  const [logos, setLogos] = useState<TeamLogo[]>([]);
   const [visibleCount, setVisibleCount] = useState(10);
   const [selectedGame, setSelectedGame] = useState<GameSeven | null>(null);
   
@@ -22,7 +22,7 @@ export default function HistoricalPage() {
   const [teamSearch, setTeamSearch] = useState<string>('');
 
   useEffect(() => {
-    Promise.all([fetchHistoricalGames(), fetchLogos()]).finally(() => setLoading(false));
+    fetchHistoricalGames().finally(() => setLoading(false));
   }, []);
 
   const fetchHistoricalGames = async () => {
@@ -46,22 +46,7 @@ export default function HistoricalPage() {
     }
   };
 
-  const fetchLogos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('team_logos')
-        .select('*');
-      if (error) throw error;
-      if (data) setLogos(data);
-    } catch (err) {
-      console.error('Error fetching logos:', err);
-    }
-  };
 
-  const getTeamLogo = (teamName: string) => {
-    const logo = logos.find(l => l.team_name === teamName);
-    return logo?.logo_url;
-  };
 
   const years = useMemo(() => {
     const uniqueYears = Array.from(new Set(games.map(g => g.year))).sort((a, b) => b - a);

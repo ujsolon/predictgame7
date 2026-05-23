@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
-import { PredictionInput, PredictionResult, GameSeven, CurrentGameSeven, TeamLogo } from '@/types/types';
+import { getTeamLogo } from '@/lib/team-logos';
+import { PredictionInput, PredictionResult, GameSeven, CurrentGameSeven } from '@/types/types';
 import { Check, Info, Settings, TrendingUp, Trophy, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,7 +34,6 @@ export default function PredictPage() {
   
   const [currentGames, setCurrentGames] = useState<CurrentGameSeven[]>([]);
   const [historicalGames, setHistoricalGames] = useState<GameSeven[]>([]);
-  const [logos, setLogos] = useState<TeamLogo[]>([]);
   const [expandedSection, setExpandedSection] = useState<'current' | 'historical' | 'custom' | null>(null);
   const [selectionLevel, setSelectionLevel] = useState<'decades' | 'years' | 'series'>('decades');
   const [selectedDecade, setSelectedDecade] = useState<number | null>(null);
@@ -59,7 +59,6 @@ export default function PredictPage() {
   useEffect(() => {
     fetchCurrentGames();
     fetchHistoricalGames();
-    fetchLogos();
     
     // Load series from query parameter if provided
     const seriesId = searchParams.get('series');
@@ -68,20 +67,7 @@ export default function PredictPage() {
     }
   }, [searchParams]);
 
-  const fetchLogos = async () => {
-    try {
-      const { data, error } = await supabase.from('team_logos').select('*');
-      if (error) throw error;
-      setLogos(data || []);
-    } catch (err) {
-      console.error('Error fetching logos:', err);
-    }
-  };
 
-  const getTeamLogo = useCallback((teamName: string) => {
-    const logo = logos.find(l => l.team_name === teamName);
-    return logo?.logo_url;
-  }, [logos]);
 
   useEffect(() => {
     setResult(null);
