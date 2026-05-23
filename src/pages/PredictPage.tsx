@@ -4,13 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo } from '@/lib/team-logos';
 import { PredictionInput, PredictionResult, GameSeven, CurrentGameSeven } from '@/types/types';
-import { Check, Info, Settings, TrendingUp, Trophy, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 type SeriesSource = 'current' | 'historical' | 'custom';
@@ -34,7 +33,6 @@ export default function PredictPage() {
   
   const [currentGames, setCurrentGames] = useState<CurrentGameSeven[]>([]);
   const [historicalGames, setHistoricalGames] = useState<GameSeven[]>([]);
-  const [expandedSection, setExpandedSection] = useState<'current' | 'historical' | 'custom' | null>(null);
   const [selectionLevel, setSelectionLevel] = useState<'decades' | 'years' | 'series'>('decades');
   const [selectedDecade, setSelectedDecade] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -67,8 +65,7 @@ export default function PredictPage() {
     }
   }, [searchParams]);
 
-
-
+  
   useEffect(() => {
     setResult(null);
     setShowDetails(false);
