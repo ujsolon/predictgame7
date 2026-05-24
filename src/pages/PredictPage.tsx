@@ -201,7 +201,8 @@ export default function PredictPage() {
       }
 
       if (data) {
-        setResult(data);
+        const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        setResult(parsedData as PredictionResult);
         toast.success('Prediction generated successfully');
       }
     } catch (err) {
@@ -723,15 +724,47 @@ export default function PredictPage() {
                 }
                 
                 const prediction = result;
+                const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a;
+                const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b;
+                const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
+                const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
+                const teamALogo = prediction.team_a_logo || getTeamLogo(teamAName);
+                const teamBLogo = prediction.team_b_logo || getTeamLogo(teamBName);
                 return (
                   <div className="w-full space-y-6">
                     <div className="text-center space-y-4">
                       <Trophy className="h-12 w-12 mx-auto text-primary" />
                       <div>
+                        {/* <p className="text-xs text-muted-foreground mb-1">Matchup</p>
+                        <div className="flex items-center justify-center gap-4 mb-3">
+                          <div className="flex items-center gap-2">
+                            {teamALogo && <img src={teamALogo} alt={teamAName} className="h-8 w-8 object-contain" />}
+                            <span className="text-sm font-medium">{getTeamAbbreviation(teamAName)}</span>
+                          </div>
+                          <span className="text-muted-foreground">vs</span>
+                          <div className="flex items-center gap-2">
+                            {teamBLogo && <img src={teamBLogo} alt={teamBName} className="h-8 w-8 object-contain" />}
+                            <span className="text-sm font-medium">{getTeamAbbreviation(teamBName)}</span>
+                          </div>
+                        </div> */}
                         <p className="text-xs text-muted-foreground mb-1">Predicted Winner</p>
-                        <p className="text-3xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                        <div className="flex items-center justify-center gap-3 mb-2">
+                          {(prediction.predicted_winner === teamAName && teamALogo) && (
+                            <img src={teamALogo} alt={teamAName} className="h-8 w-8 object-contain" />
+                          )}
+                          {(prediction.predicted_winner === teamBName && teamBLogo) && (
+                            <img src={teamBLogo} alt={teamBName} className="h-8 w-8 object-contain" />
+                          )}
+                          <p className="text-3xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                          {(prediction.predicted_winner === teamAName && teamALogo) && (
+                            <img src={teamALogo} alt={teamAName} className="h-8 w-8 object-contain" />
+                          )}
+                          {(prediction.predicted_winner === teamBName && teamBLogo) && (
+                            <img src={teamBLogo} alt={teamBName} className="h-8 w-8 object-contain" />
+                          )}
+                        </div>
                         <p className="text-xl text-primary mt-2">
-                          {prediction.predicted_winner === (selectedSeries?.data?.team_a || customInput.team_a)
+                          {prediction.predicted_winner === teamAName
                             ? prediction.win_probability_a
                             : prediction.win_probability_b}%
                         </p>
@@ -741,11 +774,11 @@ export default function PredictPage() {
                     <div className="pt-4 border-t border-border/50 text-center">
                       <p className="text-xs text-muted-foreground mb-1">Losing Team</p>
                       <p className="text-sm text-muted-foreground">
-                        {prediction.predicted_winner === (selectedSeries?.data?.team_a || customInput.team_a)
-                          ? getTeamAbbreviation(selectedSeries?.data?.team_b || customInput.team_b)
-                          : getTeamAbbreviation(selectedSeries?.data?.team_a || customInput.team_a)}
+                        {prediction.predicted_winner === teamAName
+                          ? getTeamAbbreviation(teamBName)
+                          : getTeamAbbreviation(teamAName)}
                         {' · '}
-                        {prediction.predicted_winner === (selectedSeries?.data?.team_a || customInput.team_a)
+                        {prediction.predicted_winner === teamAName
                           ? prediction.win_probability_b
                           : prediction.win_probability_a}%
                       </p>
@@ -770,6 +803,12 @@ export default function PredictPage() {
       ) : (() => {
         if (!result) return null;
         const prediction = result;
+        const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a;
+        const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b;
+        const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
+        const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
+        const teamALogo = prediction.team_a_logo || getTeamLogo(teamAName);
+        const teamBLogo = prediction.team_b_logo || getTeamLogo(teamBName);
         return (
           <div className="space-y-8">
             <Card>
@@ -795,15 +834,38 @@ export default function PredictPage() {
                   <div className="space-y-4">
                     <Trophy className="h-16 w-16 mx-auto text-primary" />
                     <div>
+                      <p className="text-sm text-muted-foreground mb-2">Matchup</p>
+                      <div className="flex items-center justify-center gap-4 mb-3">
+                        <div className="flex items-center gap-2">
+                          {teamALogo && <img src={teamALogo} alt={teamAName} className="h-10 w-10 object-contain" />}
+                          <span className="text-sm font-medium">{getTeamAbbreviation(teamAName)}</span>
+                        </div>
+                        <span className="text-muted-foreground">vs</span>
+                        <div className="flex items-center gap-2">
+                          {teamBLogo && <img src={teamBLogo} alt={teamBName} className="h-10 w-10 object-contain" />}
+                          <span className="text-sm font-medium">{getTeamAbbreviation(teamBName)}</span>
+                        </div>
+                      </div>
                       <p className="text-sm text-muted-foreground mb-2">Predicted Winner</p>
-                      <p className="text-4xl md:text-5xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                      <div className="flex items-center justify-center gap-3 mb-2">
+                        {(prediction.predicted_winner === teamAName && teamALogo) && (
+                          <img src={teamALogo} alt={teamAName} className="h-12 w-12 object-contain" />
+                        )}
+                        {(prediction.predicted_winner === teamBName && teamBLogo) && (
+                          <img src={teamBLogo} alt={teamBName} className="h-12 w-12 object-contain" />
+                        )}
+                        <p className="text-4xl md:text-5xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                        {(prediction.predicted_winner === teamAName && teamALogo) && (
+                          <img src={teamALogo} alt={teamAName} className="h-12 w-12 object-contain" />
+                        )}
+                        {(prediction.predicted_winner === teamBName && teamBLogo) && (
+                          <img src={teamBLogo} alt={teamBName} className="h-12 w-12 object-contain" />
+                        )}
+                      </div>
                       <p className="text-2xl md:text-3xl text-muted-foreground mt-2">
-                        {(() => {
-                          const teamA = selectedSeries?.data?.team_a || customInput.team_a || 'Team A';
-                          return prediction.predicted_winner === teamA
-                            ? prediction.win_probability_a
-                            : prediction.win_probability_b;
-                        })()}%
+                        {prediction.predicted_winner === teamAName
+                          ? prediction.win_probability_a
+                          : prediction.win_probability_b}%
                       </p>
                     </div>
                   </div>
@@ -811,21 +873,14 @@ export default function PredictPage() {
                   <div className="pt-6 border-t border-border">
                     <p className="text-xs text-muted-foreground mb-2">Losing Team</p>
                     <p className="text-lg text-muted-foreground">
-                      {(() => {
-                        const teamA = selectedSeries?.data?.team_a || customInput.team_a || 'Team A';
-                        const teamB = selectedSeries?.data?.team_b || customInput.team_b || 'Team B';
-                        return prediction.predicted_winner === teamA
-                          ? getTeamAbbreviation(teamB)
-                          : getTeamAbbreviation(teamA);
-                      })()}
+                      {prediction.predicted_winner === teamAName
+                        ? getTeamAbbreviation(teamBName)
+                        : getTeamAbbreviation(teamAName)}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      {(() => {
-                        const teamA = selectedSeries?.data?.team_a || customInput.team_a || 'Team A';
-                        return prediction.predicted_winner === teamA
-                          ? prediction.win_probability_b
-                          : prediction.win_probability_a;
-                      })()}%
+                      {prediction.predicted_winner === teamAName
+                        ? prediction.win_probability_b
+                        : prediction.win_probability_a}%
                     </p>
                   </div>
                 </div>

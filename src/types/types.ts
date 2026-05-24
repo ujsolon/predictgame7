@@ -56,6 +56,10 @@ export interface ContributingFactor {
 
 export interface PredictionResult {
   predicted_winner: string;
+  team_a: string;
+  team_b: string;
+  team_a_logo?: string;
+  team_b_logo?: string;
   win_probability_a: number;
   win_probability_b: number;
   confidence_level: string;

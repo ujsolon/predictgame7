@@ -358,8 +358,22 @@ Deno.serve(async (req) => {
     const endTime = performance.now();
     const computation_time_ms = endTime - startTime;
     
+    // Fetch team logos
+    const { data: logoData } = await supabase
+      .from('team_logos')
+      .select('team_name, logo_url')
+      .in('team_name', [input.team_a, input.team_b]);
+    
+    const logoMap = new Map((logoData || []).map(l => [l.team_name, l.logo_url]));
+    const team_a_logo = logoMap.get(input.team_a);
+    const team_b_logo = logoMap.get(input.team_b);
+    
     const result = {
       predicted_winner,
+      team_a: input.team_a,
+      team_b: input.team_b,
+      team_a_logo,
+      team_b_logo,
       win_probability_a: Math.round(probability_a * 100 * 100) / 100,
       win_probability_b: Math.round(probability_b * 100 * 100) / 100,
       confidence_level,

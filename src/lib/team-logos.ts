@@ -34,7 +34,9 @@ const TEAM_LOGOS: Record<string, string> = {
 };
 
 export const getTeamLogo = (teamName: string) => {
-  const url = TEAM_LOGOS[teamName];
+  if (!teamName) return undefined;
+  const name = teamName.trim();
+  const url = TEAM_LOGOS[name];
   if (!url) {
     console.warn(`Logo not found for team: "${teamName}". Available teams:`, Object.keys(TEAM_LOGOS));
   }
