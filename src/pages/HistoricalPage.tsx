@@ -5,31 +5,37 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/db/supabase';
-import { GameSeven } from '@/types/types';
+import { Series, SeriesGameScore, Team } from '@/types/types';
 import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
 import { getTeamLogo } from '@/lib/team-logos';
 
+interface SeriesWithNestedTeams extends Series {
+  team_a?: Team;
+  team_b?: Team;
+  winner_team?: Team;
+  series_game_scores?: SeriesGameScore[];
+}
+
 export default function HistoricalPage() {
   const [loading, setLoading] = useState(true);
-  const [games, setGames] = useState<GameSeven[]>([]);
+  const [seriesList, setSeriesList] = useState<SeriesWithNestedTeams[]>([]);
   const [visibleCount, setVisibleCount] = useState(10);
-  const [selectedGame, setSelectedGame] = useState<GameSeven | null>(null);
-  
-  // Filter states
+  const [selectedSeries, setSelectedSeries] = useState<SeriesWithNestedTeams | null>(null);
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [teamSearch, setTeamSearch] = useState<string>('');
 
   useEffect(() => {
-    fetchHistoricalGames().finally(() => setLoading(false));
+    fetchHistoricalSeries().finally(() => setLoading(false));
   }, []);
 
-  const fetchHistoricalGames = async () => {
+  const fetchHistoricalSeries = async () => {
     try {
       const { data, error } = await supabase
-        .from('game_sevens')
-        .select('*');
+        .from('series')
+        .select('*, team_a:team_a_id(*), team_b:team_b_id(*), winner_team:winner_team_id(*), series_game_scores(*)')
+        .eq('status', 'historical');
 
       if (error) throw error;
 
@@ -38,39 +44,49 @@ export default function HistoricalPage() {
           if (b.year !== a.year) return b.year - a.year;
           return getRoundImportance(b.round) - getRoundImportance(a.round);
         });
-        setGames(sortedData);
+        setSeriesList(sortedData);
       }
     } catch (err) {
-      console.error('Error fetching historical games:', err);
+      console.error('Error fetching historical series:', err);
       toast.error('Failed to load historical data');
     }
   };
 
-
-
   const years = useMemo(() => {
-    const uniqueYears = Array.from(new Set(games.map(g => g.year))).sort((a, b) => b - a);
+    const uniqueYears = Array.from(new Set(seriesList.map((series) => series.year))).sort((a, b) => b - a);
     return uniqueYears;
-  }, [games]);
+  }, [seriesList]);
 
-  const filteredGames = useMemo(() => {
-    return games.filter(game => {
-      const matchesYear = yearFilter === 'all' || game.year.toString() === yearFilter;
-      const matchesTeam = teamSearch === '' || 
-        game.team_a.toLowerCase().includes(teamSearch.toLowerCase()) || 
-        game.team_b.toLowerCase().includes(teamSearch.toLowerCase());
+  const filteredSeries = useMemo(() => {
+    return seriesList.filter((series) => {
+      const teamAName = series.team_a?.full_name ?? '';
+      const teamBName = series.team_b?.full_name ?? '';
+      const matchesYear = yearFilter === 'all' || series.year.toString() === yearFilter;
+      const matchesTeam =
+        teamSearch === '' ||
+        teamAName.toLowerCase().includes(teamSearch.toLowerCase()) ||
+        teamBName.toLowerCase().includes(teamSearch.toLowerCase());
       return matchesYear && matchesTeam;
     });
-  }, [games, yearFilter, teamSearch]);
+  }, [seriesList, yearFilter, teamSearch]);
 
   const loadMore = () => {
-    setVisibleCount(prev => prev + 10);
+    setVisibleCount((prev) => prev + 10);
   };
 
   const resetFilters = () => {
     setYearFilter('all');
     setTeamSearch('');
     setVisibleCount(10);
+  };
+
+  const formatGame7Score = (series: SeriesWithNestedTeams) => {
+    const scoreRow = series.series_game_scores?.find((score) => score.game_number === 7);
+    if (!scoreRow || !series.team_a || !series.team_b) return null;
+    const teamAId = series.team_a_id;
+    const scoreA = scoreRow.home_team_id === teamAId ? scoreRow.home_score : scoreRow.away_score;
+    const scoreB = scoreRow.home_team_id === teamAId ? scoreRow.away_score : scoreRow.home_score;
+    return { scoreA, scoreB };
   };
 
   if (loading) {
@@ -81,18 +97,17 @@ export default function HistoricalPage() {
     );
   }
 
-  const visibleGames = filteredGames.slice(0, visibleCount);
+  const visibleSeries = filteredSeries.slice(0, visibleCount);
 
   return (
     <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in fade-in duration-700">
       <div className="space-y-4">
-        <h1 className="text-4xl md:text-5xl font-medium tracking-tight font-montserrat">{"Archives"}</h1>
+        <h1 className="text-4xl md:text-5xl font-medium tracking-tight font-montserrat">Archives</h1>
         <p className="text-muted-foreground text-lg md:text-xl max-w-2xl leading-relaxed text-pretty">
           Explore the complete archive of every series-deciding game in NBA history, analyzed and preserved.
         </p>
       </div>
 
-      {/* Filters Section */}
       <div className="flex flex-col md:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
         <div className="w-full md:w-[200px] space-y-2">
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1">Filter Year</label>
@@ -102,8 +117,10 @@ export default function HistoricalPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Years</SelectItem>
-              {years.map(year => (
-                <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+              {years.map((year) => (
+                <SelectItem key={year} value={year.toString()}>
+                  {year}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -112,8 +129,8 @@ export default function HistoricalPage() {
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1">Search Team</label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by team name..." 
+            <Input
+              placeholder="Search by team name..."
               className="pl-9 bg-background border-border/60"
               value={teamSearch}
               onChange={(e) => { setTeamSearch(e.target.value); setVisibleCount(10); }}
@@ -138,28 +155,33 @@ export default function HistoricalPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleGames.length > 0 ? (
-                visibleGames.map((game) => {
-                  const isTeamAWinner = game.winner === game.team_a;
-                  const abbrevA = getTeamAbbreviation(game.team_a);
-                  const abbrevB = getTeamAbbreviation(game.team_b);
-                  const logoA = getTeamLogo(game.team_a);
-                  const logoB = getTeamLogo(game.team_b);
-                  
+              {visibleSeries.length > 0 ? (
+                visibleSeries.map((series) => {
+                  const teamAName = series.team_a?.full_name ?? 'Team A';
+                  const teamBName = series.team_b?.full_name ?? 'Team B';
+                  const isTeamAWinner = series.winner_team_id === series.team_a_id;
+                  const abbrevA = getTeamAbbreviation(teamAName);
+                  const abbrevB = getTeamAbbreviation(teamBName);
+                  const logoA = series.team_a?.logo_url || getTeamLogo(teamAName);
+                  const logoB = series.team_b?.logo_url || getTeamLogo(teamBName);
+                  const finalScore = formatGame7Score(series);
+
                   return (
-                    <TableRow 
-                      key={game.id} 
+                    <TableRow
+                      key={series.id}
                       className="group border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => setSelectedGame(selectedGame?.id === game.id ? null : game)}
+                      onClick={() => setSelectedSeries(selectedSeries?.id === series.id ? null : series)}
                     >
                       <TableCell className="py-8 font-normal text-muted-foreground align-top">
-                        {game.year}
+                        {series.year}
                       </TableCell>
                       <TableCell className="py-8">
                         <div className="flex flex-col space-y-2">
                           <div className="flex items-center gap-4 text-lg md:text-xl">
                             <div className="flex items-center gap-3 min-w-[120px]">
-                              {logoA && <img src={logoA} alt={game.team_a} className="h-6 w-6 object-contain grayscale group-hover:grayscale-0 transition-all" />}
+                              {logoA && (
+                                <img src={logoA} alt={teamAName} className="h-6 w-6 object-contain grayscale group-hover:grayscale-0 transition-all" />
+                              )}
                               <span className={`transition-colors ${isTeamAWinner ? 'font-semibold text-foreground' : 'text-muted-foreground/60'}`}>
                                 {abbrevA}
                               </span>
@@ -169,20 +191,22 @@ export default function HistoricalPage() {
                               <span className={`transition-colors ${!isTeamAWinner ? 'font-semibold text-foreground' : 'text-muted-foreground/60'}`}>
                                 {abbrevB}
                               </span>
-                              {logoB && <img src={logoB} alt={game.team_b} className="h-6 w-6 object-contain grayscale group-hover:grayscale-0 transition-all" />}
+                              {logoB && (
+                                <img src={logoB} alt={teamBName} className="h-6 w-6 object-contain grayscale group-hover:grayscale-0 transition-all" />
+                              )}
                             </div>
                           </div>
-                          <span className="text-xs uppercase tracking-widest text-muted-foreground/50 font-medium">{game.round}</span>
+                          <span className="text-xs uppercase tracking-widest text-muted-foreground/50 font-medium">{series.round}</span>
                         </div>
                       </TableCell>
                       <TableCell className="py-8 text-right pr-8">
                         <div className="flex items-center justify-end gap-3 text-lg md:text-xl tabular-nums">
                           <span className={`transition-all duration-300 ${isTeamAWinner ? 'font-semibold text-primary' : 'text-muted-foreground/60'}`}>
-                            {game.game_7_score_a}
+                            {finalScore?.scoreA ?? '-'}
                           </span>
                           <span className="text-muted-foreground/20 font-light">−</span>
                           <span className={`transition-all duration-300 ${!isTeamAWinner ? 'font-semibold text-primary' : 'text-muted-foreground/60'}`}>
-                            {game.game_7_score_b}
+                            {finalScore?.scoreB ?? '-'}
                           </span>
                         </div>
                       </TableCell>
@@ -192,7 +216,7 @@ export default function HistoricalPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={3} className="py-20 text-center text-muted-foreground">
-                    No games found matching your filters.
+                    No series found matching your filters.
                   </TableCell>
                 </TableRow>
               )}
@@ -200,10 +224,10 @@ export default function HistoricalPage() {
           </Table>
         </div>
 
-        {visibleCount < filteredGames.length && (
+        {visibleCount < filteredSeries.length && (
           <div className="flex justify-center pt-8">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               onClick={loadMore}
               className="text-muted-foreground hover:text-foreground transition-all duration-300 gap-2 hover:bg-transparent"
             >
@@ -213,39 +237,41 @@ export default function HistoricalPage() {
           </div>
         )}
       </div>
-      {selectedGame && (
+
+      {selectedSeries && (
         <div className="fixed inset-x-0 bottom-0 z-50 p-4 md:p-8 pointer-events-none flex justify-center">
           <Card className="w-full max-w-2xl shadow-2xl border-border/50 pointer-events-auto animate-in slide-in-from-bottom-8 duration-500 bg-background/95 backdrop-blur-md">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div className="flex items-center gap-4">
                 <div className="flex -space-x-2">
-                  {getTeamLogo(selectedGame.team_a) && (
-                    <img src={getTeamLogo(selectedGame.team_a)} alt={selectedGame.team_a} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                  {selectedSeries.team_a?.logo_url && (
+                    <img src={selectedSeries.team_a.logo_url} alt={selectedSeries.team_a.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
-                  {getTeamLogo(selectedGame.team_b) && (
-                    <img src={getTeamLogo(selectedGame.team_b)} alt={selectedGame.team_b} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                  {selectedSeries.team_b?.logo_url && (
+                    <img src={selectedSeries.team_b.logo_url} alt={selectedSeries.team_b.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
                 </div>
                 <div className="space-y-1">
-                  <CardTitle className="text-xl">{selectedGame.year} {selectedGame.round}</CardTitle>
-                  <CardDescription>{selectedGame.team_a} vs {selectedGame.team_b}</CardDescription>
+                  <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
+                  <CardDescription>{selectedSeries.team_a?.full_name} vs {selectedSeries.team_b?.full_name}</CardDescription>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedGame(null)} className="h-8 w-8 p-0 rounded-full">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedSeries(null)} className="h-8 w-8 p-0 rounded-full">
                 <span className="sr-only">Close</span>
                 ×
               </Button>
             </CardHeader>
             <CardContent className="space-y-6 pt-4">
               <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-                {[1, 2, 3, 4, 5, 6, 7].map((gameNum) => {
-                  const scoreA = selectedGame[`game_${gameNum}_score_a` as keyof GameSeven] as number;
-                  const scoreB = selectedGame[`game_${gameNum}_score_b` as keyof GameSeven] as number;
+                {selectedSeries.series_game_scores?.sort((a, b) => a.game_number - b.game_number).map((score) => {
+                  const isTeamAHome = score.home_team_id === selectedSeries.team_a_id;
+                  const scoreA = isTeamAHome ? score.home_score : score.away_score;
+                  const scoreB = isTeamAHome ? score.away_score : score.home_score;
                   const winnerA = scoreA > scoreB;
-                  
+
                   return (
-                    <div key={gameNum} className="flex flex-col items-center gap-1.5 p-2 rounded-lg bg-muted/30 border border-border/30">
-                      <span className="text-[10px] uppercase tracking-tighter text-muted-foreground">G{gameNum}</span>
+                    <div key={score.id} className="flex flex-col items-center gap-1.5 p-2 rounded-lg bg-muted/30 border border-border/30">
+                      <span className="text-[10px] uppercase tracking-tighter text-muted-foreground">G{score.game_number}</span>
                       <div className="flex flex-col items-center gap-0.5 font-mono text-[10px]">
                         <span className={winnerA ? 'font-bold text-primary' : ''}>{scoreA}</span>
                         <span className={!winnerA ? 'font-bold text-primary' : ''}>{scoreB}</span>
@@ -254,7 +280,7 @@ export default function HistoricalPage() {
                   );
                 })}
               </div>
-              
+
               <div className="flex items-center justify-between px-4 py-3 bg-muted/40 rounded-xl">
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -262,15 +288,13 @@ export default function HistoricalPage() {
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Series Winner</p>
-                    <p className="text-base font-medium">{selectedGame.winner}</p>
+                    <p className="text-base font-medium">{selectedSeries.winner_team?.full_name || 'TBD'}</p>
                   </div>
                 </div>
-                {selectedGame.home_team && (
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Home Team</p>
-                    <p className="text-sm">{selectedGame.home_team}</p>
-                  </div>
-                )}
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Series Status</p>
+                  <p className="text-sm capitalize">{selectedSeries.status}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

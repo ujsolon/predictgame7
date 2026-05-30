@@ -8,19 +8,34 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo } from '@/lib/team-logos';
-import { PredictionInput, PredictionResult, GameSeven } from '@/types/types';
+import { PredictionInput, PredictionResult, Series } from '@/types/types';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 type SeriesSource = 'current' | 'historical' | 'custom';
-type PredictionMethod = 'logistic_regression' | 'bayes' | 'elo' | 'exponential_smoothing';
+type PredictionMethod = 'logistic_regression' | 'bayesian' | 'elo' | 'exponential_smoothing' | 'ensemble_v1' | 'margin_model_v1';
 
 interface SelectedSeries {
   source: SeriesSource;
-  data?: GameSeven;
+  data?: Series;
   customData?: PredictionInput;
 }
 
+const SERIES_SELECT = `
+  id,
+  year,
+  round,
+  team_a_id,
+  team_b_id,
+  winner_team_id,
+  status,
+  created_at,
+  updated_at,
+  team_a:team_a_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
+  team_b:team_b_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
+  winner_team:winner_team_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
+  series_game_scores(*)
+`;
 
 export default function PredictPage() {
   const [searchParams] = useSearchParams();
@@ -31,7 +46,7 @@ export default function PredictPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PredictionResult | null>(null);
   
-  const [games, setGames] = useState<GameSeven[]>([]);
+  const [games, setGames] = useState<Series[]>([]);
   const [selectionLevel, setSelectionLevel] = useState<'decades' | 'years' | 'series'>('decades');
   const [selectedDecade, setSelectedDecade] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -72,30 +87,29 @@ export default function PredictPage() {
   const fetchAllGames = async () => {
     try {
       const { data, error } = await supabase
-        .from('game_sevens')
-        .select('*')
+        .from('series')
+        .select(SERIES_SELECT)
         .order('year', { ascending: false });
 
       if (error) throw error;
       setGames(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching games:', err);
+      console.error('Error fetching series:', err);
     }
   };
 
   const loadSeriesById = async (seriesId: string) => {
     try {
-      // Load directly from Supabase by game_sevens.id
       const { data, error } = await supabase
-        .from('game_sevens')
-        .select('*')
+        .from('series')
+        .select(SERIES_SELECT)
         .eq('id', seriesId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
 
       if (data) {
-        setSelectedSeries({ source: data.is_current ? 'current' : 'historical', data });
+        setSelectedSeries({ source: data.status === 'active' ? 'current' : 'historical', data });
       } else {
         toast.error('Series not found');
       }
@@ -121,14 +135,13 @@ export default function PredictPage() {
         for (let i = 1; i <= 6; i++) {
           const scoreA = input[`game_${i}_score_a`];
           const scoreB = input[`game_${i}_score_b`];
-          
-          // Check for empty, null, undefined, or 0 (which is treated as missing/incomplete in this context)
+
           if (scoreA === undefined || scoreA === null || scoreA === '' || scoreA === 0 ||
               scoreB === undefined || scoreB === null || scoreB === '' || scoreB === 0) {
             toast.error(`Game ${i} is missing scores. Please enter scores for all 6 games.`);
             return false;
           }
-          
+
           const sA = Number(scoreA);
           const sB = Number(scoreB);
 
@@ -141,7 +154,7 @@ export default function PredictPage() {
             toast.error(`Game ${i} scores cannot be negative`);
             return false;
           }
-          
+
           if (sA < 50 || sA > 200 || sB < 50 || sB > 200) {
             toast.warning(`Note: Game ${i} scores (${sA}-${sB}) are outside the typical 50-200 range`);
           }
@@ -154,37 +167,58 @@ export default function PredictPage() {
           setLoading(false);
           return;
         }
-        inputData = { 
-          ...customInput, 
-          team_a: customInput.team_a.trim() || 'Team A',
-          team_b: customInput.team_b.trim() || 'Team B',
-          home_team: undefined, // Neutral for now
-          method: selectedMethod, 
-        } as any;
+
+        inputData = {
+          ...customInput,
+          team_a: (customInput.team_a ?? '').trim() || 'Team A',
+          team_b: (customInput.team_b ?? '').trim() || 'Team B',
+          home_team: undefined,
+          method: selectedMethod,
+        } as PredictionInput;
       } else if (selectedSeries.data) {
-        const game = selectedSeries.data;
-        if (!validateScores(game)) {
+        const series = selectedSeries.data;
+        const scores = series.series_game_scores ?? [];
+        const sortedScores = [...scores].sort((a, b) => a.game_number - b.game_number);
+
+        if (sortedScores.length < 6) {
+          toast.error('Selected series does not include enough game scores for prediction.');
           setLoading(false);
           return;
         }
-        inputData = {
-          team_a: game.team_a || 'Team A',
-          team_b: game.team_b || 'Team B',
-          game_1_score_a: game.game_1_score_a,
-          game_1_score_b: game.game_1_score_b,
-          game_2_score_a: game.game_2_score_a,
-          game_2_score_b: game.game_2_score_b,
-          game_3_score_a: game.game_3_score_a,
-          game_3_score_b: game.game_3_score_b,
-          game_4_score_a: game.game_4_score_a,
-          game_4_score_b: game.game_4_score_b,
-          game_5_score_a: game.game_5_score_a,
-          game_5_score_b: game.game_5_score_b,
-          game_6_score_a: game.game_6_score_a,
-          game_6_score_b: game.game_6_score_b,
-          home_team: undefined, // Neutral for now
+
+        const seriesInput: any = {
+          series_id: series.id,
+          team_a: series.team_a?.full_name || 'Team A',
+          team_b: series.team_b?.full_name || 'Team B',
           method: selectedMethod,
-        } as any;
+        };
+
+        for (let i = 1; i <= 6; i++) {
+          const scoreRow = sortedScores.find((row) => row.game_number === i);
+          if (!scoreRow) {
+            toast.error(`Game ${i} is missing for the selected series.`);
+            setLoading(false);
+            return;
+          }
+
+          const isTeamAHome = scoreRow.home_team_id === series.team_a_id;
+          seriesInput[`game_${i}_score_a`] = isTeamAHome ? scoreRow.home_score : scoreRow.away_score;
+          seriesInput[`game_${i}_score_b`] = isTeamAHome ? scoreRow.away_score : scoreRow.home_score;
+        }
+
+        if (!validateScores(seriesInput)) {
+          setLoading(false);
+          return;
+        }
+
+        const game7score = sortedScores.find((row) => row.game_number === 7);
+        seriesInput.home_team = game7score
+          ? game7score.home_team_id === series.team_a_id
+            ? series.team_a?.full_name
+            : series.team_b?.full_name
+          : undefined;
+
+        inputData = seriesInput as PredictionInput;
       } else {
         toast.error('Invalid series selection');
         setLoading(false);
@@ -221,7 +255,9 @@ export default function PredictPage() {
       return `${teamA} vs ${teamB}`;
     }
     if (selectedSeries.data) {
-      return `${getTeamAbbreviation(selectedSeries.data.team_a)} vs ${getTeamAbbreviation(selectedSeries.data.team_b)}`;
+      const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
+      const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
+      return `${getTeamAbbreviation(teamAName)} vs ${getTeamAbbreviation(teamBName)}`;
     }
     return 'Not selected';
   };
@@ -230,9 +266,11 @@ export default function PredictPage() {
     if (!selectedMethod) return 'Not selected';
     switch (selectedMethod) {
       case 'logistic_regression': return 'Logistic Regression';
-      case 'bayes': return 'Bayes Method';
+      case 'bayesian': return 'Bayes Method';
       case 'elo': return 'Elo Rating';
       case 'exponential_smoothing': return 'Exponential Smoothing';
+      case 'ensemble_v1': return 'Ensemble V1';
+      case 'margin_model_v1': return 'Margin Model V1';
       default: return 'Not selected';
     }
   };
@@ -273,17 +311,24 @@ export default function PredictPage() {
                     <div className="flex-1 space-y-4 py-4">
                       <div className="space-y-1">
                         <div className="flex items-center justify-center gap-4 py-2">
-                          {selectedSeries && selectedSeries.data && (
-                            <>
-                              {getTeamLogo(selectedSeries.data.team_a) && (
-                                <img src={getTeamLogo(selectedSeries.data.team_a)} alt="" className="h-10 w-10 object-contain" />
-                              )}
-                              <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                              {getTeamLogo(selectedSeries.data.team_b) && (
-                                <img src={getTeamLogo(selectedSeries.data.team_b)} alt="" className="h-10 w-10 object-contain" />
-                              )}
-                            </>
-                          )}
+                          {selectedSeries && selectedSeries.data && (() => {
+                            const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
+                            const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
+                            const teamALogo = selectedSeries.data.team_a?.logo_url || getTeamLogo(teamAName);
+                            const teamBLogo = selectedSeries.data.team_b?.logo_url || getTeamLogo(teamBName);
+
+                            return (
+                              <>
+                                {teamALogo && (
+                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                                <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
+                                {teamBLogo && (
+                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                              </>
+                            );
+                          })()}
                           {!selectedSeries && (
                             <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</p>
                           )}
@@ -326,13 +371,20 @@ export default function PredictPage() {
                       {selectedSeries && (
                         <div className="space-y-2 pt-2 border-t border-border/50">
                           {[1, 2, 3, 4, 5, 6].map((g) => {
+                            const scoreRow = selectedSeries.source === 'custom'
+                              ? undefined
+                              : selectedSeries.data?.series_game_scores?.find((row) => row.game_number === g);
                             const scoreA = selectedSeries.source === 'custom' 
                               ? (customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined)
-                              : (selectedSeries.data as any)?.[`game_${g}_score_a` as any] as number | undefined;
+                              : scoreRow
+                                ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.home_score : scoreRow.away_score)
+                                : undefined;
                             
                             const scoreB = selectedSeries.source === 'custom'
                               ? (customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined)
-                              : (selectedSeries.data as any)?.[`game_${g}_score_b` as any] as number | undefined;
+                              : scoreRow
+                                ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.away_score : scoreRow.home_score)
+                                : undefined;
 
                             if (selectedSeries.source === 'custom') {
                               return (
@@ -442,7 +494,7 @@ export default function PredictPage() {
                                 >
                                   <span className="text-xl font-bold">{year}</span>
                                   <span className="text-[10px] uppercase opacity-60">
-                                    {games.some(g => g.year === year && g.is_current) ? 'Current' : 'View Series'}
+                                    {games.some(g => g.year === year && g.status === 'active') ? 'Current' : 'View Series'}
                                   </span>
                                 </Button>
                               ));
@@ -466,42 +518,49 @@ export default function PredictPage() {
                             {(() => {
                               const yearGames = games.filter(g => g.year === selectedYear);
 
-                              return yearGames.map((game) => (
-                                <Button
-                                  key={game.id}
-                                  variant="outline"
-                                  className="h-24 sm:h-20 flex flex-col gap-2 p-3 transition-all duration-200 hover:border-primary/50"
-                                  onClick={() => {
-                                    const isCurrent = game.is_current;
-                                    setSelectedSeries({ 
-                                      source: isCurrent ? 'current' : 'historical', 
-                                      data: game 
-                                    });
-                                    setIsSeriesDialogOpen(false);
-                                    setSelectionLevel('decades');
-                                    setSelectedDecade(null);
-                                    setSelectedYear(null);
-                                    toast.success('Series selected');
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 w-full justify-center">
-                                    <div className="flex -space-x-1.5 shrink-0">
-                                      {getTeamLogo(game.team_a) && (
-                                        <img src={getTeamLogo(game.team_a)} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
-                                      )}
-                                      {getTeamLogo(game.team_b) && (
-                                        <img src={getTeamLogo(game.team_b)} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
-                                      )}
+                              return yearGames.map((game) => {
+                                const teamAName = game.team_a?.full_name || 'Team A';
+                                const teamBName = game.team_b?.full_name || 'Team B';
+                                const teamALogo = game.team_a?.logo_url || getTeamLogo(teamAName);
+                                const teamBLogo = game.team_b?.logo_url || getTeamLogo(teamBName);
+
+                                return (
+                                  <Button
+                                    key={game.id}
+                                    variant="outline"
+                                    className="h-24 sm:h-20 flex flex-col gap-2 p-3 transition-all duration-200 hover:border-primary/50"
+                                    onClick={() => {
+                                      const isCurrent = game.status === 'active';
+                                      setSelectedSeries({
+                                        source: isCurrent ? 'current' : 'historical',
+                                        data: game
+                                      });
+                                      setIsSeriesDialogOpen(false);
+                                      setSelectionLevel('decades');
+                                      setSelectedDecade(null);
+                                      setSelectedYear(null);
+                                      toast.success('Series selected');
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-2 w-full justify-center">
+                                      <div className="flex -space-x-1.5 shrink-0">
+                                        {teamALogo && (
+                                          <img src={teamALogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
+                                        )}
+                                        {teamBLogo && (
+                                          <img src={teamBLogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
+                                        )}
+                                      </div>
+                                      <span className="text-xs font-bold truncate">
+                                        {getTeamAbbreviation(teamAName)} vs {getTeamAbbreviation(teamBName)}
+                                      </span>
                                     </div>
-                                    <span className="text-xs font-bold truncate">
-                                      {getTeamAbbreviation(game.team_a)} vs {getTeamAbbreviation(game.team_b)}
+                                    <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">
+                                      {game.round}
                                     </span>
-                                  </div>
-                                  <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">
-                                    {game.round}
-                                  </span>
-                                </Button>
-                              ));
+                                  </Button>
+                                );
+                              });
                             })()}
                           </>
                         )}
@@ -724,12 +783,12 @@ export default function PredictPage() {
                 }
                 
                 const prediction = result;
-                const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a;
-                const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b;
+                const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a?.full_name;
+                const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
                 const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
                 const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
-                const teamALogo = prediction.team_a_logo || getTeamLogo(teamAName);
-                const teamBLogo = prediction.team_b_logo || getTeamLogo(teamBName);
+                const teamALogo = prediction.team_a_logo || selectedSeries?.data?.team_a?.logo_url || getTeamLogo(teamAName);
+                const teamBLogo = prediction.team_b_logo || selectedSeries?.data?.team_b?.logo_url || getTeamLogo(teamBName);
                 return (
                   <div className="w-full space-y-6">
                     <div className="text-center space-y-4">
@@ -803,12 +862,12 @@ export default function PredictPage() {
       ) : (() => {
         if (!result) return null;
         const prediction = result;
-        const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a;
-        const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b;
+        const fallbackTeamA = selectedSeries?.source === 'custom' ? customInput.team_a : selectedSeries?.data?.team_a?.full_name;
+        const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
         const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
         const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
-        const teamALogo = prediction.team_a_logo || getTeamLogo(teamAName);
-        const teamBLogo = prediction.team_b_logo || getTeamLogo(teamBName);
+        const teamALogo = prediction.team_a_logo || selectedSeries?.data?.team_a?.logo_url || getTeamLogo(teamAName);
+        const teamBLogo = prediction.team_b_logo || selectedSeries?.data?.team_b?.logo_url || getTeamLogo(teamBName);
         return (
           <div className="space-y-8">
             <Card>

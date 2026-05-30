@@ -1,35 +1,56 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/db/supabase';
-import { GameSeven } from '@/types/types';
+import { Series, Team, SeriesGameScore } from '@/types/types';
 import { Trophy, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getTeamAbbreviation, getTeamLogo } from '@/lib/nba-utils';
+
+interface SeriesWithNestedTeams extends Series {
+  team_a?: Team;
+  team_b?: Team;
+  winner_team?: Team;
+  series_game_scores?: SeriesGameScore[];
+}
 
 export default function CurrentGame7sPage() {
   const [loading, setLoading] = useState(true);
-  const [currentGames, setCurrentGames] = useState<GameSeven[]>([]);
+  const [currentSeries, setCurrentSeries] = useState<SeriesWithNestedTeams[]>([]);
 
   useEffect(() => {
-    fetchCurrentGames();
+    fetchCurrentSeries();
   }, []);
 
-  const fetchCurrentGames = async () => {
+  const fetchCurrentSeries = async () => {
     try {
       const { data, error } = await supabase
-        .from('game_sevens')
-        .select('*')
-        .eq('is_current', true)
+        .from('series')
+        .select('*, team_a:team_a_id(*), team_b:team_b_id(*), winner_team:winner_team_id(*), series_game_scores(*)')
+        .eq('status', 'active')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-
-      setCurrentGames(Array.isArray(data) ? data : []);
+      setCurrentSeries(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching current games:', err);
+      console.error('Error fetching current series:', err);
       toast.error('Failed to load current Game 7s');
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatScore = (series: SeriesWithNestedTeams, score: SeriesGameScore) => {
+    if (!series.team_a || !series.team_b) return null;
+    const teamAId = series.team_a_id;
+    const teamAScore = score.home_team_id === teamAId ? score.home_score : score.away_score;
+    const teamBScore = score.home_team_id === teamAId ? score.away_score : score.home_score;
+
+    return {
+      gameNumber: score.game_number,
+      scoreA: teamAScore,
+      scoreB: teamBScore,
+      winner: teamAScore > teamBScore ? series.team_a.full_name : series.team_b.full_name,
+    };
   };
 
   if (loading) {
@@ -43,12 +64,12 @@ export default function CurrentGame7sPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div className="space-y-3">
-
         <p className="text-muted-foreground">
           Active NBA Game 7 matchups with win probability predictions
         </p>
       </div>
-      {currentGames.length === 0 ? (
+
+      {currentSeries.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center space-y-3">
             <Trophy className="h-12 w-12 mx-auto text-muted-foreground" />
@@ -60,75 +81,78 @@ export default function CurrentGame7sPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {currentGames.map((game) => (
-            <Card key={game.id}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <CardTitle className="text-xl">
-                      {game.team_a} vs {game.team_b}
-                    </CardTitle>
-                    <CardDescription>
-                      {game.year} {game.round}
-                    </CardDescription>
-                  </div>
-                  {game.predicted_winner && (
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-muted-foreground">Predicted Winner</p>
-                      <p className="text-sm font-medium">{game.predicted_winner}</p>
+          {currentSeries.map((series) => {
+            const teamAName = series.team_a?.full_name || 'Team A';
+            const teamBName = series.team_b?.full_name || 'Team B';
+            const logoA = series.team_a?.logo_url || getTeamLogo(teamAName);
+            const logoB = series.team_b?.logo_url || getTeamLogo(teamBName);
+            const scores = (series.series_game_scores ?? [])
+              .sort((a, b) => a.game_number - b.game_number)
+              .slice(0, 6)
+              .map((score) => formatScore(series, score));
+            return (
+              <Card key={series.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <CardTitle className="text-xl">
+                        {teamAName} vs {teamBName}
+                      </CardTitle>
+                      <CardDescription>
+                        {series.year} {series.round}
+                      </CardDescription>
                     </div>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {game.win_probability_a !== null && game.win_probability_b !== null && (
+                    {series.winner_team && (
+                      <div className="text-right shrink-0">
+                        <p className="text-xs text-muted-foreground">Predicted Winner</p>
+                        <p className="text-sm font-medium">{series.winner_team.full_name}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="p-6 bg-accent rounded-lg space-y-2">
-                      <p className="text-sm text-muted-foreground">{game.team_a}</p>
-                      <p className="text-3xl font-medium">{game.win_probability_a}%</p>
+                      <p className="text-sm text-muted-foreground">{teamAName}</p>
+                      <p className="text-3xl font-medium">—</p>
                       <p className="text-xs text-muted-foreground">Win Probability</p>
                     </div>
                     <div className="p-6 bg-accent rounded-lg space-y-2">
-                      <p className="text-sm text-muted-foreground">{game.team_b}</p>
-                      <p className="text-3xl font-medium">{game.win_probability_b}%</p>
+                      <p className="text-sm text-muted-foreground">{teamBName}</p>
+                      <p className="text-3xl font-medium">—</p>
                       <p className="text-xs text-muted-foreground">Win Probability</p>
                     </div>
                   </div>
-                )}
 
-                <div className="space-y-3">
-                  <p className="text-sm font-medium">Series Scores (Games 1-6)</p>
-                  <div className="grid gap-3">
-                    {[1, 2, 3, 4, 5, 6].map((gameNum) => {
-                      const scoreA = game[`game_${gameNum}_score_a` as keyof GameSeven] as number;
-                      const scoreB = game[`game_${gameNum}_score_b` as keyof GameSeven] as number;
-                      const winner = scoreA > scoreB ? game.team_a : game.team_b;
-                      
-                      return (
-                        <div key={gameNum} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                          <span className="text-sm font-medium">Game {gameNum}</span>
-                          <div className="flex items-center gap-4">
-                            <span className={`text-sm ${scoreA > scoreB ? 'font-medium' : 'text-muted-foreground'}`}>
-                              {game.team_a}: {scoreA}
-                            </span>
-                            <span className={`text-sm ${scoreB > scoreA ? 'font-medium' : 'text-muted-foreground'}`}>
-                              {game.team_b}: {scoreB}
-                            </span>
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Series Scores</p>
+                    <div className="grid gap-3">
+                      {scores.map((item) => (
+                        item ? (
+                          <div key={item.gameNumber} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                            <span className="text-sm font-medium">Game {item.gameNumber}</span>
+                            <div className="flex items-center gap-4">
+                              <span className={`text-sm ${item.scoreA > item.scoreB ? 'font-medium' : 'text-muted-foreground'}`}>
+                                {teamAName}: {item.scoreA}
+                              </span>
+                              <span className={`text-sm ${item.scoreB > item.scoreA ? 'font-medium' : 'text-muted-foreground'}`}>
+                                {teamBName}: {item.scoreB}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        ) : null
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                {game.home_team && (
-                  <p className="text-xs text-muted-foreground">
-                    Home court advantage: {game.home_team}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="flex items-center gap-3">
+                    {logoA && <img src={logoA} alt={teamAName} className="h-10 w-10 object-contain" />}
+                    {logoB && <img src={logoB} alt={teamBName} className="h-10 w-10 object-contain" />}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
