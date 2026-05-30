@@ -8,7 +8,7 @@ import { routes } from './routes';
 
 const App: React.FC = () => {
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <IntersectObserver />
       <Layout>
         <Routes>

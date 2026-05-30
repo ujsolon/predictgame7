@@ -275,6 +275,51 @@ export default function PredictPage() {
     }
   };
 
+  const selectSeries = (game: Series) => {
+    setSelectedSeries({
+      source: game.status === 'active' ? 'current' : 'historical',
+      data: game
+    });
+    setIsSeriesDialogOpen(false);
+    setSelectionLevel('decades');
+    setSelectedDecade(null);
+    setSelectedYear(null);
+    toast.success('Series selected');
+  };
+
+  const renderSeriesOption = (game: Series) => {
+    const teamAName = game.team_a?.full_name || 'Team A';
+    const teamBName = game.team_b?.full_name || 'Team B';
+    const teamALogo = resolveTeamLogoUrl(game.team_a?.logo_url) || getTeamLogo(teamAName);
+    const teamBLogo = resolveTeamLogoUrl(game.team_b?.logo_url) || getTeamLogo(teamBName);
+
+    return (
+      <Button
+        key={game.id}
+        variant="outline"
+        className="h-24 sm:h-20 flex flex-col gap-2 p-3 transition-all duration-200 hover:border-primary/50"
+        onClick={() => selectSeries(game)}
+      >
+        <div className="flex items-center gap-2 w-full justify-center">
+          <div className="flex -space-x-1.5 shrink-0">
+            {teamALogo && (
+              <img src={teamALogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
+            )}
+            {teamBLogo && (
+              <img src={teamBLogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
+            )}
+          </div>
+          <span className="text-xs font-bold truncate">
+            {getTeamAbbreviation(teamAName)} vs {getTeamAbbreviation(teamBName)}
+          </span>
+        </div>
+        <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">
+          {game.round}
+        </span>
+      </Button>
+    );
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       <div className="space-y-3">
@@ -473,6 +518,18 @@ export default function PredictPage() {
                   
                   <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-6">
                     <div className="space-y-4">
+                      {selectionLevel === 'decades' && games.some((game) => game.status === 'active') && (
+                        <div className="space-y-4">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Game 7s</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {games
+                              .filter((game) => game.status === 'active')
+                              .sort((a, b) => b.year - a.year)
+                              .map((game) => renderSeriesOption(game))}
+                          </div>
+                        </div>
+                      )}
+
                       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         {selectionLevel === 'decades' ? 'Select Decade' : 
                          selectionLevel === 'years' ? `Select Year from ${selectedDecade}s` : 
@@ -551,49 +608,7 @@ export default function PredictPage() {
                             {(() => {
                               const yearGames = games.filter(g => g.year === selectedYear);
 
-                              return yearGames.map((game) => {
-                                const teamAName = game.team_a?.full_name || 'Team A';
-                                const teamBName = game.team_b?.full_name || 'Team B';
-                                const teamALogo = resolveTeamLogoUrl(game.team_a?.logo_url) || getTeamLogo(teamAName);
-                                const teamBLogo = resolveTeamLogoUrl(game.team_b?.logo_url) || getTeamLogo(teamBName);
-
-                                return (
-                                  <Button
-                                    key={game.id}
-                                    variant="outline"
-                                    className="h-24 sm:h-20 flex flex-col gap-2 p-3 transition-all duration-200 hover:border-primary/50"
-                                    onClick={() => {
-                                      const isCurrent = game.status === 'active';
-                                      setSelectedSeries({
-                                        source: isCurrent ? 'current' : 'historical',
-                                        data: game
-                                      });
-                                      setIsSeriesDialogOpen(false);
-                                      setSelectionLevel('decades');
-                                      setSelectedDecade(null);
-                                      setSelectedYear(null);
-                                      toast.success('Series selected');
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-2 w-full justify-center">
-                                      <div className="flex -space-x-1.5 shrink-0">
-                                        {teamALogo && (
-                                          <img src={teamALogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
-                                        )}
-                                        {teamBLogo && (
-                                          <img src={teamBLogo} alt="" className="h-5 w-5 rounded-full border border-background bg-white p-0.5" />
-                                        )}
-                                      </div>
-                                      <span className="text-xs font-bold truncate">
-                                        {getTeamAbbreviation(teamAName)} vs {getTeamAbbreviation(teamBName)}
-                                      </span>
-                                    </div>
-                                    <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">
-                                      {game.round}
-                                    </span>
-                                  </Button>
-                                );
-                              });
+                              return yearGames.map((game) => renderSeriesOption(game));
                             })()}
                           </>
                         )}
