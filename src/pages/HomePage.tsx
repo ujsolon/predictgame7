@@ -145,10 +145,10 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
           {[
-            { caption: 'Cavs vs Warriors, 2016', seriesId: '0610dced-67d6-4aea-a588-80e30beecf1e', x: '20%', y: '58%' },
-            { caption: 'Raptors vs 76ers, 2019', seriesId: '492f7de7-c2c2-4de0-ac0a-f4a77c4b950f', x: '43%', y: '27%' },
-            { caption: 'Thunder vs Pacers, 2025', seriesId: '247c2515-eb14-4ac2-ae66-b9e9cbd92abd', x: '57%', y: '90%' },
-            { caption: 'Heat vs Spurs, 2013', seriesId: '19114d69-306a-476a-a980-cfddb7622e87', x: '79%', y: '30%' },
+            { caption: 'Cavs vs Warriors, 2016', seriesId: '06715a85-ec33-46a4-8383-d058055eefe6', x: '20%', y: '58%' },
+            { caption: 'Raptors vs 76ers, 2019', seriesId: '29638c4e-261a-4d09-81aa-5740f76175f5', x: '43%', y: '27%' },
+            { caption: 'Thunder vs Pacers, 2025', seriesId: '626257bc-1678-4c88-84a6-37e0a6cdb49c', x: '57%', y: '90%' },
+            { caption: 'Heat vs Spurs, 2013', seriesId: 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a', x: '79%', y: '30%' },
           ].map((hotspot, index) => (
             <Link
               key={index}
