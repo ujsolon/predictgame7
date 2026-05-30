@@ -78,7 +78,7 @@ The current project stores historical Game 7 series, an active/current table var
 - Notes: logo lookup requires exact team name matches in `team_logos`. If the frontend or DB uses alternate names/abbreviations, logos may be missing.
 
 ## Current Pain Points and Observations
-- Team names are not normalized: `team_a`, `team_b`, `winner`, `home_team` are plain text strings across tables and types. This leads to mismatch issues (e.g., `LA Clippers` vs `Los Angeles Clippers`) and missing logos.
+- Team names are not normalized: `team_a`, `team_b`, `winner`, `home_team` are plain text strings across tables and types. This leads to alias mismatch issues and missing logos.
 - `game_sevens` stores scores in repeated columns (`game_1_score_a`...); this denormalized format makes some queries and transformations harder and duplicates schema logic across `current_game_sevens`.
 - `current_game_sevens` duplicates `game_sevens` schema and is a maintenance burden; it's unclear whether it provides necessary semantics beyond `is_current`.
 - `team_logos` keys by `team_name` text rather than a `team_id` FK, making it brittle to naming variations.

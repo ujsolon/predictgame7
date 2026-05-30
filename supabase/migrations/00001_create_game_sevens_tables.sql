@@ -103,7 +103,7 @@ INSERT INTO game_sevens (year, round, team_a, team_b, game_1_score_a, game_1_sco
 (2016, 'NBA Finals', 'Cleveland Cavaliers', 'Golden State Warriors', 89, 104, 77, 110, 120, 90, 82, 108, 112, 97, 115, 101, 93, 89, 'Cleveland Cavaliers', 'Golden State Warriors'),
 (2019, 'Conference Semifinals', 'Toronto Raptors', 'Philadelphia 76ers', 108, 95, 94, 89, 116, 95, 101, 96, 125, 89, 112, 101, 92, 90, 'Toronto Raptors', 'Philadelphia 76ers'),
 (2018, 'Conference Finals', 'Cleveland Cavaliers', 'Boston Celtics', 83, 108, 94, 107, 116, 86, 111, 102, 96, 83, 109, 99, 87, 79, 'Cleveland Cavaliers', 'Boston Celtics'),
-(2020, 'Conference Semifinals', 'Denver Nuggets', 'LA Clippers', 120, 97, 110, 101, 113, 107, 85, 96, 111, 105, 104, 111, 104, 89, 'Denver Nuggets', 'LA Clippers'),
+(2020, 'Conference Semifinals', 'Denver Nuggets', 'Los Angeles Clippers', 120, 97, 110, 101, 113, 107, 85, 96, 111, 105, 104, 111, 104, 89, 'Denver Nuggets', 'Los Angeles Clippers'),
 (2021, 'Conference Semifinals', 'Brooklyn Nets', 'Milwaukee Bucks', 115, 107, 86, 125, 83, 86, 107, 96, 114, 108, 104, 89, 111, 115, 'Milwaukee Bucks', 'Milwaukee Bucks'),
 (2022, 'Conference Semifinals', 'Boston Celtics', 'Milwaukee Bucks', 89, 101, 109, 86, 101, 103, 116, 108, 110, 107, 108, 95, 109, 81, 'Boston Celtics', 'Milwaukee Bucks'),
 (2023, 'Conference Finals', 'Miami Heat', 'Boston Celtics', 123, 116, 106, 111, 128, 102, 102, 82, 110, 97, 103, 104, 103, 84, 'Miami Heat', 'Boston Celtics'),

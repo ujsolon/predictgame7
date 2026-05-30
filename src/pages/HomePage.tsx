@@ -66,7 +66,7 @@ export default function HomePage() {
   const workflowSteps = [
     {
       icon: Trophy,
-      image: `${import.meta.env.BASE_URL}assets/hali_sga_2025.jpg`,
+      image: `${import.meta.env.BASE_URL}assets/wemby_sga_2026.jpg`,
       title: 'Select the Series',
       description: 'Select a live Game 7 or browse our deep historical archives.',
       descriptionFull: 'Select a live Game 7 or browse our deep historical archives. Every series is a new opportunity to decode greatness.',

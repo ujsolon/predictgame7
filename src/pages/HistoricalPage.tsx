@@ -9,7 +9,7 @@ import { Series, SeriesGameScore, Team } from '@/types/types';
 import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
-import { getTeamLogo } from '@/lib/team-logos';
+import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 
 interface SeriesWithNestedTeams extends Series {
   team_a?: Team;
@@ -162,8 +162,8 @@ export default function HistoricalPage() {
                   const isTeamAWinner = series.winner_team_id === series.team_a_id;
                   const abbrevA = getTeamAbbreviation(teamAName);
                   const abbrevB = getTeamAbbreviation(teamBName);
-                  const logoA = series.team_a?.logo_url || getTeamLogo(teamAName);
-                  const logoB = series.team_b?.logo_url || getTeamLogo(teamBName);
+                  const logoA = resolveTeamLogoUrl(series.team_a?.logo_url) || getTeamLogo(teamAName);
+                  const logoB = resolveTeamLogoUrl(series.team_b?.logo_url) || getTeamLogo(teamBName);
                   const finalScore = formatGame7Score(series);
 
                   return (
@@ -244,11 +244,11 @@ export default function HistoricalPage() {
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div className="flex items-center gap-4">
                 <div className="flex -space-x-2">
-                  {selectedSeries.team_a?.logo_url && (
-                    <img src={selectedSeries.team_a.logo_url} alt={selectedSeries.team_a.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                  {resolveTeamLogoUrl(selectedSeries.team_a?.logo_url) && (
+                    <img src={resolveTeamLogoUrl(selectedSeries.team_a?.logo_url)} alt={selectedSeries.team_a.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
-                  {selectedSeries.team_b?.logo_url && (
-                    <img src={selectedSeries.team_b.logo_url} alt={selectedSeries.team_b.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                  {resolveTeamLogoUrl(selectedSeries.team_b?.logo_url) && (
+                    <img src={resolveTeamLogoUrl(selectedSeries.team_b?.logo_url)} alt={selectedSeries.team_b.full_name} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
                 </div>
                 <div className="space-y-1">

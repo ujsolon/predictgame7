@@ -17,7 +17,6 @@ VALUES
   (38, 'Fort Wayne Pistons', 'FWP', 'Fort Wayne', 'Pistons'),
   (39, 'Kansas City Kings', 'KCK', 'Kansas City', 'Kings'),
   (40, 'Kentucky Colonels', 'KEN', 'Kentucky', 'Colonels'),
-  (41, 'Los Angeles Clippers', 'LAXC', 'Los Angeles', 'Clippers'),
   (42, 'Miami Floridians', 'MFL', 'Miami', 'Floridians'),
   (43, 'Minneapolis Lakers', 'MPL', 'Minneapolis', 'Lakers'),
   (44, 'Minnesota Pipers', 'MNP', 'Minnesota', 'Pipers'),

@@ -4,7 +4,7 @@ import { supabase } from '@/db/supabase';
 import { Series, Team, SeriesGameScore } from '@/types/types';
 import { Trophy, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getTeamAbbreviation, getTeamLogo } from '@/lib/nba-utils';
+import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 
 interface SeriesWithNestedTeams extends Series {
   team_a?: Team;
@@ -84,8 +84,8 @@ export default function CurrentGame7sPage() {
           {currentSeries.map((series) => {
             const teamAName = series.team_a?.full_name || 'Team A';
             const teamBName = series.team_b?.full_name || 'Team B';
-            const logoA = series.team_a?.logo_url || getTeamLogo(teamAName);
-            const logoB = series.team_b?.logo_url || getTeamLogo(teamBName);
+            const logoA = resolveTeamLogoUrl(series.team_a?.logo_url) || getTeamLogo(teamAName);
+            const logoB = resolveTeamLogoUrl(series.team_b?.logo_url) || getTeamLogo(teamBName);
             const scores = (series.series_game_scores ?? [])
               .sort((a, b) => a.game_number - b.game_number)
               .slice(0, 6)

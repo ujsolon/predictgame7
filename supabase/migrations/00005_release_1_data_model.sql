@@ -113,7 +113,7 @@ VALUES
   (10, 'Golden State Warriors', 'GSW', 'Golden State', 'Warriors'),
   (11, 'Houston Rockets', 'HOU', 'Houston', 'Rockets'),
   (12, 'Indiana Pacers', 'IND', 'Indiana', 'Pacers'),
-  (13, 'LA Clippers', 'LAC', 'Los Angeles', 'Clippers'),
+  (13, 'Los Angeles Clippers', 'LAC', 'Los Angeles', 'Clippers'),
   (14, 'Los Angeles Lakers', 'LAL', 'Los Angeles', 'Lakers'),
   (15, 'Memphis Grizzlies', 'MEM', 'Memphis', 'Grizzlies'),
   (16, 'Miami Heat', 'MIA', 'Miami', 'Heat'),

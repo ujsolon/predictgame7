@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
-import { getTeamLogo } from '@/lib/team-logos';
+import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { PredictionInput, PredictionResult, Series } from '@/types/types';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -314,8 +314,8 @@ export default function PredictPage() {
                           {selectedSeries && selectedSeries.data && (() => {
                             const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
                             const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
-                            const teamALogo = selectedSeries.data.team_a?.logo_url || getTeamLogo(teamAName);
-                            const teamBLogo = selectedSeries.data.team_b?.logo_url || getTeamLogo(teamBName);
+                            const teamALogo = resolveTeamLogoUrl(selectedSeries.data.team_a?.logo_url) || getTeamLogo(teamAName);
+                            const teamBLogo = resolveTeamLogoUrl(selectedSeries.data.team_b?.logo_url) || getTeamLogo(teamBName);
 
                             return (
                               <>
@@ -332,9 +332,24 @@ export default function PredictPage() {
                           {!selectedSeries && (
                             <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</p>
                           )}
-                          {selectedSeries && selectedSeries.source === 'custom' && (
-                             <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                          )}
+                          {selectedSeries && selectedSeries.source === 'custom' && (() => {
+                            const teamAName = (customInput.team_a ?? '').trim() || 'Team A';
+                            const teamBName = (customInput.team_b ?? '').trim() || 'Team B';
+                            const teamALogo = getTeamLogo(teamAName) || getTeamLogo('Team A');
+                            const teamBLogo = getTeamLogo(teamBName) || getTeamLogo('Team B');
+
+                            return (
+                              <>
+                                {teamALogo && (
+                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                                <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
+                                {teamBLogo && (
+                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                         {!selectedSeries && (
                           <p className="text-xs text-muted-foreground text-center">
@@ -347,6 +362,14 @@ export default function PredictPage() {
                         <div className="grid grid-cols-2 gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase text-muted-foreground">Team A</Label>
+                            <div className="flex items-center gap-2">
+                              {(getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')) && (
+                                <img
+                                  src={getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')}
+                                  alt=""
+                                  className="h-8 w-8 object-contain shrink-0"
+                                />
+                              )}
                             <Input 
                               size={1}
                               className="h-8 text-xs"
@@ -354,9 +377,18 @@ export default function PredictPage() {
                               onChange={(e) => setCustomInput({ ...customInput, team_a: e.target.value })}
                               placeholder="e.g. BOS"
                             />
+                            </div>
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] uppercase text-muted-foreground">Team B</Label>
+                            <div className="flex items-center gap-2">
+                              {(getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')) && (
+                                <img
+                                  src={getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')}
+                                  alt=""
+                                  className="h-8 w-8 object-contain shrink-0"
+                                />
+                              )}
                             <Input 
                               size={1}
                               className="h-8 text-xs"
@@ -364,6 +396,7 @@ export default function PredictPage() {
                               onChange={(e) => setCustomInput({ ...customInput, team_b: e.target.value })}
                               placeholder="e.g. MIA"
                             />
+                            </div>
                           </div>
                         </div>
                       )}
@@ -521,8 +554,8 @@ export default function PredictPage() {
                               return yearGames.map((game) => {
                                 const teamAName = game.team_a?.full_name || 'Team A';
                                 const teamBName = game.team_b?.full_name || 'Team B';
-                                const teamALogo = game.team_a?.logo_url || getTeamLogo(teamAName);
-                                const teamBLogo = game.team_b?.logo_url || getTeamLogo(teamBName);
+                                const teamALogo = resolveTeamLogoUrl(game.team_a?.logo_url) || getTeamLogo(teamAName);
+                                const teamBLogo = resolveTeamLogoUrl(game.team_b?.logo_url) || getTeamLogo(teamBName);
 
                                 return (
                                   <Button
@@ -787,8 +820,8 @@ export default function PredictPage() {
                 const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
                 const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
                 const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
-                const teamALogo = prediction.team_a_logo || selectedSeries?.data?.team_a?.logo_url || getTeamLogo(teamAName);
-                const teamBLogo = prediction.team_b_logo || selectedSeries?.data?.team_b?.logo_url || getTeamLogo(teamBName);
+                const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
+                const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
                 return (
                   <div className="w-full space-y-6">
                     <div className="text-center space-y-4">
@@ -866,8 +899,8 @@ export default function PredictPage() {
         const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
         const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
         const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
-        const teamALogo = prediction.team_a_logo || selectedSeries?.data?.team_a?.logo_url || getTeamLogo(teamAName);
-        const teamBLogo = prediction.team_b_logo || selectedSeries?.data?.team_b?.logo_url || getTeamLogo(teamBName);
+        const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
+        const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
         return (
           <div className="space-y-8">
             <Card>

@@ -360,11 +360,11 @@ Deno.serve(async (req) => {
     
     // Fetch team logos
     const { data: logoData } = await supabase
-      .from('team_logos')
-      .select('team_name, logo_url')
-      .in('team_name', [input.team_a, input.team_b]);
+      .from('teams')
+      .select('full_name, logo_url')
+      .in('full_name', [input.team_a, input.team_b]);
     
-    const logoMap = new Map((logoData || []).map(l => [l.team_name, l.logo_url]));
+    const logoMap = new Map((logoData || []).map((team) => [team.full_name, team.logo_url]));
     const team_a_logo = logoMap.get(input.team_a);
     const team_b_logo = logoMap.get(input.team_b);
     

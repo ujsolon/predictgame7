@@ -11,7 +11,6 @@ export const TEAM_ABBREVIATIONS: Record<string, string> = {
   'Golden State Warriors': 'GSW',
   'Houston Rockets': 'HOU',
   'Indiana Pacers': 'IND',
-  'LA Clippers': 'LAC',
   'Los Angeles Clippers': 'LAC',
   'Los Angeles Lakers': 'LAL',
   'Memphis Grizzlies': 'MEM',
