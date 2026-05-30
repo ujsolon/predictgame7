@@ -145,10 +145,10 @@ export default function HomePage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
           {[
-            { caption: 'Cavs vs Warriors, 2016', seriesId: '06715a85-ec33-46a4-8383-d058055eefe6', x: '20%', y: '58%' },
-            { caption: 'Raptors vs 76ers, 2019', seriesId: '29638c4e-261a-4d09-81aa-5740f76175f5', x: '43%', y: '27%' },
-            { caption: 'Thunder vs Pacers, 2025', seriesId: '626257bc-1678-4c88-84a6-37e0a6cdb49c', x: '57%', y: '90%' },
-            { caption: 'Heat vs Spurs, 2013', seriesId: 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a', x: '79%', y: '30%' },
+            { caption: 'Cavs vs Warriors, 2016', seriesId: '06715a85-ec33-46a4-8383-d058055eefe6', x: '20%', y: '58%', tooltipX: 'left', tooltipY: 'above' },
+            { caption: 'Raptors vs 76ers, 2019', seriesId: '29638c4e-261a-4d09-81aa-5740f76175f5', x: '43%', y: '27%', tooltipX: 'center', tooltipY: 'below' },
+            { caption: 'Thunder vs Pacers, 2025', seriesId: '626257bc-1678-4c88-84a6-37e0a6cdb49c', x: '57%', y: '90%', tooltipX: 'center', tooltipY: 'above' },
+            { caption: 'Heat vs Spurs, 2013', seriesId: 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a', x: '79%', y: '30%', tooltipX: 'right', tooltipY: 'below' },
           ].map((hotspot, index) => (
             <Link
               key={index}
@@ -163,7 +163,17 @@ export default function HomePage() {
               <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-white/80 border border-white group-hover:bg-white transition-colors duration-200" />
 
               {/* Tooltip */}
-              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-3 py-1.5 rounded-lg bg-black/80 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+              <span
+                className={[
+                  'absolute z-10 px-3 py-1.5 rounded-lg bg-black/80 text-white text-xs font-medium text-center whitespace-normal w-max max-w-[8rem] sm:max-w-[11rem] opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none',
+                  hotspot.tooltipY === 'above' ? 'bottom-full mb-3' : 'top-full mt-3',
+                  hotspot.tooltipX === 'left'
+                    ? 'left-0'
+                    : hotspot.tooltipX === 'right'
+                      ? 'right-0'
+                      : 'left-1/2 -translate-x-1/2',
+                ].join(' ')}
+              >
                 {hotspot.caption}
               </span>
             </Link>
