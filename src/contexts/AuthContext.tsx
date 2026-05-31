@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js';
 // @ts-ignore
 import type { Profile } from '@/types/types';
 import { toast } from 'sonner';
+import posthog from 'posthog-js';
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -82,12 +83,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithUsername = async (username: string, password: string) => {
     try {
       const email = `${username}@miaoda.com`;
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+      if (data.user) {
+        posthog.identify(data.user.id, { username });
+        posthog.capture('user_signed_in', { username });
+      }
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -97,12 +102,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUpWithUsername = async (username: string, password: string) => {
     try {
       const email = `${username}@miaoda.com`;
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       });
 
       if (error) throw error;
+      if (data.user) {
+        posthog.identify(data.user.id, { username });
+        posthog.capture('user_signed_up', { username });
+      }
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -111,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    posthog.reset();
     setUser(null);
     setProfile(null);
   };

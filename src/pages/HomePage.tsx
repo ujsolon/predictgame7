@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/db/supabase';
+import { usePostHog } from '@posthog/react';
 import {
   Trophy,
   TrendingUp,
@@ -29,6 +30,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 export default function HomePage() {
+  const posthog = usePostHog();
   const [activeStep, setActiveStep] = React.useState(0);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [captchaChallenge, setCaptchaChallenge] = React.useState({ a: 0, b: 0 });
@@ -116,11 +118,13 @@ export default function HomePage() {
       }
 
       toast.success('Thank you for your message! We will get back to you soon.');
+      posthog?.capture('contact_form_submitted');
       (e.target as HTMLFormElement).reset();
       generateCaptcha();
     } catch (err: any) {
       console.error('Error submitting contact form:', err);
       toast.error(err.message || 'Failed to send message. Please try again.');
+      posthog?.captureException(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -155,6 +159,7 @@ export default function HomePage() {
               to={`/predict?series=${hotspot.seriesId}`}
               className="absolute group"
               style={{ left: hotspot.x, top: hotspot.y, transform: 'translate(-50%, -50%)' }}
+              onClick={() => posthog?.capture('banner_hotspot_clicked', { caption: hotspot.caption, series_id: hotspot.seriesId })}
             >
               {/* Pulsing ring */}
               <span className="absolute inset-0 rounded-full bg-white/40 animate-ping" />

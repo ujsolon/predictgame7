@@ -11,6 +11,7 @@ import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { PredictionInput, PredictionResult, Series } from '@/types/types';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePostHog } from '@posthog/react';
 
 type SeriesSource = 'current' | 'historical' | 'custom';
 type PredictionMethod = 'logistic_regression' | 'bayesian' | 'elo' | 'exponential_smoothing' | 'ensemble_v1' | 'margin_model_v1';
@@ -38,6 +39,7 @@ const SERIES_SELECT = `
 `;
 
 export default function PredictPage() {
+  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const [selectedSeries, setSelectedSeries] = useState<SelectedSeries | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PredictionMethod | null>(null);
@@ -238,10 +240,21 @@ export default function PredictPage() {
         const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
         setResult(parsedData as PredictionResult);
         toast.success('Prediction generated successfully');
+        posthog?.capture('prediction_generated', {
+          method: selectedMethod,
+          series_source: selectedSeries.source,
+          series_id: selectedSeries.data?.id,
+          series_year: selectedSeries.data?.year,
+          predicted_winner: parsedData.predicted_winner,
+          win_probability_a: parsedData.win_probability_a,
+          win_probability_b: parsedData.win_probability_b,
+          confidence_level: parsedData.confidence_level,
+        });
       }
     } catch (err) {
       console.error('Prediction error:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to generate prediction');
+      posthog?.captureException(err);
     } finally {
       setLoading(false);
     }
@@ -285,6 +298,14 @@ export default function PredictPage() {
     setSelectedDecade(null);
     setSelectedYear(null);
     toast.success('Series selected');
+    posthog?.capture('series_selected', {
+      series_id: game.id,
+      series_year: game.year,
+      series_round: game.round,
+      series_source: game.status === 'active' ? 'current' : 'historical',
+      team_a: game.team_a?.full_name,
+      team_b: game.team_b?.full_name,
+    });
   };
 
   const renderSeriesOption = (game: Series) => {
@@ -625,6 +646,7 @@ export default function PredictPage() {
                                 setSelectedSeries({ source: 'custom' });
                                 setIsSeriesDialogOpen(false);
                                 toast.success('Custom series selected');
+                                posthog?.capture('custom_series_selected');
                               }}
                             >
                               <Settings className="h-5 w-5 text-muted-foreground" />
@@ -705,6 +727,7 @@ export default function PredictPage() {
                       setSelectedMethod('logistic_regression');
                       setIsMethodDialogOpen(false);
                       toast.success('Logistic Regression selected');
+                      posthog?.capture('prediction_method_selected', { method: 'logistic_regression' });
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -727,6 +750,7 @@ export default function PredictPage() {
                       setSelectedMethod('bayes');
                       setIsMethodDialogOpen(false);
                       toast.success('Bayes Method selected');
+                      posthog?.capture('prediction_method_selected', { method: 'bayes' });
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -749,6 +773,7 @@ export default function PredictPage() {
                       setSelectedMethod('elo');
                       setIsMethodDialogOpen(false);
                       toast.success('Elo Rating selected');
+                      posthog?.capture('prediction_method_selected', { method: 'elo' });
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -771,6 +796,7 @@ export default function PredictPage() {
                       setSelectedMethod('exponential_smoothing');
                       setIsMethodDialogOpen(false);
                       toast.success('Exponential Smoothing selected');
+                      posthog?.capture('prediction_method_selected', { method: 'exponential_smoothing' });
                     }}
                   >
                     <div className="flex items-center gap-2">
@@ -891,12 +917,16 @@ export default function PredictPage() {
                       </p>
                     </div>
 
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full mt-4"
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowDetails(true);
+                        posthog?.capture('detailed_analysis_viewed', {
+                          method: selectedMethod,
+                          series_id: selectedSeries?.data?.id,
+                        });
                       }}
                     >
                       View Detailed Analysis
@@ -1027,6 +1057,7 @@ export default function PredictPage() {
                 variant="default"
                 className="flex-1"
                 onClick={() => {
+                  posthog?.capture('prediction_reset');
                   setResult(null);
                   setSelectedSeries(null);
                   setSelectedMethod(null);

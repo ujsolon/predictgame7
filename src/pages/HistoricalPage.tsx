@@ -10,6 +10,7 @@ import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
+import { usePostHog } from '@posthog/react';
 
 interface SeriesWithNestedTeams extends Series {
   team_a?: Team;
@@ -19,6 +20,7 @@ interface SeriesWithNestedTeams extends Series {
 }
 
 export default function HistoricalPage() {
+  const posthog = usePostHog();
   const [loading, setLoading] = useState(true);
   const [seriesList, setSeriesList] = useState<SeriesWithNestedTeams[]>([]);
   const [visibleCount, setVisibleCount] = useState(10);
@@ -111,7 +113,7 @@ export default function HistoricalPage() {
       <div className="flex flex-col md:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
         <div className="w-full md:w-[200px] space-y-2">
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1">Filter Year</label>
-          <Select value={yearFilter} onValueChange={(val) => { setYearFilter(val); setVisibleCount(10); }}>
+          <Select value={yearFilter} onValueChange={(val) => { setYearFilter(val); setVisibleCount(10); posthog?.capture('historical_filter_applied', { filter_type: 'year', year: val }); }}>
             <SelectTrigger className="bg-background border-border/60">
               <SelectValue placeholder="Select Year" />
             </SelectTrigger>
@@ -133,7 +135,7 @@ export default function HistoricalPage() {
               placeholder="Search by team name..."
               className="pl-9 bg-background border-border/60"
               value={teamSearch}
-              onChange={(e) => { setTeamSearch(e.target.value); setVisibleCount(10); }}
+              onChange={(e) => { setTeamSearch(e.target.value); setVisibleCount(10); if (e.target.value) posthog?.capture('historical_filter_applied', { filter_type: 'team_search' }); }}
             />
           </div>
         </div>
@@ -170,7 +172,20 @@ export default function HistoricalPage() {
                     <TableRow
                       key={series.id}
                       className="group border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => setSelectedSeries(selectedSeries?.id === series.id ? null : series)}
+                      onClick={() => {
+                        const isExpanding = selectedSeries?.id !== series.id;
+                        setSelectedSeries(isExpanding ? series : null);
+                        if (isExpanding) {
+                          posthog?.capture('historical_series_expanded', {
+                            series_id: series.id,
+                            series_year: series.year,
+                            series_round: series.round,
+                            team_a: series.team_a?.full_name,
+                            team_b: series.team_b?.full_name,
+                            winner: series.winner_team?.full_name,
+                          });
+                        }
+                      }}
                     >
                       <TableCell className="py-8 font-normal text-muted-foreground align-top">
                         {series.year}
