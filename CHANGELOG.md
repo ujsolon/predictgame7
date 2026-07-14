@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-07-15
+
+### Fixed
+
+- Enabled row level security on the public normalized release tables flagged by the Supabase linter.
+- Added explicit public read policies for `teams`, `series`, `series_game_scores`, and active `prediction_methods` so the app keeps working while closing the exposed-table security warning.
+- Kept `predictions` private by default under RLS.
+
 ## [0.1.0] - 2026-05-30
 
 ### Added
