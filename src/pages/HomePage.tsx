@@ -104,8 +104,8 @@ export default function HomePage() {
       return;
     }
 
-    if (message.length < 10 || message.length > 2000) {
-      toast.error('Please enter a message between 10 and 2000 characters.');
+    if (message.length > 2000) {
+      toast.error('Please keep your message within 2000 characters.');
       setIsSubmitting(false);
       return;
     }

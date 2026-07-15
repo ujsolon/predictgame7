@@ -38,8 +38,6 @@ serve(async (req) => {
     const message = normalizeText(payload?.message)
     const website = normalizeText(payload?.website)
     const startedAt = normalizeText(payload?.startedAt)
-    const captchaAnswer = normalizeText(payload?.captchaAnswer)
-    const captchaChallenge = normalizeText(payload?.captchaChallenge)
 
     if (website !== '') {
       return jsonResponse({ error: 'Submission rejected.' }, 400)
@@ -55,15 +53,6 @@ serve(async (req) => {
       if (submissionAgeMs < MIN_SUBMISSION_AGE_MS || submissionAgeMs > MAX_SUBMISSION_AGE_MS) {
         return jsonResponse({ error: 'Verification failed. Please try submitting the form again.' }, 400)
       }
-    } else if (captchaAnswer || captchaChallenge) {
-      const userAnswer = Number.parseInt(captchaAnswer, 10)
-      const expectedAnswer = Number.parseInt(captchaChallenge, 10)
-
-      if (Number.isNaN(userAnswer) || Number.isNaN(expectedAnswer) || userAnswer !== expectedAnswer) {
-        return jsonResponse({ error: 'Verification failed. Please solve the math problem correctly.' }, 400)
-      }
-    } else {
-      return jsonResponse({ error: 'Verification failed. Please refresh the page and try again.' }, 400)
     }
 
     if (name.length < 2 || name.length > 80) {
@@ -74,8 +63,8 @@ serve(async (req) => {
       return jsonResponse({ error: 'Please enter a valid email address.' }, 400)
     }
 
-    if (message.length < 10 || message.length > 2000) {
-      return jsonResponse({ error: 'Please enter a message between 10 and 2000 characters.' }, 400)
+    if (message.length > 2000) {
+      return jsonResponse({ error: 'Please keep your message within 2000 characters.' }, 400)
     }
 
     const supabase = createClient(
