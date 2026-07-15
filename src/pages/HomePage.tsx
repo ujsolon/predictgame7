@@ -33,26 +33,13 @@ export default function HomePage() {
   const posthog = usePostHog();
   const [activeStep, setActiveStep] = React.useState(0);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [captchaChallenge, setCaptchaChallenge] = React.useState({ a: 0, b: 0 });
-  const [captchaInput, setCaptchaInput] = React.useState('');
+  const [contactStartedAt, setContactStartedAt] = React.useState(() => new Date().toISOString());
 
   const [emblaRef, emblaApi] = useEmblaCarousel({ 
     loop: false,
     align: 'center',
     containScroll: false
   });
-
-  const generateCaptcha = React.useCallback(() => {
-    setCaptchaChallenge({
-      a: Math.floor(Math.random() * 10),
-      b: Math.floor(Math.random() * 10)
-    });
-    setCaptchaInput('');
-  }, []);
-
-  React.useEffect(() => {
-    generateCaptcha();
-  }, [generateCaptcha]);
 
   const onSelect = React.useCallback(() => {
     if (!emblaApi) return;
@@ -98,13 +85,37 @@ export default function HomePage() {
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const formData = new FormData(e.target as HTMLFormElement);
+    const form = e.target as HTMLFormElement;
+    const formData = new FormData(form);
+    const name = String(formData.get('name') ?? '').trim();
+    const email = String(formData.get('email') ?? '').trim();
+    const message = String(formData.get('message') ?? '').trim();
+    const website = String(formData.get('website') ?? '').trim();
+
+    if (name.length < 2 || name.length > 80) {
+      toast.error('Please enter a valid name between 2 and 80 characters.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+      toast.error('Please enter a valid email address.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (message.length < 10 || message.length > 2000) {
+      toast.error('Please enter a message between 10 and 2000 characters.');
+      setIsSubmitting(false);
+      return;
+    }
+
     const data = {
-      name: formData.get('name'),
-      email: formData.get('email'),
-      message: formData.get('message'),
-      captchaAnswer: captchaInput,
-      captchaChallenge: captchaChallenge.a + captchaChallenge.b
+      name,
+      email,
+      message,
+      website,
+      startedAt: contactStartedAt,
     };
 
     try {
@@ -113,14 +124,25 @@ export default function HomePage() {
       });
 
       if (error) {
-        const errorMsg = await error?.context?.text();
-        throw new Error(errorMsg || error.message);
+        const errorText = await error?.context?.text();
+        let parsedMessage = error.message;
+
+        if (errorText) {
+          try {
+            const parsed = JSON.parse(errorText);
+            parsedMessage = parsed?.error || parsed?.message || errorText;
+          } catch {
+            parsedMessage = errorText;
+          }
+        }
+
+        throw new Error(parsedMessage);
       }
 
       toast.success('Thank you for your message! We will get back to you soon.');
       posthog?.capture('contact_form_submitted');
-      (e.target as HTMLFormElement).reset();
-      generateCaptcha();
+      form.reset();
+      setContactStartedAt(new Date().toISOString());
     } catch (err: any) {
       console.error('Error submitting contact form:', err);
       toast.error(err.message || 'Failed to send message. Please try again.');
@@ -372,34 +394,30 @@ export default function HomePage() {
           <form onSubmit={handleContactSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="name" className="text-xs uppercase tracking-widest font-semibold text-muted-foreground ml-1">Name</Label>
-              <Input id="name" name="name" placeholder="Your name" className="bg-background border-border/60" required />
+              <Input id="name" name="name" placeholder="Your name" className="bg-background border-border/60" autoComplete="name" maxLength={80} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email" className="text-xs uppercase tracking-widest font-semibold text-muted-foreground ml-1">Email</Label>
-              <Input id="email" name="email" type="email" placeholder="your@email.com" className="bg-background border-border/60" required />
+              <Input id="email" name="email" type="email" placeholder="your@email.com" className="bg-background border-border/60" autoComplete="email" maxLength={320} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="message" className="text-xs uppercase tracking-widest font-semibold text-muted-foreground ml-1">Message</Label>
-              <Textarea id="message" name="message" placeholder="How can we help?" className="min-h-[100px] bg-background border-border/60 resize-none" required />
+              <Textarea id="message" name="message" placeholder="How can we help?" className="min-h-[100px] bg-background border-border/60 resize-none" maxLength={2000} required />
             </div>
 
-            {/* Simple Math Captcha */}
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-widest font-semibold text-muted-foreground ml-1">Verification</Label>
-              <div className="flex items-center gap-4">
-                <div className="h-10 px-4 rounded-md bg-muted/30 border border-border/40 flex items-center justify-center font-mono text-sm">
-                  {captchaChallenge.a} + {captchaChallenge.b} = ?
-                </div>
-                <Input 
-                  value={captchaInput}
-                  onChange={(e) => setCaptchaInput(e.target.value)}
-                  name="captcha"
-                  placeholder="Result" 
-                  className="bg-background border-border/60 w-24" 
-                  required 
-                />
-              </div>
+            <div className="hidden" aria-hidden="true">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+              />
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              Anti-spam checks run automatically when you send a message.
+            </p>
 
             <Button type="submit" disabled={isSubmitting} className="w-full group">
               {isSubmitting ? (

@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-07-15
+
+### Fixed
+
+- Hardened the `Get in Touch` flow by removing direct public insert access to `contact_submissions`.
+- Added stronger server-side validation for contact form submissions, including trimmed inputs, email checks, and message length limits.
+- Replaced the client-trusted visible math captcha pattern with quieter anti-spam checks using a honeypot field and submission timing validation.
+- Improved contact form error handling so frontend users receive clearer submission feedback.
+
 ## [0.2.1] - 2026-07-15
 
 ### Fixed
