@@ -9,17 +9,20 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Query one row via PostgREST
         run: |
           set -a
-          source .env
+          source <(sed 's/\r$//' .env)
           set +a
-          code=$(curl -s -o /dev/null -w "%{http_code}" \
+          body=$(mktemp)
+          code=$(curl -s -o "$body" -w "%{http_code}" \
             -H "apikey: $VITE_SUPABASE_ANON_KEY" \
-            "$VITE_SUPABASE_URL/rest/v1/teams?select=id&limit=1")
+            "$VITE_SUPABASE_URL/rest/v1/teams?select=id&limit=1") || code="curl-failed"
           echo "HTTP $code"
           if [ "$code" != "200" ] && [ "$code" != "201" ] && [ "$code" != "204" ]; then
+            echo "Response body:"
+            head -c 500 "$body"
             exit 1
           fi
