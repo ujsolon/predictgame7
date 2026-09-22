@@ -94,3 +94,9 @@ lerna-debug.log
 # System Files
 .DS_Store
 Thumbs.db
+
+# BMAD method files
+_bmad/
+
+# QODER
+.qoder/
