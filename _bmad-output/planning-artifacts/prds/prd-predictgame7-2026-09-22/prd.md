@@ -2,7 +2,7 @@
 title: predictgame7 (Predict Game 7)
 status: final
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-25
 ---
 
 # PRD: Predict Game 7
@@ -41,15 +41,15 @@ The product is an indie, opinionated analytics destination *and a sports storyte
 
 *Drafted from documented segments and flows; confirmed by owner 2026-09-22. Persona names illustrative.*
 
-- **UJ-1. Dana, mid-debate at 11 PM, proves her point in ninety seconds.**
+- **UJ-1. Bert, mid-debate at 11 PM, proves his point in ninety seconds.**
   - **Persona + context:** casual NBA fan arguing in a group chat about a historic series.
   - **Entry state:** unauthenticated; arrives from a shared link or searches the site.
   - **Path:** opens Home, taps a featured iconic Game 7 → lands in Predict with the series preloaded → picks a method → runs the prediction.
   - **Climax:** sees winner probability split per team, contributing factors, confidence level — screenshot-worthy.
   - **Resolution:** shares the result back into the chat; the debate ends.
-  - **Edge case:** if the model computation is slow or fails, an understandable error state lets her retry without losing her selection (→ FR-8, NFR-R2).
+  - **Edge case:** if the model computation is slow or fails, an understandable error state lets him retry without losing his selection (→ FR-8, NFR-R2).
 
-- **UJ-2. Marcus, a data-curious season-ticket holder, stress-tests a fantasy matchup.**
+- **UJ-2. Wang, a data-curious season-ticket holder, stress-tests a fantasy matchup.**
   - **Persona + context:** analytics-minded fan who reads box scores for fun.
   - **Entry state:** unauthenticated returning visitor.
   - **Path:** Predict → custom series: types team names (matches by full name, nickname, or abbreviation), enters Game 1–6 scores → compares across two or three methods → opens View Detailed Analysis.
@@ -57,7 +57,7 @@ The product is an indie, opinionated analytics destination *and a sports storyte
   - **Resolution:** leaves convinced this is a tool, not a toy; bookmarks it.
   - **Edge case:** unrecognized team spelling shows placeholder logo rather than breaking (→ FR-3).
 
-- **UJ-3. Priya, a newsletter writer against a Wednesday deadline, finds a citable stat during the playoffs.**
+- **UJ-3. Rhian, a newsletter writer against a Wednesday deadline, finds a citable stat during the playoffs.**
   - **Persona + context:** sports content creator needing an angle before Game 7 tips off.
   - **Entry state:** unauthenticated; arrives from Google or a Reddit thread.
   - **Path:** browses Historical archive filtered by year/round → checks an Insights pattern card (e.g., Game 6 winner impact) → runs the live Active Series prediction → cites the Maths page for methodology.
@@ -171,12 +171,14 @@ The user can view computed patterns — Game 6 winner impact, home-court advanta
 **Consequences (testable):**
 - Insight values derive from the archive, refreshed by pipeline, not hard-coded in the client.
 
-#### FR-13: Series video content  **[PLANNED — issue #5, unprioritized]**
-The user can watch associated video content on a Series view.
+#### FR-13: Series video + editorial content  **[PLANNED — scoped pilot: 5 flagship series, owner decision 2026-09-25]**
+The user can watch associated video content and read an editorial write-up on a Series view. Pilot scope: full additional content (video + write-up) for 5 flagship series, pinned by owner 2026-09-25 — 2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs; all other series stay bare (facts only). Doubles as marketing material.
 **Consequences (testable):**
-- A Series supports zero or more video assets; missing video degrades cleanly; layouts work on desktop and mobile under the NFR-U1 baseline (closes issue #5's responsiveness AC by reference).
-- Storage/linking mechanism (local vs. external link vs. media service) is a deliberate open decision — Q-5; hosting decision lives in addendum, not here.
-`[NON-GOAL for MVP]` — do not schedule before the Traffic Gate.
+- A Series supports zero or more video assets and an optional editorial write-up (headline, body, images); missing content degrades cleanly to the bare facts page; layouts work on desktop and mobile under the NFR-U1 baseline (closes issue #5's responsiveness AC by reference).
+- Q-5 resolved for the pilot (owner decision 2026-09-25): **external embeds (YouTube)** — no hosted media, no storage decision. Full-archive video (hosted media service vs. embeds at scale) remains parked by the Traffic Gate.
+- Editorial content flows into the prerendered series pages (AD-7), so flagship pages are crawlable with full content.
+
+The gate hard-stop is lifted for this scoped pilot only; archive-wide video remains a non-goal before the Traffic Gate.
 
 ### 4.3 Content, Brand & Feedback Surfaces
 
@@ -358,6 +360,7 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 - Traffic Gate reporting (FR-25).
 - Analytics isolation refactor — move PostHog behind the NFR-V1 decoupling layer so the gate and instrumentation survive a vendor swap or exit.
 - Shareable prediction deep-links + OG cards (FR-31) — the SEO/spike-capture play that must be indexed *before* the 2027 window.
+- Flagship series content pilot (FR-13, scoped) — video (YouTube embeds) + editorial write-ups for 5 flagship series on the prerendered pages; marketing material and a fairer SEO test (owner decision 2026-09-25).
 - WCAG 2.1 AA pass + verification on core flows (NFR-A1).
 - Whole-site mobile responsiveness verification (NFR-U1).
 - Housekeeping: strip the version number from README (NFR-D2).
@@ -365,7 +368,7 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 ### 8.2 Out of Scope for this Release
 - Accounts and saved predictions (FR-9, FR-22, FR-23) — PLANNED-GATED on SM-1; discovery may run in parallel but no build.
 - Betting-Adjacent Outputs (FR-26..29 / issue #6) — gated on SM-1 *and* the monetization-posture decision (Q-2).
-- Series video content (FR-13 / issue #5) — deferred; heavy content-ops cost with uncertain SEO payoff until the archive surfaces prove traffic. `[NOTE FOR PM]` if ever scheduled, one pilot series first.
+- Archive-wide series video (FR-13 beyond the 5-series pilot / issue #5) — deferred; heavy content-ops cost with uncertain SEO payoff until the archive surfaces prove traffic. The scoped flagship pilot moved into §8.1 (owner decision 2026-09-25 — the "`[NOTE FOR PM]` one pilot series first" guidance, taken to five).
 - Explicitly deferred to post-gate: monetization mechanics of any shape.
 
 ## 9. Success Metrics
@@ -389,7 +392,7 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 2. **Q-2 Monetization posture** — affiliate vs. premium vs. ads vs. none (owner "leaning open"), *and* the framing question: analytics entertainment vs. picks. Determines whether FR-26..29 exist as written.
 3. ~~**Q-3 SM-1 threshold**~~ — RESOLVED 2026-09-22: gate = 1,500 window UVs (SM-1 is canonical).
 4. ~~**Q-4 Active-series data source**~~ — RESOLVED (direction) 2026-09-22: Fantrax API preferred, nba.com scrape fallback; feasibility spike and phase-blocker note live at FR-21.
-5. **Q-5 Video mechanism** (FR-13) — external links vs. hosted media service vs. none; parked by Traffic Gate but needs an owner decision if scheduled.
+5. **Q-5 Video mechanism** (FR-13) — **resolved for the 5-series flagship pilot: external YouTube embeds (owner decision 2026-09-25)**. Hosted media service vs. embeds at archive scale remains parked by the Traffic Gate; needs an owner decision if archive-wide video is ever scheduled.
 6. ~~**Q-6 Contact submission retention**~~ — RESOLVED 2026-09-22: keep indefinitely (NFR-S2).
 7. ~~**Q-7 Accessibility bar**~~ — RESOLVED 2026-09-22: WCAG 2.1 AA committed (NFR-A1).
 8. **Q-8 `SamplePage.tsx`** — leftover scaffold route in code; delete or document.
@@ -403,4 +406,4 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 
 **Resolved at owner review (2026-09-22):** FR-17 → Resend chosen (provisioning pending); NFR-P1 → 3s P95 stays, explicitly recorded as no-basis provisional; NFR-S2/Q-6 → contact submissions kept indefinitely; NFR-A1/Q-7 → WCAG 2.1 AA committed (core flows by major release); NFR-D2 → new versioning convention (package.json canonical, CHANGELOG per release, no version in README); Q-4 → Fantrax API preferred / nba.com scrape fallback, feasibility spike required; sharing → FR-31 deep-links + OG cards (owner option A); positioning → "transparent analytics destination + storytelling/discovery experience," narrowed from five source options during this session; code audits → `predictions` has no runtime path (FR-23 ephemeral claim verified), `prediction_methods` never read at runtime (FR-4 rewritten).
 
-**Still open (non-blocking; tracked as Q-1/Q-2/Q-5/Q-8/Q-9):** account feature set (owner discovery pending), monetization posture (revisit at gate evaluation, Jun 2027), video mechanism (revisit if FR-13 ever scheduled), SamplePage/PostHog-agent-skill-folder disposition (next housekeeping), model-validation back-test (optional pre-playoff content asset). Remaining inline `[ASSUMPTION]` tags (FR-23 cross-device sync, FR-31 OG-card mechanism) stand as written at their requirements.
+**Still open (non-blocking; tracked as Q-1/Q-2/Q-8/Q-9):** account feature set (owner discovery pending), monetization posture (revisit at gate evaluation, Jun 2027), SamplePage/PostHog-agent-skill-folder disposition (next housekeeping), model-validation back-test (optional pre-playoff content asset). Q-5 resolved for the FR-13 flagship pilot (YouTube embeds, owner decision 2026-09-25); archive-wide video mechanism revisits only if scheduled post-gate. Remaining inline `[ASSUMPTION]` tags (FR-23 cross-device sync, FR-31 OG-card mechanism) stand as written at their requirements.
