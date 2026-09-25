@@ -5,6 +5,9 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prds/prd-predictgame7-2026-09-22/prd.md
   - _bmad-output/planning-artifacts/prds/prd-predictgame7-2026-09-22/addendum.md
   - _bmad-output/planning-artifacts/architecture/architecture-predictgame7-2026-09-23/ARCHITECTURE-SPINE.md
+  - _bmad-output/planning-artifacts/ux-designs/ux-predictgame7-2026-09-25/DESIGN.md
+  - _bmad-output/planning-artifacts/ux-designs/ux-predictgame7-2026-09-25/EXPERIENCE.md
+  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-09-25.md
   - AGENTS.md
 ---
 
@@ -96,7 +99,15 @@ This document provides the complete epic and story breakdown for predictgame7, d
 
 ### UX Design Requirements
 
-None — no bmad-ux run exists (no DESIGN.md/EXPERIENCE.md discovered). Quality bars come from NFR6/NFR7 (responsive + WCAG AA) and FR-18 (copy, with voice anchors in addendum §H). OG-card visual design (AD-6 card template) is deferred to a UX/brand task — if the owner wants it specced before FR-31 builds, run bmad-ux; otherwise the FR-31 story adopts a minimal branded card. **Owner plan (2026-09-25):** a scoped bmad-ux run follows this validation, covering the 4 surfaces with no design yet — OG card, flagship series content page, Share button + success states, error/empty states — after which a small update pass registers the resulting UX-DRs here and adds the spine to `inputDocuments`. Stories' AA-clean ACs stand as written either way.
+Scoped bmad-ux run complete (2026-09-25, `status: final`, amended same day by `sprint-change-proposal-2026-09-25.md`): `_bmad-output/planning-artifacts/ux-designs/ux-predictgame7-2026-09-25/` — `DESIGN.md` (visual contract), `EXPERIENCE.md` (behavior), `mockups/` (`key-og-card.html`, `key-series-page.html`, `key-error-states.html`). The spines are binding for the four new surfaces (OG card, series preview/result pages, Share + success states, error/empty states); the existing app is ratified practice, not re-specced. UX-DRs by story:
+
+- **UX-DR-1 (Story 4.2)** — OG card: one fixed 1200×630 template, ink field, three variants; historic variant carries context only ("2016 FINALS · GAME 7") — **no series score or winner**; logos sit on white chips (`#FFFFFF`, 28px radius) so dark-bearing marks survive the ink field; essential content inside the 1080×540 safe zone. DESIGN.md · Components/Layout · OG card; EXPERIENCE.md · Component Patterns.
+- **UX-DR-2 (Stories 4.3/4.5)** — Featured/active series render as a **spoiler-free preview + revealed result pair**; preview = facts through Game 6, method deep-links (never baked outputs), Predict CTA, reveal text link ("See how the series ended →") with explicit spoiler wording; result = full record + resolution write-up + video, generic CTA only. Non-flagship series keep the single full-record page. Sections render only when content exists. EXPERIENCE.md · Component Patterns/State Patterns; DESIGN.md · Layout & Spacing.
+- **UX-DR-3 (Story 4.4)** — Share: single affordance, copies the share-og URL; native sheet where available, clipboard fallback; sonner toast "Link copied." (2s, no action) / blocked-clipboard copy per EXPERIENCE.md · Voice and Tone; ≥44×44px hit areas.
+- **UX-DR-4 (Stories 4.1/4.3)** — Error/empty/404 states follow the shared pattern (icon tile → title → one line → single onward action) and the retry-panel treatment; 404 copy and focus behavior fixed in EXPERIENCE.md · State Patterns.
+- **UX-DR-5 (all UI stories)** — Token floor lands in `src/index.css` when these surfaces build: small-text floor `#767676` (never `#808080`), `destructive-text #B91C1C`, `on-muted #595959`, `form-border #949494`; voice guardrails (no oracle/accuracy framing) per PRD §7.
+
+Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds behavioral detail on top.
 
 ### FR Coverage Map
 
@@ -110,7 +121,7 @@ None — no bmad-ux run exists (no DESIGN.md/EXPERIENCE.md discovered). Quality 
 - FR-9: excluded (Traffic Gate)
 - FR-10, FR-11: Epic 4 — archive surfaces grow prerendered `/series/<id>` routes
 - FR-12: Epic 2 — `insights_cache` refresh owned by pipeline (AD-5)
-- FR-13: Epic 4 — flagship-five content pilot (editorial content model + content load on prerendered pages)
+- FR-13: Epic 4 — flagship-five content pilot (editorial content model + content load on prerendered pages; two-page spoiler-free structure, featured/active only)
 - FR-14, FR-15: Epic 5 — copy pass surfaces; FR-15 also touched by Epic 1 (AD-2 contract)
 - FR-16: Epic 3 — baseline preserved through `handle-contact` migration
 - FR-17: Epic 3 — Resend delivery + events + inline UX
@@ -151,7 +162,7 @@ The owner can read every Traffic Gate figure programmatically and never misses a
 **FRs covered:** FR-16 (preserved), FR-17, FR-24, FR-25; NFRs S2, V1.
 
 ### Epic 4: Shareable, Indexable Predictions
-A completed prediction becomes a circulating artifact: copied links unfurl as OG cards and land on a working page; the archive indexes as 177 evergreen per-series pages. `share-og` Edge Function (anonymous — no JWT; `@vercel/og` card; `SharePayload` from `_shared/contract.ts`; redirect with `utm_source=share`) → **`404.html` SPA fallback with a live-deploy AC: cold GET on the real `gh-pages` URL loads the app under the `/predictgame7/` basename** (owner decision 2026-09-25; never tested against pushState routing on this deploy) → `/series/<id>` route + AD-7 prerender step in `predeploy` (route list from DB; series facts only) → Share button UI + attribution hook into Epic 3's port → **flagship-five content pilot (FR-13, owner decision 2026-09-25): optional per-series editorial content (write-up + YouTube-embed video) rendered and prerendered for 5 pinned flagship series (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs); all other series stay bare; doubles as marketing material**. **Calendar-critical: this epic must be DEPLOYED ≥ 6–8 weeks before Apr 2027 so crawlers index before the spike — its position in the list is not its deadline** (owner decision 2026-09-25).
+A completed prediction becomes a circulating artifact: copied links unfurl as OG cards and land on a working page; the archive indexes as 182 static per-series pages (172 full-record non-flagship pages + a preview/result pair for each of the 5 flagships; Active-series pairs added inseason). `share-og` Edge Function (anonymous — no JWT; `@vercel/og` card; `SharePayload` from `_shared/contract.ts`; redirect with `utm_source=share`) → **`404.html` SPA fallback with a live-deploy AC: cold GET on the real `gh-pages` URL loads the app under the `/predictgame7/` basename** (owner decision 2026-09-25; never tested against pushState routing on this deploy) → `/series/<id>` route + AD-7 prerender step in `predeploy` (route list from DB; series facts only) → Share button UI + attribution hook into Epic 3's port → **flagship-five content pilot (FR-13, owner decision 2026-09-25): optional per-series editorial content (write-up + YouTube-embed video) rendered and prerendered for 5 pinned flagship series (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs); all other series stay bare; each flagship ships as a **spoiler-free preview + revealed result pair** (AD-7 amendment, `sprint-change-proposal-2026-09-25.md`); doubles as marketing material**. **Calendar-critical: this epic must be DEPLOYED ≥ 6–8 weeks before Apr 2027 so crawlers index before the spike — its position in the list is not its deadline** (owner decision 2026-09-25).
 **FRs covered:** FR-31, FR-13 (scoped pilot) (+ FR-10/11 prerender surfaces); NFRs P1 (share-og timing), A1 (partial), U1 (partial — flagship page layouts).
 
 ### Epic 5: Release-Quality Polish — the Major Release Itself
@@ -443,14 +454,14 @@ so that a shared link lands somewhere meaningful instead of a GitHub Pages 404.
 ### Story 4.2: OG card rendering — `share-og` Edge Function
 
 As a content creator pasting a link (Rhian, UJ-3),
-I want shared URLs to unfurl with a series-specific OG card (teams, logos, year/round, method),
+I want shared URLs to unfurl with a series-specific OG card (teams, logos, year/round context),
 so that the link is worth clicking in chat and social feeds.
 
 **Acceptance Criteria:**
 
 **Given** the anonymous `share-og` Edge Function using `@vercel/og` (AD-6)
 **When** a crawler or platform scraper fetches a share URL
-**Then** OG/Twitter meta tags resolve to a rendered card image for that series — historical facts only (teams, year, round, logos), never prediction outputs; predictions stay client-side
+**Then** OG/Twitter meta tags resolve to a rendered card image for that series — teams, logos (each on a white chip — the ink field must not swallow dark logo art), and a year/round context line ("2016 FINALS · GAME 7"); **no series score or winner on the historic variant** (AD-7 spoiler-free amendment), and never prediction outputs; predictions stay client-side
 **And** the function requires no auth and holds no secrets beyond what rendering needs; the SharePayload shape follows the AD-2 contract
 **And** missing/unknown ids render a generic branded fallback card, never a 500
 **And** card verified with at least one platform debugger (e.g., Facebook Sharing Debugger or X card validator) against the deployed URL
@@ -465,9 +476,11 @@ so that the 177-series archive is crawlable without JS and ranks year-round (eve
 
 **Given** a build-time prerender step in the Vite pipeline
 **When** `npm run build` completes
-**Then** all 177 historical series have a static `index.html` with real content — series facts (year, round, teams, game scores, winner), not predictions
+**Then** the 172 non-flagship historical series keep one static page with the full record (unchanged shape, winner included); the 5 flagships (and any Active series inseason) emit **two** static pages — `/series/<id>` (facts through Game 6, winner-free, method deep-links + Predict CTA) and `/series/<id>/result` (full record + resolution) — per AD-7 as amended by `sprint-change-proposal-2026-09-25.md`
+**And** all emitted pages are indexable with distinct titles/meta (the result page is the outcome-answering page search resolves to)
+**And** the preview page's reveal link ("See how the series ended →", explicit spoiler wording on the link itself) navigates to the result route, moving focus to the result heading; the outcome appears nowhere in the preview's DOM or meta
 **And** a crawler fetching the deployed URL with JS disabled receives the full content (verified via curl or equivalent)
-**And** the prerender step fails the build (non-zero) if any series page is missing or empty — no silent partial deploys
+**And** the prerender step fails the build (non-zero) if any expected page is missing or empty — no silent partial deploys
 **And** new Active Series pages are generated by subsequent builds during the playoff window (pipeline data → next build → prerender)
 
 ### Story 4.4: Share button + attribution (FR-31, SM-3)
@@ -488,14 +501,15 @@ so that settling the debate takes one tap — and arrivals from my link are coun
 ### Story 4.5: Series editorial content model (FR-13 pilot)
 
 As the owner,
-I want optional per-series editorial content — headline, markdown write-up, images, video embed URLs (YouTube), `is_featured` flag — stored server-side and rendered on series pages,
+I want optional per-series editorial content — **two parts: a before piece (tension-forward, no outcome) and a resolution piece (outcome)**, each with headline, markdown write-up, images, plus video embed URLs (YouTube), `is_featured` flag — stored server-side and mapped to the right page,
 so that flagship series can carry full additional content while every other series stays bare, with no CMS and no rearchitecture.
 
 **Acceptance Criteria:**
 
 **Given** a schema addition for per-series editorial content (table or columns — shape decided at build time), populated by owner script/SQL only (writes stay server-side, AD-8)
 **When** a series with content is viewed or its prerendered page fetched
-**Then** the write-up and video embeds render in the series view AND appear in the prerendered HTML (Story 4.3 pipeline picks them up automatically)
+**Then** the before part renders on the preview route and the resolution part on the result route (non-flagship single pages render whatever exists on their one page, retrospective voice); write-ups and video embeds appear in the prerendered HTML (Story 4.3 pipeline picks them up automatically)
+**And** video embeds attach to either part — flagship highlight reels canonically sit on the result side, owner's call per series
 **And** a series without content renders exactly as today — bare facts, no empty sections, no broken layout
 **And** video is external-embed only (YouTube iframes with titles — Q-5 pilot resolution); no media hosting, no Supabase Storage usage
 **And** content rendering is AA-clean: iframe titles, text contrast, keyboard-navigable embeds, responsive on desktop and mobile (NFR-U1 — closes issue #5's responsiveness AC for the pilot)
@@ -505,13 +519,13 @@ so that flagship series can carry full additional content while every other seri
 
 As the owner,
 I want write-ups + video embeds authored and loaded for the 5 flagship series — pinned (owner decision 2026-09-25), worked in chronological order: **2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs**,
-so that the pilot doubles as marketing material and the SEO test runs on pages actually worth sharing.
+so that the pilot doubles as marketing material and the SEO test runs on pages actually worth sharing — the 3–3 page is the ad, the result page the payoff; prediction links appear only on the 3–3 view.
 
 **Acceptance Criteria:**
 
 **Given** Story 4.5's content model deployed
-**When** the owner authors content for the 5 pinned flagship series (in the chronological order above) and loads it via the owner-side script
-**Then** all 5 prerendered flagship pages show full content on the deployed site (write-up + at least one video embed each), verified live before the ≥6–8-week pre-window cutoff
+**When** the owner authors both halves (before + resolution) for the 5 pinned flagship series (in the chronological order above) and loads it via the owner-side script
+**Then** all 5 flagship preview/result pairs show their content on the deployed site (preview write-up spoiler-free; result write-up + at least one video embed each), verified live before the ≥6–8-week pre-window cutoff
 **And** the 172 non-flagship series verify unchanged (bare) on a sample basis
 **And** content authoring is owner work tracked in this story; any loading/validation tooling built for it stays owner-local or in `supabase/scripts/`
 **And** flagship series are discoverable as such — Home hotspot/featured cards and archive views link through to the enriched pages (FR-14 deep-link pattern preserved)
@@ -526,7 +540,7 @@ so that sharing and indexing work when playoff traffic actually arrives.
 
 **Given** Stories 4.1–4.6 deployed
 **When** the drill runs
-**Then** results recorded in `_bmad-output/implementation-artifacts/`: cold deep-link GET, OG debugger card render, JS-disabled prerendered page fetch (one bare + one flagship with full content), share round-trip with SM-3 event observed in PostHog live view
+**Then** results recorded in `_bmad-output/implementation-artifacts/`: cold deep-link GET, OG debugger card render, JS-disabled prerendered page fetch (one bare + one flagship preview — verified spoiler-free — + its result page), share round-trip with SM-3 event observed in PostHog live view
 **And** a sitemap/crawl spot-check: a sample of prerendered series URLs resolves 200 on the live domain
 **And** deploy date recorded against the ≥6–8-week pre-window target; if slipping, owner escalation noted
 
