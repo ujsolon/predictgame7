@@ -41,7 +41,7 @@ An opportunity with a deadline. When FiveThirtyEight's transparent-model archive
   - **success:** FR-31 consequences pass: opening a Share Link re-renders the prediction with zero re-entry; `og:title/description/image` render on major social surfaces; the link resolves on GitHub Pages (404.html SPA fallback in the build chain, AD-6); arrivals count toward SM-3.
 - **CAP-8**
   - **intent:** The historical archive is indexable as per-series evergreen pages, so the site ranks before and during the playoff spike.
-  - **success:** AD-7 holds: build emits one static HTML per `/series/<id>` containing real meta, game-by-game scores, and a Predict CTA (no prediction outputs baked in); initial HTML carries full content to a JS-disabled crawler; active/custom routes stay client-rendered.
+  - **success:** AD-7 holds: the build emits one static page per historical series carrying the full record; featured/active series emit a preview+result pair — the preview route's static HTML carries facts **through Game 6** with context meta (year, round, teams — **no Game 7 outcome**), the result route carries the full record (all seven games, winner); all pages crawlable without JS; predictions never baked in; active/custom routes otherwise stay client-rendered.
 - **CAP-9**
   - **intent:** The highest-risk Predict paths are protected by automated regression tests so reliability stops regressing between changes.
   - **success:** FR-30 consequences pass: tests cover series selection, custom-input validation, method switching, and error states; a documented catalog of reproduced issue-#3 failure cases maps each to a test or an FR-8 error state; manual QA matrix (historical/active/custom × desktop/mobile) documented and passing.
@@ -53,7 +53,7 @@ An opportunity with a deadline. When FiveThirtyEight's transparent-model archive
 
 - Free-tier economics until the Traffic Gate (Supabase, GitHub Pages, PostHog; any email provider must have a free tier) — rules out paid hosting, prerender SaaS, and hosted media.
 - Legal line, never crossed: no wagers, no odds markets, no guaranteed picks — the product stays "content" law, not gambling law.
-- PLANNED-GATED features (accounts FR-9/22/23, betting-adjacent FR-26..29, video FR-13) must not be built without an explicit owner decision — hard stop for every agent downstream.
+- PLANNED-GATED features (accounts FR-9/22/23, betting-adjacent FR-26..29) must not be built without an explicit owner decision — hard stop for every agent downstream. Video (FR-13) is un-gated for the 5-flagship pilot only (owner decision 2026-09-25); archive-wide video stays gate-blocked.
 - AD-1..AD-9 of `ARCHITECTURE-SPINE.md` are binding consistency rules; anything contradicting one is a conflict to surface, never a local override; AD IDs stay stable.
 - Secrets (NFR-S1): server keys never in repo, bundle, or `VITE_*`; `contact_submissions` writes only via `handle-contact`; RLS on all public tables; `predictions` private-by-default. (History: one `service_role` leak, rotated 2026-09-22.)
 - Privacy (NFR-S2): no PII beyond contact submissions (email + message) and future account data; contact submissions kept indefinitely (manual delete only); analytics ad-blocker blind spot documented, not hidden.
@@ -66,7 +66,7 @@ An opportunity with a deadline. When FiveThirtyEight's transparent-model archive
 
 - Accounts, sign-in, saved predictions, anonymous limits — gated on SM-1; discovery may run in parallel, no build.
 - Betting-adjacent outputs (spread/over-under), monetization of any shape (paywall, ads, affiliate links) — gated on SM-1 **and** the Q-2 posture decision.
-- Series video content (FR-13) — not scheduled before the gate.
+- Archive-wide series video content (FR-13) — not scheduled before the gate; the 5-flagship embed pilot is in scope (§8.1 / owner decision 2026-09-25).
 - No social product: no comments, feeds, community; the product never posts on the user's behalf.
 - No multi-league expansion (NBA Game 7s only); no per-player box scores or general NBA stats database.
 - No live scoring or play-by-play.
@@ -85,6 +85,6 @@ By Jul 2027 the owner can state, from a single programmatic query (CAP-6): ≥ 1
 
 - Q-1: What exactly do accounts do (feature set behind FR-9/22/23)? Owner discovery session pending; blocks nothing pre-gate.
 - Q-2: Monetization posture — affiliate vs. premium vs. ads vs. none, and analytics-entertainment vs. picks framing. Decide at gate evaluation, Jun 2027.
-- Q-5: Video mechanism (external links vs. hosted) — only if FR-13 is ever scheduled.
+- Q-5: Video mechanism — resolved for the flagship pilot (external YouTube embeds, owner 2026-09-25); full-archive mechanism (hosted vs. embeds at scale) stays parked until FR-13 is ever expanded past the pilot.
 - Q-8: `SamplePage.tsx` and the PostHog agent-skill folder — delete or document at the next housekeeping pass.
 - Q-9: Is there an accuracy back-test of the four Methods against held-out archive results? Undocumented; a credibility/linkable asset if built.
