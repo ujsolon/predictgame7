@@ -177,6 +177,7 @@ The user can watch associated video content and read an editorial write-up on a 
 - A Series supports zero or more video assets and an optional editorial write-up (headline, body, images); missing content degrades cleanly to the bare facts page; layouts work on desktop and mobile under the NFR-U1 baseline (closes issue #5's responsiveness AC by reference).
 - Q-5 resolved for the pilot (owner decision 2026-09-25): **external embeds (YouTube)** — no hosted media, no storage decision. Full-archive video (hosted media service vs. embeds at scale) remains parked by the Traffic Gate.
 - Editorial content flows into the prerendered series pages (AD-7), so flagship pages are crawlable with full content.
+- Featured series (flagship pilot + live Active series) present as a two-page pair: a default "before Game 7" view — series facts through Game 6, spoiler-free, with the model predictions as the featured path — and a "/series/<id>/result" view (final outcome + resolution write-up) reached only by an explicit reveal action. Neither the default view nor its share card discloses the Game 7 outcome. Non-flagship historical series keep the single full-record page (lookup/search surface; thin preview pages are an SEO liability). Series pages exist to market the Predict flow; predictions are the main material, results the payoff.
 
 The gate hard-stop is lifted for this scoped pilot only; archive-wide video remains a non-goal before the Traffic Gate.
 
@@ -360,7 +361,7 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 - Traffic Gate reporting (FR-25).
 - Analytics isolation refactor — move PostHog behind the NFR-V1 decoupling layer so the gate and instrumentation survive a vendor swap or exit.
 - Shareable prediction deep-links + OG cards (FR-31) — the SEO/spike-capture play that must be indexed *before* the 2027 window.
-- Flagship series content pilot (FR-13, scoped) — video (YouTube embeds) + editorial write-ups for 5 flagship series on the prerendered pages; marketing material and a fairer SEO test (owner decision 2026-09-25).
+- Flagship series content pilot (FR-13, scoped) — video (YouTube embeds) + editorial write-ups for 5 flagship series on the prerendered pages; marketing material and a fairer SEO test (owner decision 2026-09-25) — each flagship ships as a spoiler-free 3–3 page plus a revealed 4–3 result page (owner decision 2026-09-25).
 - WCAG 2.1 AA pass + verification on core flows (NFR-A1).
 - Whole-site mobile responsiveness verification (NFR-U1).
 - Housekeeping: strip the version number from README (NFR-D2).
