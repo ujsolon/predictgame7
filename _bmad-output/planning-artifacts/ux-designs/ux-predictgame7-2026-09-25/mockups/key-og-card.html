@@ -14,7 +14,7 @@
   - DESIGN.md · Shapes (logo-chip is an image-only exception to the no-container-shape rule)
   - EXPERIENCE.md · Responsive & Platform (1080x540 centered safe zone, owner-approved as mocked)
   - EXPERIENCE.md · Component Patterns · OG card / State Patterns · OG render failure (generic fallback = wordmark + tagline only)
-  - EXPERIENCE.md · Voice and Tone (historic variant: context eyebrow only — NO series score or winner, spoiler rule 2026-09-25)
+  - EXPERIENCE.md · Voice and Tone (historic variant: matchup context only — NO series score or winner, spoiler rule 2026-09-25; center-context placement confirmed by owner 2026-09-25)
   - .memlog.md (custom = same template w/ "CUSTOM MATCHUP" eyebrow; never predictions on the card)
 */
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -59,6 +59,9 @@ body {
 .og-abbr { font-size: 64px; font-weight: 700; letter-spacing: 0.06em; line-height: 1; }
 .og-divider { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .og-vs { font-size: 26px; font-weight: 500; letter-spacing: 0.08em; color: #FAFAFA; opacity: 0.72; }
+/* center context (historic variant, owner proposal 2026-09-25): year·round sits in the divider slot between the teams instead of VS */
+.og-context-round { font-size: 30px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.15; text-align: center; }
+.og-context-game { font-size: 20px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8A8A; }
 
 /* lower band */
 .og-band {
@@ -89,27 +92,27 @@ body {
 
 <header class="page-head">
   <h1 class="page-title">OG card — three variants, one template</h1>
-  <p class="page-sub">1200×630 canvases shown at 0.55 scale. Ink field #1A1A1A, white type, team logos are the only color — each on a white contrast chip (owner 2026-09-25: dark logo art like MIA/SAS must survive the ink field). Server-rendered per series; the shared link always resolves even if a render fails. The historic card never spoils: context only, no series score.</p>
+  <p class="page-sub">1200×630 canvases shown at 0.55 scale. Ink field #1A1A1A, white type, team logos are the only color — each on a white contrast chip (owner 2026-09-25: dark logo art like MIA/SAS must survive the ink field). Server-rendered per series; the shared link always resolves even if a render fails. The historic card never spoils: context only, no series score. Only the safe-zone dashed outline is annotation — the rest is what ships.</p>
 </header>
 
 <!-- (a) Historic -->
 <section class="variant">
   <div class="variant-caption">
-    <div class="label">(a) Historic series — 2016 Cavs–Warriors</div>
-    <div class="note">Year · round · Game 7 context eyebrow, team blocks with logos on chips and abbreviations, wordmark band — <strong>no series score, no winner</strong> (spoiler rule, sprint-change-proposal-2026-09-25). Dashed outline marks the 1080×540 centered safe zone (owner-approved as mocked).</div>
+    <div class="label">(a) Historic series — 2016 Cavs–Warriors · CENTER-CONTEXT option</div>
+    <div class="note">Owner decision 2026-09-25: the year·round·Game 7 context sits in the center slot (between the teams, where "VS" sits on the custom card) instead of a top eyebrow — <strong>no series score, no winner</strong> either way (spoiler rule, sprint-change-proposal-2026-09-25). Spines synced to this placement. The dashed outline is a mock annotation only (1080×540 safe-zone marker) — nothing dashed renders on the real card.</div>
   </div>
   <div class="scale-wrap">
     <div class="og" role="img" aria-label="Cleveland Cavaliers versus Golden State Warriors, Game 7 of the 2016 Finals.">
-      <div class="safe-zone"><span class="safe-tag">1080 × 540 safe zone</span></div>
+      <div class="safe-zone"><span class="safe-tag">1080 × 540 safe zone (annotation — not part of the card)</span></div>
       <div class="og-upper">
-        <div class="og-eyebrow">2016 FINALS · GAME 7</div>
         <div class="og-matchup">
           <div class="og-team">
             <div class="og-chip"><img src="../../../../../public/assets/teams/cavaliers.png" alt=""></div>
             <div class="og-abbr mono">CLE</div>
           </div>
           <div class="og-divider">
-            <div class="og-vs">VS</div>
+            <div class="og-context-round">2016<br>Finals</div>
+            <div class="og-context-game">Game 7</div>
           </div>
           <div class="og-team">
             <div class="og-chip"><img src="../../../../../public/assets/teams/warriors.png" alt=""></div>
