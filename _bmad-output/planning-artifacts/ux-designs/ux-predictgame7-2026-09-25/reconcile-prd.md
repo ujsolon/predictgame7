@@ -1,0 +1,29 @@
+# Reconciliation — UX spines vs PRD + addendum (scoped: 4 new surfaces)
+
+Reviewed: `DESIGN.md` + `EXPERIENCE.md` (ux-predictgame7-2026-09-25) against `prd.md` (2026-09-25) and `addendum.md`. Existing surfaces treated as ratified; gated features and social-media-temperature excluded per scope rule.
+
+- **Addendum §H (voice anchors) — one anchor dropped.** EXPERIENCE.md "Voice and Tone" quotes only 4 of the 5 anchors; "From iconic classics to hypothetical showdowns" appears nowhere in either spine. It is the one anchor that spans both share surfaces (historic series pages *and* custom-matchup shares). Fix: add it to the voice-anchor list and assign it a home surface — natural fits are the Predict CTA block on the series page or the fallback/custom OG card copy.
+
+- **FR-31 — OG title/description metadata unspecified.** Both spines spec only the OG *image* (card template, variants, fallback). FR-31 requires "social preview metadata (OG title/description/image)" and "link previews render card metadata on major social/chat surfaces." Fix: spec OG title/description templates per variant (historic: year · round · teams · result; custom: "Custom matchup" framing; fallback: product line), including which voice anchors they use.
+
+- **FR-31 + FR-25 / SM-3 + NFR-V1 — share attribution and analytics emission missing.** Shareable URLs (`/series/<id>?method=<slug>`, `/predict?custom=<base64>`) carry no referral/UTM convention, but FR-25 requires share-link arrivals to be "distinguishable (referral/UTM convention)" and SM-3 measures share-driven visits. Neither spine states that new surfaces (share tap, series-page arrival) emit events declaratively through the NFR-V1 isolation layer; NFR-V1 is cited only in the rejected-platform-menus anti-pattern. Fix: add a share-attribution convention to the Share-button/IA specs and a note that any new events go through the single analytics layer without touching the frozen 10-event registry.
+
+- **FR-13 (consequence) / AD-7 — prerendering & crawlability not reflected; 404 approach in tension.** FR-13 requires "editorial content flows into the prerendered series pages (AD-7), so flagship pages are crawlable with full content." EXPERIENCE.md cites AD-6 but never AD-7/prerendering, and specifies unknown ids resolve via "HTTP 404 via the SPA fallback page" — a client-rendered SPA fallback pattern that sits awkwardly with prerendered, crawlable flagship pages on GitHub Pages. Fix: state that `/series/<id>` flagship pages are prerendered with full editorial content, and that the unknown-id 404 strategy must not compromise crawlability of the prerendered set.
+
+- **FR-13 — editorial write-up images unaccommodated / contradicted.** FR-13 defines the write-up as "headline, body, images." DESIGN.md's series-page layout lists only "write-up" and its brand rule is absolute: "team logos are the only color anywhere," with no treatment defined for editorial photography or graphics inside the write-up. Fix: either spec an image treatment for write-up content (placement, framing, how it coexists with the logos-only-color rule) or record an explicit pilot decision that write-ups ship text-only.
+
+- **FR-13 — the pinned 5-series pilot list is not stated.** Neither spine names the flagship set (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs; owner-pinned 2026-09-25). The "render only when content exists / bare series unchanged" rules are correctly captured, but without the pinned list nothing in the design docs enforces "pilot only, gate lifted for this scope only." Fix: list the 5 flagship series in the series-page spec (DESIGN.md layout section or EXPERIENCE.md IA) with a pointer to FR-13's pilot decision.
+
+- **NFR-A1 — declared contrast floor fails AA for small text.** EXPERIENCE.md Accessibility Floor claims "All new type meets AA contrast on white — the muted-foreground `#808080` is the floor." `#808080` on `#FFFFFF` is ~3.9:1, below the 4.5:1 AA requirement for normal-size text — and the spines use it for small text (empty-state one-liners, "Highlights via [Creator]" captions, 10px uppercase eyebrows). Fix: either darken the small-text floor to ~`#767676` (4.54:1) or restrict `#808080` to large text / UI components and say so explicitly.
+
+- **NFR-U1 — touch-target size for the icon-only Share button unspecified.** The share button is icon-only (ghost) on compact widths, and NFR-U1 requires touch targets to be verified. Neither spine gives a minimum target size. Fix: spec a ≥44×44px touch target for the icon-only Share button (and the video facade play control) in DESIGN.md or the Responsive table.
+
+- **Guardrail nuance (PRD §7 "Not an accuracy oracle") — "oracle" framing in Flow 1.** EXPERIENCE.md Flow 1 climax: "Bert looks like the group's NBA oracle." It describes the user, not the product, so it is not a violation as written — but it is one copy-edit away from product language that claims prediction correctness. Fix: add a one-line note in Voice and Tone that "oracle"/"guarantee"/"lock" framing must never appear in product microcopy, OG card copy, or series-page CTAs (models are explainable estimates, §7).
+
+## Verified clean
+
+- FR-13 external YouTube embeds only, lazy facade, creator attribution always rendered when a `credit` string exists; bare-series degradation with no placeholders.
+- FR-31 share round-trip: link reproduces matchup without re-entry; no in-product social posting, no image export beyond the OG card; OG render failure falls back silently.
+- FR-8 error model: retry panel (service failure) vs inline field error (validation), inputs preserved, no dead-end empty states.
+- NFR-V1 tracker hygiene: platform share menus rejected; no wagering/odds/guaranteed-picks language anywhere in either spine.
+- Voice anchors 1–4 quoted verbatim; error/empty copy matches FR-18 intent.

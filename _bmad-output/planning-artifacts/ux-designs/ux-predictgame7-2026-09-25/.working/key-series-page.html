@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Key Screen Mock — Flagship Series Page /series/&lt;id&gt;</title>
+<style>
+/*
+  Spine sections governing this screen:
+  - DESIGN.md · Components · series-page-hero (eyebrow label, display headline with teams in words, mono-data score strip, hairline rules between cells)
+  - DESIGN.md · Components · video embed + credit (16:9 facade in rounded-xl border frame, label-style credit caption, text-muted-foreground)
+  - DESIGN.md · Layout & Spacing · Flagship series page (max-w-3xl column, space-y-16 rhythm, hero → score strip → write-up → video+credit → similar-series slot → Predict CTA)
+  - DESIGN.md · Typography (display 60px/500/-0.01em, label motif 12px uppercase 0.1em 600 #808080, mono tabular-nums for all scores)
+  - EXPERIENCE.md · Component Patterns · Series page (sections render only when content exists; bare series = hero + score strip + Predict CTA, no placeholders)
+  - EXPERIENCE.md · State Patterns (cold open from share; unknown series id → 404 treatment with exact copy)
+  - EXPERIENCE.md · Responsive & Platform (lg: sidebar + centered max-w-3xl column matching existing shell — h-16 header, lg:w-64 rail)
+  - .memlog.md (flagship layout decision; similar-series optional slot; creator credit = muted caption w/ link)
+*/
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Montserrat Variable", Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #FFFFFF; color: #262626; font-size: 16px; line-height: 1.6;
+}
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+.label {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #808080; line-height: 1.4;
+}
+
+/* ---------- app shell suggestion ---------- */
+.app-header {
+  height: 64px; /* h-16 */
+  border-bottom: 1px solid #E6E6E6;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+}
+.wordmark { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; }
+.header-nav { display: flex; align-items: center; gap: 24px; font-size: 14px; color: #808080; }
+.shell { display: flex; align-items: flex-start; }
+.sidebar-rail {
+  width: 256px; /* lg:w-64 rail hint */
+  flex: none; border-right: 1px solid #E6E6E6;
+  padding: 24px 16px; min-height: 720px;
+}
+.rail-item { display: block; padding: 8px 12px; border-radius: 0.375rem; font-size: 14px; color: #808080; text-decoration: none; margin-bottom: 4px; }
+.rail-item.active { background: #F5F5F5; color: #1A1A1A; font-weight: 500; }
+.main { flex: 1; display: flex; justify-content: center; padding: 64px 20px 96px; }
+.column { width: 100%; max-width: 768px; /* max-w-3xl */ }
+.column > section + section { margin-top: 64px; } /* space-y-16 */
+
+/* ---------- hero + score strip ---------- */
+.hero-eyebrow { margin-bottom: 16px; }
+.hero-headline {
+  font-size: 60px; font-weight: 500; line-height: 1.1; letter-spacing: -0.01em; color: #1A1A1A;
+  max-width: 65ch;
+}
+.hero-standfirst { margin-top: 16px; font-size: 18px; color: #808080; max-width: 65ch; }
+.score-strip {
+  margin-top: 32px; display: flex; border: 1px solid #E6E6E6; border-radius: 0.5rem; overflow: hidden;
+}
+.score-cell { flex: 1; padding: 16px 20px; }
+.score-cell + .score-cell { border-left: 1px solid #E6E6E6; } /* hairline rules between cells */
+.score-cell .label { display: block; margin-bottom: 6px; }
+.score-value { font-size: 24px; font-weight: 600; color: #1A1A1A; }
+.score-sub { font-size: 12px; color: #808080; margin-top: 2px; }
+
+/* ---------- editorial write-up ---------- */
+.writeup p + p { margin-top: 20px; }
+.writeup p { max-width: 65ch; }
+
+/* ---------- video embed + credit ---------- */
+.video-facade {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  background: #1A1A1A;
+  border: 1px solid #E6E6E6; border-radius: 0.75rem; /* rounded-xl frame */
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.play-button {
+  width: 72px; height: 72px; border-radius: 9999px; border: none; cursor: pointer;
+  background: #FAFAFA; display: flex; align-items: center; justify-content: center;
+}
+.play-button svg { margin-left: 4px; }
+.video-credit { margin-top: 12px; }
+.video-credit a { color: #808080; text-decoration: none; border-bottom: 1px solid #E6E6E6; }
+
+/* ---------- similar series ---------- */
+.similar-list { margin-top: 16px; border-top: 1px solid #E6E6E6; }
+.similar-row {
+  display: flex; align-items: center; gap: 20px;
+  padding: 18px 4px; border-bottom: 1px solid #E6E6E6;
+  text-decoration: none; color: #262626;
+}
+.similar-row .label { flex: none; width: 200px; }
+.similar-matchup { flex: 1; font-size: 16px; font-weight: 500; color: #1A1A1A; }
+.similar-score { font-size: 16px; font-weight: 600; color: #262626; }
+.similar-arrow { color: #808080; font-size: 16px; }
+
+/* ---------- predict CTA ---------- */
+.cta-panel { border-top: 1px solid #E6E6E6; padding-top: 40px; }
+.cta-headline { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; color: #1A1A1A; }
+.cta-line { margin-top: 8px; color: #808080; max-width: 65ch; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 24px;
+  background: #1A1A1A; color: #FAFAFA; border: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500;
+  padding: 10px 20px; border-radius: 0.375rem; text-decoration: none;
+}
+
+/* ---------- mock-level section labels & secondary states ---------- */
+.mock-divider { max-width: 1216px; margin: 96px auto 0; padding: 0 20px; }
+.mock-tag {
+  display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #808080; background: #F5F5F5; border: 1px solid #E6E6E6; border-radius: 0.375rem;
+  padding: 6px 10px; margin-bottom: 20px;
+}
+.mock-frame { border: 1px solid #E6E6E6; border-radius: 0.75rem; padding: 48px 40px; background: #FFFFFF; }
+.mock-caption { margin-top: 16px; font-size: 13px; color: #808080; line-height: 1.5; }
+
+/* ---------- 404 ---------- */
+.notfound { max-width: 448px; /* max-w-md */ }
+.notfound h2 { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; color: #1A1A1A; }
+.notfound p { margin-top: 8px; color: #808080; }
+.notfound a { display: inline-block; margin-top: 24px; color: #1A1A1A; font-weight: 500; text-decoration: none; border-bottom: 1px solid #E6E6E6; padding-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ======= FLAGSHIP SERIES PAGE — 2016 Cavs–Warriors ======= -->
+<header class="app-header">
+  <div class="wordmark">PredictGame7</div>
+  <nav class="header-nav" aria-label="Primary">
+    <span>Home</span><span>Predict</span><span>Historical</span><span>Insights</span><span>Maths</span>
+  </nav>
+</header>
+
+<div class="shell">
+  <nav class="sidebar-rail" aria-label="Sidebar">
+    <a class="rail-item" href="#">Home</a>
+    <a class="rail-item" href="#">Predict</a>
+    <a class="rail-item active" href="#" aria-current="page">Historical</a>
+    <a class="rail-item" href="#">Insights</a>
+    <a class="rail-item" href="#">Maths</a>
+  </nav>
+
+  <main class="main">
+    <div class="column">
+
+      <!-- hero -->
+      <section aria-labelledby="hero-headline">
+        <div class="label hero-eyebrow">GAME 7 · 2016 FINALS</div>
+        <h1 class="hero-headline" id="hero-headline">Cavaliers erase a 3–1 deficit</h1>
+        <p class="hero-standfirst">Cleveland overtake the Golden State Warriors, 4–3, to deliver the city its first major-sports title in 52 years.</p>
+        <div class="score-strip">
+          <div class="score-cell">
+            <span class="label">Final series</span>
+            <div class="score-value mono">4–3</div>
+            <div class="score-sub">CLE over GSW</div>
+          </div>
+          <div class="score-cell">
+            <span class="label">Game 7 · Jun 19, 2016</span>
+            <div class="score-value mono">93–89</div>
+            <div class="score-sub">at Oracle Arena</div>
+          </div>
+          <div class="score-cell">
+            <span class="label">Series firsts</span>
+            <div class="score-value mono">3–1</div>
+            <div class="score-sub">deficit overturned — first in Finals history</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- editorial write-up -->
+      <section class="writeup" aria-labelledby="writeup-head">
+        <h2 class="label" id="writeup-head">The series</h2>
+        <p style="margin-top:16px;">Down 3–1 after Game 4, Cleveland won three straight to take the title. The Cavaliers won Game 5 in Oakland 112–97 and Game 6 at home 115–101, forcing a winner-takes-all Game 7 back at Oracle Arena.</p>
+        <p>Game 7 stayed inside four points for its final six minutes. With 1:50 left and Cleveland up by one, LeBron James chased down Andre Iguodala for the block; 47 seconds later, Kyrie Irving hit a three over Stephen Curry to make it 92–89. The Cavaliers finished 93–89 — the lowest combined-scoring Game 7 of the decade.</p>
+        <p>James averaged 29.7 points, 11.3 rebounds and 8.9 assists across the seven games and recorded a triple-double (27–11–11) in the clincher. Irving added 26 points in Game 7. It remains the only 3–1 comeback in NBA Finals history.</p>
+      </section>
+
+      <!-- video embed + credit -->
+      <section aria-labelledby="video-head">
+        <h2 class="label" id="video-head">Highlights</h2>
+        <div class="video-facade" style="margin-top:16px;">
+          <button type="button" class="play-button" aria-label="Play Game 7 highlights">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="#1A1A1A" aria-hidden="true"><path d="M8 5.14v13.72L19 12 8 5.14z"/></svg>
+          </button>
+        </div>
+        <div class="video-credit label"><a href="#">Highlights via Creator Name ↗</a></div>
+      </section>
+
+      <!-- similar-series slot -->
+      <section aria-labelledby="similar-head">
+        <h2 class="label" id="similar-head">SIMILAR SERIES</h2>
+        <div class="similar-list">
+          <a class="similar-row" href="#">
+            <span class="label">2013 FINALS</span>
+            <span class="similar-matchup">Heat vs Spurs</span>
+            <span class="similar-score mono">4–3</span>
+            <span class="similar-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="similar-row" href="#">
+            <span class="label">2019 EASTERN SEMIFINALS</span>
+            <span class="similar-matchup">Raptors vs 76ers</span>
+            <span class="similar-score mono">4–3</span>
+            <span class="similar-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- predict CTA -->
+      <section class="cta-panel">
+        <h2 class="cta-headline">Model this matchup yourself</h2>
+        <p class="cta-line">Run Cavaliers vs Warriors through the prediction model and see what the numbers said before Game 7 tipped.</p>
+        <a class="btn-primary" href="#">Open Predict <span aria-hidden="true">→</span></a>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ======= SECONDARY STATE (i): BARE SERIES ======= -->
+<div class="mock-divider">
+  <span class="mock-tag">Secondary state (i) — Bare series (non-flagship)</span>
+  <div class="mock-frame">
+    <div class="column" style="max-width:768px;margin:0 auto;">
+      <section>
+        <div class="label hero-eyebrow">GAME 7 · 2021 EASTERN SEMIFINALS</div>
+        <h2 class="hero-headline" style="font-size:36px;">Bucks outlast the Nets in overtime</h2>
+        <div class="score-strip">
+          <div class="score-cell">
+            <span class="label">Final series</span>
+            <div class="score-value mono">4–3</div>
+            <div class="score-sub">MIL over BKN</div>
+          </div>
+          <div class="score-cell">
+            <span class="label">Game 7 · Jun 20, 2021</span>
+            <div class="score-value mono">115–111</div>
+            <div class="score-sub">OT · at Milwaukee</div>
+          </div>
+        </div>
+      </section>
+      <section class="cta-panel">
+        <h3 class="cta-headline">Model this matchup yourself</h3>
+        <p class="cta-line">Run Bucks vs Nets through the prediction model and see what the numbers said before Game 7 tipped.</p>
+        <a class="btn-primary" href="#">Open Predict <span aria-hidden="true">→</span></a>
+      </section>
+    </div>
+    <p class="mock-caption">Bare series render hero + score strip + Predict CTA only. The absent write-up, video and similar-series sections leave no placeholder, no heading and no gap — the rhythm simply closes up.</p>
+  </div>
+</div>
+
+<!-- ======= SECONDARY STATE (ii): UNKNOWN SERIES 404 ======= -->
+<div class="mock-divider" style="margin-bottom:96px;">
+  <span class="mock-tag">Secondary state (ii) — Unknown /series/&lt;id&gt; · 404 treatment</span>
+  <div class="mock-frame">
+    <div class="notfound">
+      <h2>This series doesn't exist.</h2>
+      <p>It may have been removed, or the link is wrong.</p>
+      <a href="#">Browse the Historical archive →</a>
+    </div>
+    <p class="mock-caption">Served with HTTP 404 via the SPA fallback page. Never a blank page; the archive link is the single onward path.</p>
+  </div>
+</div>
+
+</body>
+</html>

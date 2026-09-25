@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Key Screen Mock — OG Card (3 variants)</title>
+<style>
+/*
+  Spine sections governing this screen:
+  - DESIGN.md · Components · og-card (ink field, two team blocks, logos as only color, wordmark+tagline band, three variants one template)
+  - DESIGN.md · Layout & Spacing · OG card (1200x630 canvas, two horizontal zones, [ASSUMPTION] 64px margins, type 48/64/14px)
+  - DESIGN.md · Colors (OG card inverts the palette: #1A1A1A field, #FAFAFA type, eyebrow #808080, logos full color no treatment)
+  - EXPERIENCE.md · Responsive & Platform ([ASSUMPTION] 1080x540 centered safe zone)
+  - EXPERIENCE.md · Component Patterns · OG card / State Patterns · OG render failure (generic fallback = wordmark + tagline only)
+  - .memlog.md (custom = same template w/ "CUSTOM MATCHUP" eyebrow; never predictions on the card — variant (b) carries no score)
+*/
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Montserrat Variable", Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #FFFFFF;
+  color: #262626;
+  padding: 48px 24px 96px;
+}
+.page-head { max-width: 700px; margin: 0 auto 40px; }
+.page-title { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+.page-sub { font-size: 14px; color: #808080; margin-top: 8px; line-height: 1.6; }
+.variant { max-width: 700px; margin: 0 auto 56px; }
+.variant-caption { margin-bottom: 12px; }
+.variant-caption .label {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #808080;
+}
+.variant-caption .note { font-size: 13px; color: #808080; margin-top: 4px; line-height: 1.5; }
+/* scale wrapper: 1200x630 canvas at 0.55 → 660 x 346.5 */
+.scale-wrap { width: 660px; height: 346.5px; overflow: hidden; border: 1px solid #E6E6E6; border-radius: 0.75rem; }
+.og {
+  width: 1200px; height: 630px;
+  transform: scale(0.55); transform-origin: top left;
+  background: #1A1A1A; color: #FAFAFA;
+  position: relative;
+  display: flex; flex-direction: column;
+  padding: 64px; /* [ASSUMPTION] canvas-side margins */
+}
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+
+/* upper field */
+.og-upper { flex: 1; display: flex; flex-direction: column; }
+.og-eyebrow {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #808080;
+}
+.og-matchup { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 48px; }
+.og-team { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 340px; }
+.og-team img { width: 200px; height: 200px; object-fit: contain; } /* logos render as-is, no container shape, no treatment */
+.og-abbr { font-size: 64px; font-weight: 700; letter-spacing: 0.06em; line-height: 1; }
+.og-divider { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.og-vs { font-size: 26px; font-weight: 500; letter-spacing: 0.08em; color: #FAFAFA; opacity: 0.72; }
+.og-series-score { font-size: 48px; font-weight: 600; line-height: 1; }
+
+/* lower band */
+.og-band {
+  border-top: 1px solid rgba(250, 250, 250, 0.22); /* hairline rule above, inverted for ink field */
+  padding-top: 28px;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.og-wordmark { font-size: 48px; font-weight: 500; letter-spacing: -0.01em; line-height: 1; }
+.og-tagline { font-size: 20px; font-weight: 400; color: #D4D4D4; }
+
+/* fallback variant: wordmark + tagline only, centered, no teams */
+.og-fallback-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+
+/* safe zone marker — variant (a) only: 1080x540 centered → inset 60px sides / 45px top-bottom */
+.safe-zone {
+  position: absolute; top: 45px; left: 60px; width: 1080px; height: 540px;
+  border: 1px dashed rgba(250, 250, 250, 0.4);
+  pointer-events: none;
+}
+.safe-zone .safe-tag {
+  position: absolute; top: 6px; left: 8px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(250, 250, 250, 0.55);
+}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1 class="page-title">OG card — three variants, one template</h1>
+  <p class="page-sub">1200×630 canvases shown at 0.55 scale. Ink field #1A1A1A, white type, team logos are the only color. Server-rendered per series; the shared link always resolves even if a render fails.</p>
+</header>
+
+<!-- (a) Historic -->
+<section class="variant">
+  <div class="variant-caption">
+    <div class="label">(a) Historic series — 2016 Cavs–Warriors</div>
+    <div class="note">Year + round eyebrow, team blocks with logos and abbreviations, series score in mono, wordmark band. Dashed outline marks the [ASSUMPTION] 1080×540 centered safe zone (verified against platform crops at mock review).</div>
+  </div>
+  <div class="scale-wrap">
+    <div class="og" role="img" aria-label="Cleveland Cavaliers versus Golden State Warriors, 2016 Finals Game 7, Cavaliers win the series 4 games to 3.">
+      <div class="safe-zone"><span class="safe-tag">1080 × 540 safe zone</span></div>
+      <div class="og-upper">
+        <div class="og-eyebrow">GAME 7 · 2016 FINALS</div>
+        <div class="og-matchup">
+          <div class="og-team">
+            <img src="../../../../../public/assets/teams/cavaliers.png" alt="">
+            <div class="og-abbr mono">CLE</div>
+          </div>
+          <div class="og-divider">
+            <div class="og-vs">VS</div>
+            <div class="og-series-score mono">4–3</div>
+          </div>
+          <div class="og-team">
+            <img src="../../../../../public/assets/teams/warriors.png" alt="">
+            <div class="og-abbr mono">GSW</div>
+          </div>
+        </div>
+      </div>
+      <div class="og-band">
+        <div class="og-wordmark">PredictGame7</div>
+        <div class="og-tagline">Where data meets playoff drama</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- (b) Custom matchup -->
+<section class="variant">
+  <div class="variant-caption">
+    <div class="label">(b) Custom matchup</div>
+    <div class="note">Same template, "CUSTOM MATCHUP" eyebrow, no year. No score: the card carries per-series facts, never predictions (AD-6).</div>
+  </div>
+  <div class="scale-wrap">
+    <div class="og" role="img" aria-label="Custom matchup: Miami Heat versus San Antonio Spurs.">
+      <div class="og-upper">
+        <div class="og-eyebrow">CUSTOM MATCHUP</div>
+        <div class="og-matchup">
+          <div class="og-team">
+            <img src="../../../../../public/assets/teams/heat.png" alt="">
+            <div class="og-abbr mono">MIA</div>
+          </div>
+          <div class="og-divider">
+            <div class="og-vs">VS</div>
+          </div>
+          <div class="og-team">
+            <img src="../../../../../public/assets/teams/spurs.png" alt="">
+            <div class="og-abbr mono">SAS</div>
+          </div>
+        </div>
+      </div>
+      <div class="og-band">
+        <div class="og-wordmark">PredictGame7</div>
+        <div class="og-tagline">Where data meets playoff drama</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- (c) Generic fallback -->
+<section class="variant">
+  <div class="variant-caption">
+    <div class="label">(c) Generic fallback</div>
+    <div class="note">Wordmark + tagline only, no teams. Used for unshareable-target URLs and silent OG render failures — the link itself always works.</div>
+  </div>
+  <div class="scale-wrap">
+    <div class="og" role="img" aria-label="PredictGame7 — where data meets playoff drama.">
+      <div class="og-fallback-body">
+        <div class="og-wordmark">PredictGame7</div>
+        <div class="og-tagline">Where data meets playoff drama</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Key Screen Mock — Error &amp; Empty States</title>
+<style>
+/* A11y review overrides (2026-09-25): small text #767676 (never #808080); retry-panel body #595959 on muted; error text #B91C1C; form-control borders #949494; OG eyebrow on ink #8A8A8A. All interactive targets carry 44x44px minimum hit areas (visual may be smaller). Spines win on conflict. */
+/*
+  Spine sections governing this screen:
+  - DESIGN.md · Components · share-button (icon-only ghost on compact; outline with "Share" label in detailed view)
+  - DESIGN.md · Components · retry-panel (muted #F5F5F5 fill, border #E6E6E6, rounded-lg, warning-tile icon, no shadow, inputs preserved)
+  - DESIGN.md · Components · inline-field-error (destructive text under field, text-sm, field border switches to destructive; no alert boxes, no toasts)
+  - DESIGN.md · Components · empty-state (accent icon tile p-2 bg-accent rounded-lg, headline-weight title, one muted line, single onward action)
+  - DESIGN.md · Layout & Spacing · Error/empty states (centered, max-w-md, icon tile → title → one line → one action, never more than one action)
+  - EXPERIENCE.md · Voice and Tone ("Link copied." / "Couldn't load this series." + Retry / "No active series right now — the next Game 7 is coming." / "Every Game 7 has a history")
+  - EXPERIENCE.md · State Patterns (share copy success sonner toast 2s no action button; Flow 1 failure copy for clipboard-blocked fallback)
+  - EXPERIENCE.md · Accessibility Floor (share accessible name "Share this series"; toast in aria-live sonner region; retry panel role="status", Retry first tab stop; inline errors wired aria-describedby)
+  - .memlog.md (clipboard-blocked fallback: "Couldn't copy — long-press the address bar to share.")
+*/
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "Montserrat Variable", Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #FFFFFF; color: #262626; font-size: 16px; line-height: 1.6;
+  padding: 48px 24px 96px;
+}
+.page-head { max-width: 900px; margin: 0 auto 48px; }
+.page-title { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+.page-sub { font-size: 14px; color: #767676; margin-top: 8px; }
+.state-section { max-width: 900px; margin: 0 auto 72px; }
+.mock-tag {
+  display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #767676; background: #F5F5F5; border: 1px solid #E6E6E6; border-radius: 0.375rem;
+  padding: 6px 10px; margin-bottom: 20px;
+}
+.mock-frame { border: 1px solid #E6E6E6; border-radius: 0.75rem; padding: 40px; }
+.mock-caption { margin-top: 16px; font-size: 13px; color: #767676; line-height: 1.5; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #767676; line-height: 1.4; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------- (i) share success + button forms ---------- */
+.share-contexts { display: flex; gap: 40px; flex-wrap: wrap; margin-bottom: 32px; }
+.context-block { flex: 1; min-width: 300px; }
+.context-block .label { display: block; margin-bottom: 12px; }
+.header-fragment {
+  height: 64px; border: 1px solid #E6E6E6; border-radius: 0.5rem;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
+}
+.header-fragment .wordmark { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; }
+.icon-ghost-btn {
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: 0.375rem; cursor: pointer; color: #262626;
+}
+.result-fragment {
+  border: 1px solid #E6E6E6; border-radius: 0.75rem; padding: 20px;
+}
+.result-fragment .result-head { font-size: 14px; font-weight: 500; color: #1A1A1A; }
+.result-fragment .result-num { font-size: 24px; font-weight: 600; color: #1A1A1A; margin-top: 4px; }
+.btn-outline {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;
+  background: #FFFFFF; color: #1A1A1A; border: 1px solid #E6E6E6; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500;
+  padding: 8px 16px; border-radius: 0.375rem;
+}
+/* sonner-style toasts, pinned bottom-right of a fake viewport */
+.viewport {
+  position: relative; height: 300px; border: 1px solid #E6E6E6; border-radius: 0.5rem;
+  background: #FFFFFF; overflow: hidden;
+}
+.viewport .viewport-hint { position: absolute; top: 12px; left: 16px; }
+.toast-region { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column-reverse; gap: 12px; width: 340px; }
+.toast {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: #FFFFFF; border: 1px solid #E6E6E6; border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(26, 26, 26, 0.10);
+  padding: 14px 16px; font-size: 14px; color: #262626; line-height: 1.45;
+}
+.toast svg { flex: none; margin-top: 2px; color: #1A1A1A; }
+.toast .toast-note { display: block; font-size: 11px; color: #767676; margin-top: 4px; letter-spacing: 0.02em; }
+
+/* ---------- (ii) retry panel ---------- */
+.retry-layout { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+.retry-panel {
+  flex: 1; min-width: 300px;
+  background: #F5F5F5; border: 1px solid #E6E6E6; border-radius: 0.5rem; /* muted fill, no shadow, rounded-lg */
+  padding: 24px;
+}
+.warning-tile {
+  width: 40px; height: 40px; border-radius: 0.5rem; background: #F0F0F0;
+  display: flex; align-items: center; justify-content: center; color: #B45309;
+  margin-bottom: 16px;
+}
+.retry-panel h3 { font-size: 16px; font-weight: 500; color: #1A1A1A; }
+.retry-panel p { font-size: 14px; color: #595959; margin-top: 4px; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 16px;
+  background: #1A1A1A; color: #FAFAFA; border: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 500;
+  padding: 9px 18px; border-radius: 0.375rem;
+}
+.mini-form { flex: 1; min-width: 300px; }
+.mini-form .label { display: block; margin-bottom: 12px; }
+.field + .field { margin-top: 16px; }
+.field-label { display: block; font-size: 14px; font-weight: 500; color: #1A1A1A; margin-bottom: 6px; }
+.select-box {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid #949494; /* form-control boundary >=3:1 */ border-radius: 0.375rem; background: #FFFFFF;
+  padding: 9px 12px; font-size: 14px; color: #262626;
+}
+.select-box .chev { color: #767676; }
+
+/* ---------- (iii) inline field error ---------- */
+.inline-form { max-width: 380px; }
+.field-input {
+  display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid #DC3C3C; /* border switches to destructive */
+  border-radius: 0.375rem; background: #FFFFFF; padding: 9px 12px;
+  font-size: 14px; color: #767676;
+}
+.field-error { font-size: 14px; /* text-sm */ color: #B91C1C; margin-top: 6px; }
+
+/* ---------- (iv) empty state ---------- */
+.empty-state { max-width: 448px; /* max-w-md */ margin: 0 auto; text-align: center; }
+.accent-tile {
+  display: inline-flex; padding: 8px; /* p-2 */ background: #F0F0F0; border-radius: 0.5rem; /* rounded-lg */
+  color: #1A1A1A; margin-bottom: 16px;
+}
+.empty-state h3 { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; color: #1A1A1A; }
+.empty-state p { color: #767676; margin-top: 8px; }
+.empty-state a { display: inline-block; margin-top: 20px; color: #1A1A1A; font-weight: 500; text-decoration: none; border-bottom: 1px solid #E6E6E6; padding-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1 class="page-title">Error &amp; empty states — four patterns</h1>
+  <p class="page-sub">All copy voice-checked against EXPERIENCE.md · Voice and Tone. Error copy names what failed and what happens next; empty states always offer one onward path.</p>
+</header>
+
+<!-- ======= (i) SHARE SUCCESS ======= -->
+<section class="state-section">
+  <span class="mock-tag">(i) Share success — sonner toasts + both button forms</span>
+  <div class="mock-frame">
+    <div class="share-contexts">
+      <div class="context-block">
+        <span class="label">Icon-only ghost — series header, compact widths</span>
+        <div class="header-fragment">
+          <span class="wordmark">Cavaliers vs Warriors · 2016</span>
+          <button type="button" class="icon-ghost-btn" aria-label="Share this series">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="context-block">
+        <span class="label">Outline with label — Predict detailed result</span>
+        <div class="result-fragment">
+          <div class="result-head">Model probability — Cavaliers in 7</div>
+          <div class="result-num mono">51.8%</div>
+          <button type="button" class="btn-outline" aria-label="Share this series">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="viewport" aria-hidden="true">
+      <span class="label viewport-hint">Viewport — toasts pinned bottom-right</span>
+      <div class="toast-region">
+        <div class="toast">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Link copied.<span class="toast-note">Success toast · 2s, no action button</span></span>
+        </div>
+        <div class="toast">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Couldn't copy — long-press the address bar to share.<span class="toast-note">Fallback toast · clipboard API blocked; the URL is always in the address bar, the share never dead-ends</span></span>
+        </div>
+      </div>
+    </div>
+    <p class="mock-caption">One Share button, one code path: <code>navigator.share</code> where available (the platform confirms, no toast), clipboard fallback everywhere. Toasts fire in the sonner region already wired as <code>aria-live</code>; the icon-only form keeps its accessible name "Share this series".</p>
+  </div>
+</section>
+
+<!-- ======= (ii) RETRY PANEL ======= -->
+<section class="state-section">
+  <span class="mock-tag">(ii) Retry panel — series fetch failure</span>
+  <div class="mock-frame">
+    <div class="retry-layout">
+      <div class="retry-panel" role="status">
+        <div class="warning-tile">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h3>Couldn't load this series.</h3>
+        <p>Retry re-fires the same request; a second failure re-renders this panel — never an infinite spinner.</p>
+        <button type="button" class="btn-primary">Retry</button>
+      </div>
+      <div class="mini-form">
+        <span class="label">Adjacent form — inputs preserved</span>
+        <div class="field">
+          <label class="field-label" for="team-a">Team A</label>
+          <div class="select-box" id="team-a">Cleveland Cavaliers <span class="chev" aria-hidden="true">▾</span></div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="team-b">Team B</label>
+          <div class="select-box" id="team-b">Golden State Warriors <span class="chev" aria-hidden="true">▾</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="mock-caption">Persistent <code>muted</code> panel replacing the failed content region in place (not a toast); the hero skeleton stays so the page frame is stable. Panel carries <code>role="status"</code> and announces on appearance; Retry is the first tab stop inside it. A failed fetch never clears the form.</p>
+  </div>
+</section>
+
+<!-- ======= (iii) INLINE FIELD ERROR ======= -->
+<section class="state-section">
+  <span class="mock-tag">(iii) Inline field error — Predict custom form</span>
+  <div class="mock-frame">
+    <div class="inline-form">
+      <div class="field">
+        <label class="field-label" for="team-select">Team</label>
+        <div class="field-input" id="team-select" aria-describedby="team-select-error" aria-invalid="true">Select a team <span class="chev" style="color:#767676;" aria-hidden="true">▾</span></div>
+        <p class="field-error" id="team-select-error">Pick a team to continue</p>
+      </div>
+    </div>
+    <p class="mock-caption">Destructive text under the field (<code>text-sm</code>) with <code>aria-describedby</code> wiring — the error is announced with the field, not just visually placed. The field border switches to destructive; it appears on submit (not keystroke) and clears on valid re-submit. No alert boxes, no toasts for validation.</p>
+  </div>
+</section>
+
+<!-- ======= (iv) EMPTY STATE ======= -->
+<section class="state-section">
+  <span class="mock-tag">(iv) Empty state — empty Active list (Home / Historical)</span>
+  <div class="mock-frame">
+    <div class="empty-state">
+      <div class="accent-tile">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <h3>No active series right now</h3>
+      <p>— the next Game 7 is coming.</p>
+      <a href="#">Every Game 7 has a history →</a>
+    </div>
+    <p class="mock-caption">Shared pattern: accent icon tile (<code>p-2 bg-accent rounded-lg</code>, matching Insights tiles) → headline-weight title → one helpful line in muted-foreground → single onward link to the Historical archive. Never a dead end, never more than one action. Offseason empty Insights reuses the same pattern with its own onward link.</p>
+  </div>
+</section>
+
+</body>
+</html>
