@@ -2,9 +2,10 @@
 title: 'Story 1.1 — Toolchain foundation: Vite 8 + Vitest + CI gate'
 type: 'chore'
 created: '2026-09-25'
-status: 'draft'
+status: 'done'
+baseline_commit: '29e0caf7256e7d64bba73b9558ae3fd06c56e8b9'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 1
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/AGENTS.md'
@@ -16,7 +17,7 @@ context:
 
 **Problem:** The build runs on the deprecated `rolldown-vite` shim (`vite: "npm:rolldown-vite@latest"`, currently resolving to rolldown-vite 7.3.1) with a floating `latest` specifier, and the repo has zero test infrastructure — every later story needs a regression suite and a CI gate that doesn't exist yet.
 
-**Approach:** Move to supported `vite@^8` (Rolldown-powered, same engine — behavior-preserving), add Vitest with a harness-proving smoke suite, and add a GitHub Actions workflow running lint + typecheck + test + build on push. Toolchain-only: zero user-visible behavior change.
+**Approach:** Move to supported `vite@^8` (Rolldown-powered, same engine — behavior-preserving), add Vitest with a harness-proving smoke suite, and add a GitHub Actions workflow running lint + test + build on push. Typecheck is deliberately **not** a CI step in this story — 33 pre-existing errors would make an advisory step a fake gate; Story 1.2 owns making `npx tsc -b` green and adding it as a blocking step. Toolchain-only: zero user-visible behavior change.
 
 ## Boundaries & Constraints
 
@@ -25,63 +26,93 @@ context:
 - Node compatibility: Vite 8.3.1 requires `^20.19.0 || >=22.12.0`; CI must pick a satisfying Node.
 - Verification gate before "done": `npm run build` passes, Biome lint clean, Vitest green.
 - Tailwind stays v3 — do not touch.
+- Delete the dead Miaoda dev wrapper `vite.config.dev.ts` (owner decision 2026-09-25): nothing in scripts or `src/` references it, `miaoda-sc-plugin` is not installed, and any tooling globbing `vite.config*` would break on it under Vite 8.
+- Ship the DOM component-test stack in this story (owner decision 2026-09-25) so a Vite 8 / jsdom / testing-library incompatibility surfaces now, off-peak, rather than under release pressure in Story 1.4.
 
 **Never:**
-- No new React/component test dependencies unless the owner opts in (see Open Questions) — Story 1.4 adds real regression tests.
 - No changes to prediction logic, contracts (`_shared/contract.ts` is Story 1.2), or any `src/` behavior.
 - No deploys (`predeploy`/`deploy`) — owner-authorized only.
 - Do not import `posthog-js` or build analytics layers here.
+- Do not build the regression suite itself — this story only proves the harness works.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| Fresh install | `rm -rf node_modules && npm ci` on lockfile with vite@^8 | install succeeds, only npm-native optional platform binding present | n/a |
-| Production build | `npm run build` | dist output succeeds with rolldown-based Vite 8; base `/predictgame7/` intact in asset URLs | build failure blocks |
+| Fresh install | `npm ci` on lockfile with vite@^8 | install succeeds; no `rolldown-vite` in the tree; npm picks the platform binding itself | peer-resolution failure blocks |
+| Production build | `npm run build` | dist output succeeds on Rolldown-powered Vite 8; base `/predictgame7/` intact in asset URLs | build failure blocks |
 | Dev server | `npm run dev` | serves at basename `/predictgame7/`, loads `.env`/`.env.local` as before | n/a |
-| Test run | `npm test` | smoke tests pass, exit 0 | failing test → non-zero exit → CI red |
-| CI without env | workflow runs with no Supabase/PostHog secrets | lint/typecheck/test/build all pass using committed `.env` public anon values; no secret needed | n/a |
+| Pure-logic test | `npm test` | Node-environment smoke tests pass, exit 0 | failing assertion → non-zero exit → CI red |
+| Component test | `npm test`, jsdom file | React renders under jsdom, jest-dom matcher asserts on it | missing peer/setup error surfaces in same run |
+| CI without secrets | workflow runs with no repo secrets configured | lint/test/build all pass and block on red — no secrets needed, client-visible values only | n/a |
+| Typecheck at baseline | `npx tsc -b` on this story's final state | 33 **pre-existing** errors in untouched app files; zero in this story's files | Typecheck is not a CI step in 1.1; it lands as a blocking step in Story 1.2 (owner decision 2026-09-25) |
 
 </frozen-after-approval>
-
-## Open Questions
-
-- **Dead Miaoda artifact `vite.config.dev.ts`** (tracked; imports `miaoda-sc-plugin` which is not even installed; no script references it) — delete it (removes a landmine: any tooling globbing `vite.config*` can pick it up, and it will break the moment Vite 8 re-loads it) / keep untouched (zero risk today since nothing references it).
-- **DOM component-test deps now or at Story 1.4?** — `vitest` only, smoke tests are pure-Node (smallest diff, 1.4 reopens the lockfile anyway) / add `@testing-library/react` + `jsdom` + `@vitejs/plugin-react` test setup now (1.4 lands faster, but unused deps ship in the gate story).
 
 ## Code Map
 
 - `package.json` — scripts (build/dev/preview/predeploy/deploy/lint); devDeps: `vite` shim line 94, `@rolldown/binding-win32-x64-msvc` line 80 (both removed/changed), Biome 2.4.5, TS ~5.9.3, `@vitejs/plugin-react ^5.1.4`.
 - `package-lock.json` — rolldown-vite 7.3.1 resolution; regenerated by npm on dependency change.
-- `vite.config.ts` — react()+svgr(), `@`→./src alias, `base: '/predictgame7/'`; **no changes expected**.
-- `vite.config.dev.ts` — Miaoda-platform wrapper, dead (see Open Questions).
+- `vite.config.ts` — react()+svgr(), `@`→./src alias, `base: '/predictgame7/'`; **no changes expected**. `vite-plugin-svgr@4.5.0` peers `vite >=3.0.0`, so it is Vite 8-safe as-is.
+- `vite.config.dev.ts` — dead Miaoda wrapper (tracks `miaoda-sc-plugin`, not installed) — to be deleted per the frozen decision.
 - `tsconfig.app.json` — `include: ["src"]`, strict, odd `typeRoots: ["./node_modules/**/*"]`; test files under `src/` get typechecked here — avoid `describe`/`it` globals (import from `vitest`) so no `types` churn is needed.
 - `tsconfig.check.json` — already excludes `src/**/*.test.ts`/`*.spec.ts` from its check surface.
 - `.github/workflows/keepalive.yml` — existing scheduled workflow proving Actions is enabled; uses `actions/checkout@v5`, `ubuntu-latest`. New CI workflow must not disturb it.
-- `src/lib/nba-utils.ts` — pure functions for smoke tests: `getTeamAbbreviation` (full name/nickname/abbreviation → abbr, fallback `'TBD'`), `getRoundImportance`.
-- `.env` — untracked but gitignored; contains only public `VITE_*` values (anon key, PostHog project key). No committed secrets (verified).
+- `src/lib/nba-utils.ts` — pure functions for smoke tests. Corrected during implementation: `getTeamAbbreviation` has **no** literal `'TBD'` branch (blank → `''`; the `|| 'TBD'` fallback lives in `PredictPage.tsx`) and no nickname map (`'Celtics'` → `'CEL'` by truncation). `getRoundImportance` has a latent ordering quirk worth the Story 1.4 catalog: bare `'Semifinals'` matches a `finals` branch and returns 4, so the `→ 2` branch only fires for pipeline-shaped strings like `'East Conf Semifinals'`.
+- `.env` — gitignored and untracked; holds only client-visible `VITE_*` values (anon key, PostHog project key). No committed secrets anywhere (verified with `git ls-files`). `.gitignore` line 86 ignores `.env` but **not** `.env.local`, where AGENTS.md says local secrets live.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `package.json` -- replace `"vite": "npm:rolldown-vite@latest"` with `"vite": "^8.3.1"`; remove `@rolldown/binding-win32-x64-msvc` devDep; add `vitest@^4.1.11` devDep (+ `jsdom`, `@testing-library/react` if opted in); add `"test": "vitest run"` script -- explicit carets kill the floating `latest`.
-- [ ] `package-lock.json` -- regenerate via `npm install`; verify no `rolldown-vite` remains and install is npm-native (`npm ls vite`).
-- [ ] `vitest.config.ts` (new, repo root) -- `defineConfig` from `vitest/config`: environment `node`, include `src/**/*.test.ts`, `@` alias matching `vite.config.ts`. Keep the `test` block tiny.
-- [ ] `src/lib/__tests__/nba-utils.test.ts` (new) -- explicit `import { describe, it, expect } from 'vitest'`; cover `getTeamAbbreviation` (known team, nickname, unknown fallback) and one `@/` alias import to prove resolution; if DOM deps opted in, one render smoke test.
-- [ ] `.github/workflows/ci.yml` (new) -- `on: push` (branches: master) + `pull_request`; `ubuntu-latest`, Node matrix single version satisfying Vite 8 engines (22.x LTS), `npm ci` → `npm run lint` → `npx tsc -b` → `npm test` → `npm run build`.
-- [ ] `vite.config.dev.ts` -- delete **only if** owner approves (Open Question 1).
+- [x] `package.json` -- replace `"vite": "npm:rolldown-vite@latest"` with `"vite": "^8.3.1"` and bump `"@vitejs/plugin-react"` from `^5.1.4` to `^5.2.0` -- 5.1.x peer-declares `vite ^4–^7`, so npm's strict peer resolution rejects Vite 8; 5.2.0 is the first release adding `|| ^8.0.0` (verified via `npm view`). Remove `@rolldown/binding-win32-x64-msvc` (Vite 8 pulls its own native binding as an optional dep). Add devDeps `vitest@^4.1.11`, `jsdom@^30.1.1`, `@testing-library/react@^16.3.3`, `@testing-library/dom@^10.4.2` (peer of RTL 16, not auto-installed), `@testing-library/jest-dom@^7.0.1`. Add `"test": "vitest run"` and `"test:watch": "vitest"` scripts.
+- [x] `package-lock.json` -- regenerate via `npm install`; verify no `rolldown-vite` remains (`npm ls vite`).
+- [x] `vitest.config.ts` (new, repo root) -- build the test graph by merging `vite.config.ts`'s default export with `mergeConfig` from `vite`, so plugins (react + svgr) and the whole `resolve.alias` set are inherited rather than copied; local `test` block only: default `environment: 'node'`, `include: ['src/**/*.test.{ts,tsx}']`, `setupFiles: ['./src/test/setup.ts']`. Component tests opt into jsdom per-file with the `// @vitest-environment jsdom` docblock so the cheap tests stay fast. *(Amended after review — original text asked for a hand-copied alias, which guaranteed drift and a Story 1.4 `.svg` break.)*
+- [x] `src/test/setup.ts` (new) -- `import '@testing-library/jest-dom/vitest'` and `cleanup` after each test. Nothing else.
+- [x] `src/lib/__tests__/nba-utils.test.ts` (new) -- explicit `import { describe, it, expect } from 'vitest'`; cover `getTeamAbbreviation` (full name, nickname, abbreviation, unknown → `'TBD'`) and import one thing via `@/` to prove alias resolution in the test graph.
+- [x] `src/lib/__tests__/render-smoke.test.tsx` (new) -- `// @vitest-environment jsdom` docblock; render a tiny inline component and assert `toBeInTheDocument()` plus a `getByRole` query, proving React 18 + RTL + jsdom + jest-dom wire together under Vite 8. This is harness proof, not a regression test.
+- [x] `.github/workflows/ci.yml` (new) -- `on: push` (branches: master) + `pull_request`; `ubuntu-latest`, Node `22.x` (satisfies Vite 8's `^20.19.0 || >=22.12.0`), steps: `actions/checkout@v5` → `actions/setup-node@v4` with npm cache → `npm ci` → `npm run lint` → `npm test` → `npm run build`. No typecheck step (see the amended matrix row + `deferred-work.md`).
+- [x] `vite.config.dev.ts` -- delete (owner decision 2026-09-25).
+- [x] `.gitignore` -- add `.env.local` (and `.env.*.local`). Verified gap: only `.env` is ignored today, yet AGENTS.md puts local secrets in `.env.local` -- the same leak class as issue #1.
 
 **Acceptance Criteria:**
 - Given a clean checkout, when `npm ci && npm run build`, then build succeeds on Vite 8 with base `/predictgame7/` preserved in `dist/index.html`.
-- Given `npm test`, when the smoke suite runs, then it exits green and fails when an assertion is broken.
-- Given a push, when CI runs, then lint+typecheck+test+build all execute and a red test blocks (visible in Actions).
+- Given `npm test`, when the suite runs, then both the Node-environment and jsdom-environment smoke files execute and pass, and breaking an assertion turns the run red.
+- Given a push, when CI runs, then lint+test+build all execute and a red test blocks (visible in Actions). Typecheck is out of this story's gate by owner decision; Story 1.2 inherits adding it as a blocking step.
 - Given `npm run dev`, when the app loads, then prediction flow behavior is unchanged (spot-check one prediction).
 
 ## Implementation Notes
 
+- Verified on the final state by the orchestrator, not only the implementer: `npm test` → 8 passed across both environments (`nba-utils.test.ts` on node, `render-smoke.test.tsx` on jsdom); `npm run lint` → clean, 86 files; `npm run build` → succeeds on Vite 8.3.1 with `/predictgame7/` asset base; `npm ls vite` → `vite@8.3.1`, no `rolldown-vite`.
+- Gate-blocking proved, not assumed: a throwaway failing assertion was added, `npm test` exited `1`, and the probe file was deleted. This is why the CI step is trusted to block on red.
+- `npx tsc -b` → 33 errors, distribution `PredictPage.tsx` 24, `ui/video.tsx` 3, `HistoricalPage.tsx` 2, `MathsPage`/`InsightsPage`/`ui/sidebar.tsx`/`ui/qrcodedataurl.tsx` 1 each. Zero originate in this story's files.
+- Vite 8 prints a `__dirname`/`configLoader: 'native'` warning on every vitest run; harmless today, deferred with the config one-liner.
+- Acceptance criterion 4 verified in a real browser, not assumed: dev server served `http://localhost:5173/predictgame7/`, 2016 Finals series loaded with all six real game logs, Bayes method selected, prediction ran against the live Edge Function and returned **CLE 62% / GSW 38%** with zero console errors. Behavior unchanged from the rolldown-vite build.
+- The spot-check surfaced a pre-existing label bug (Method card reads "Not selected" after choosing Bayes — `bayesian` vs `bayes` in `getMethodLabel`). Logged to `deferred-work.md` as contract drift owned by Story 1.2; not a toolchain regression.
 ## Spec Change Log
 
+- 2026-09-25 (implementation): CI typecheck step `npx tsc -b` ships with `continue-on-error: true`. Reality check at baseline: 33 pre-existing type errors in untouched `src/` files (local `PredictionMethod` union in `PredictPage.tsx` says `'bayesian'` while the code uses `'bayes'`; `PredictionResult` lacks `predicted_winner`; missing `@types/qrcode`; shadcn `ui/` drift). `tsconfig.check.json` is no cleaner (26 errors). Fixing these is Story 1.2's declared scope ("stale frontend unions get deleted, not mapped") and is blocked here by the frozen "no `src/` behavior changes" boundary — so a blocking `tsc -b` in 1.1 would make every push red for reasons this story must not fix. Owner call needed: flip to blocking in Story 1.2.
+- 2026-09-25 (implementation): Smoke-test assertions follow actual util behavior where the spec's shorthand drifted from the code. `getTeamAbbreviation` has no literal `'TBD'` branch (blank input → `''`; `PredictPage.tsx` renders `|| 'TBD'`) and no nickname→abbreviation map (`'Celtics'` → `'CEL'` via truncation); tests assert that and comment it. Found latent quirk for the 1.4 catalog: `getRoundImportance('Semifinals')` returns 4 (bare "semifinals" contains "finals"), so the `'semifinals' → 2` branch only fires for strings that also contain `'conf'`-excluded… effectively only e.g. `'East Conf Semifinals'` after the finals branches miss; test uses pipeline-shaped strings.
+
+- 2026-09-25 (owner decision, supersedes the `continue-on-error` entry above): the typecheck step is **removed** from `ci.yml` rather than shipped advisory — a step that cannot fail is a fake gate. Story 1.2 gains an explicit exit condition (`npx tsc -b` exits 0, then CI adds the step as blocking), which owns all 33 baseline errors including the 6 that its contract scope does not explain (recorded in `deferred-work.md`). Frozen matrix row "CI without secrets" and the third acceptance criterion were amended by the owner to match; `Verification` now states the 33-error expectation explicitly.
+
+- 2026-09-25 (review loop 1, patches applied): two review-confirmed defects fixed without touching the frozen block. (a) `vitest.config.ts` hand-copied the `@` alias and omitted the app's svgr plugin, which would have broken any Story 1.4 component test rendering an `.svg`-importing surface and let the two configs drift — now merged from `vite.config.ts` via `mergeConfig`, proven by a throwaway `.svg?react` jsdom test that passes merged and fails unmerged. (b) `predeploy` ran lint+build only, so the release path could publish a red suite (CI fires after push, i.e. after publish) — the suite is now in the chain. KEEP: the two-layer environment split (node default, per-file jsdom docblock), the blocking-not-advisory gate philosophy, the live browser spot-check, and the `.gitignore` secret fix. Avoided: re-declaring app config in the test config, and any CI step that cannot fail.
+
+- 2026-09-25 (owner decision, review loop 1): frozen **Approach** sentence amended — it still claimed the workflow runs "lint + typecheck + test + build", which decision B made false. Now reads lint + test + build and names Story 1.2 as the owner of a blocking `npx tsc -b`. Authorized by the owner explicitly; no other frozen text changed and no code re-derived (the shipped `ci.yml` already matched the decision).
+
 ## Review Triage Log
+
+| # | Finding (layer) | Verdict | Evidence & route |
+|---|-----------------|---------|------------------|
+| 1 | `vitest.config.ts` hand-copied the `@` alias, so the test graph lacked the svgr plugin the app actually uses (blind-hunter) | **medium** → patched | Confirmed: `src/pages/NotFound.tsx` imports `.svg`; Story 1.4 renders components through this harness, so a copied alias guaranteed a future break plus silent drift. Fixed via `mergeConfig(viteConfig, …)`; implementer proved inheritance with a throwaway `.svg?react` jsdom test that passed merged and failed unmerged. |
+| 2 | New `test` gate absent from the publish path — `predeploy` was lint+build (blind-hunter, edge-case-hunter, verification-gap — one root cause, three layers) | **medium** → patched | Verified real: AGENTS.md defines `predeploy`/`deploy` as the only release route, and CI fires after the push, i.e. after publish. `predeploy` is now `npm run lint && npm run test && npm run build`. |
+| 3 | Frozen Intent prose still says the workflow runs "lint + **typecheck** + test + build", contradicting the shipped CI (edge-case-hunter) | **high** → intent_gap → **resolved by owner** | Root cause was inside `<frozen-after-approval>`, so it was escalated rather than agent-edited. The owner authorized the one-clause amendment: the Approach sentence now reads lint + test + build and names Story 1.2 as the owner of a blocking `npx tsc -b`. No code re-derived — `ci.yml` already matched decision B. See the matching Spec Change Log entry. |
+| 4 | `getRoundImportance` vocabulary gaps: bare `'Semifinals'` → 4, `'Conference Finals'` → 0; no test pins either (blind-hunter) | **medium**, pre-existing → deferred | Verified against `src/lib/nba-utils.ts:49-56`: line 51's `!r.includes('conf')` guard is defeated by "con**fer**ence", so `'Conference Finals'` falls through to 0, and `'Semifinals'` hits the finals branch → 4. `nba-utils.ts` is untouched by this story, so it is not this story's defect. Two `deferred-work.md` entries (this adds the second) route both to Story 1.4's issue-#3 catalog. |
+| 5 | AGENTS.md verification-gate line and stack line are now stale (no Vitest; still says `rolldown-vite`) (blind-hunter) | **low** → deferred | True and caused-by-exposure in this change, but the fix edits an agent-context file, which the routing rules exclude from patch. Deferred so the doc matches the toolchain at the next standing-doc touch. |
+| 6 | Lockfile absent from the reviewed diff, so `npm ci` would fail (blind-hunter, verification-gap) | **false** | The diff was filtered with `:(exclude)package-lock.json` to keep reviewer context small — an artifact of how I staged it, not of the change. The lockfile is modified in the working tree and two layers independently confirmed it holds `vite ^8.3.1`/`vitest ^4.1.11` and zero `rolldown-vite`. Carried forward as a commit rule: lockfile lands in the same commit as `package.json`. |
+| 7 | `ci.yml`'s comment cites `deferred-work.md`, which is "not in the diff" (blind-hunter) | **false** | Same exclusion confusion — `deferred-work.md` is part of this change set (untracked, in `git status`) and will be committed with it. Nothing dangles. |
+| 8 | `src/test/setup.ts` imports RTL/jest-dom into `environment: 'node'` tests, assuming a DOM (blind-hunter) | **low** → rejected | Reproduced the opposite: 8/8 green including the node-environment file, because RTL's `cleanup()` is a no-op with no containers and matcher registration needs no DOM. The fix (per-environment setup split) adds machinery against a failure that cannot be demonstrated. |
+| 9 | No `engines` field enforcing the Vite 8 Node floor; no `timeout-minutes`/`concurrency` on the job (blind-hunter) | **low** → rejected | `engines` is not enforced by npm without `engine-strict`, so adding it would be a decorative gate — the exact reasoning that removed the advisory `tsc` step. Owner runs Node 24.18; CI pins 22.x. |
+| 10 | Story files enter untypechecked; React 18 vs `@types/react` 19 drift is noted only in a comment (blind-hunter) | **false** as new work | The typecheck absence is decision B, already owned by Story 1.2's exit condition. The `react ^18` / `@types/react ^19.2.2` drift predates this story and is inside the 33-error set already assigned there. |
 
 ## Verification
 
@@ -90,5 +121,5 @@ context:
 - `npm run build` -- expected: success; `dist/index.html` asset URLs start with `/predictgame7/`.
 - `npm test` -- expected: smoke suite green.
 - `npm run lint` -- expected: Biome clean including new test/config files.
-- `npx tsc -b` -- expected: no type errors across app+node configs.
+- `npx tsc -b` -- expected: the same 33 pre-existing errors as baseline and **zero** from this story's files (`vitest.config.ts`, `src/test/setup.ts`, both test files). Not a CI step in 1.1.
 - `npm run dev` then load app -- expected: served under `/predictgame7/`, one prediction runs end-to-end.

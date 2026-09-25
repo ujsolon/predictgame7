@@ -202,6 +202,7 @@ so that the frontend and Edge Function can never disagree about method slugs or 
 **And** all four methods remain selectable and produce identical results to pre-refactor (behavior-preserving; verified against a historical series and a custom matchup)
 **And** Maths page formulas still match the function implementation (FR-15 sync check)
 **And** `npm run build` + Biome + Vitest suite green
+**And** `npx tsc -b` exits 0 — clearing the 33 type errors that pre-date Story 1.1 (27 contract-rooted in `PredictPage.tsx`/`HistoricalPage.tsx`, plus 6 typing-drift cases listed in `_bmad-output/implementation-artifacts/deferred-work.md`: `@types/qrcode`, `useIsMobile` export, `video.tsx` `Player` ×3, two unused imports) — and the blocking `- run: npx tsc -b` step is added to `.github/workflows/ci.yml` between lint and test, replacing the comment that explains its absence
 
 ### Story 1.3: Error states that never lose your place (FR-8)
 

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          # Vite 8 engines: ^20.19.0 || >=22.12.0
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # `npx tsc -b` is deliberately not a step here: 33 pre-existing type
+      # errors in untouched app files (stale prediction unions, shadcn/vendor
+      # typing drift) make it permanently red today, and a step that can never
+      # fail is a fake gate. Story 1.2 adds it as a blocking step once it
+      # exits 0 — see _bmad-output/implementation-artifacts/deferred-work.md.
+
+      - run: npm test
+
+      - run: npm run build
