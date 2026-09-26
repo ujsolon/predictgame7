@@ -13,7 +13,7 @@ export default mergeConfig(
       // Cheap pure-logic tests stay on Node; component tests opt into jsdom
       // per-file with the `// @vitest-environment jsdom` docblock.
       environment: "node",
-      include: ["src/**/*.test.{ts,tsx}"],
+      include: ["src/**/*.{test,spec}.{ts,tsx}", "tests/**/*.{test,spec}.{ts,tsx}"],
       setupFiles: ["./src/test/setup.ts"],
     },
   })

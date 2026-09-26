@@ -123,3 +123,22 @@ context:
 - `npm run lint` -- expected: Biome clean including new test/config files.
 - `npx tsc -b` -- expected: the same 33 pre-existing errors as baseline and **zero** from this story's files (`vitest.config.ts`, `src/test/setup.ts`, both test files). Not a CI step in 1.1.
 - `npm run dev` then load app -- expected: served under `/predictgame7/`, one prediction runs end-to-end.
+
+### Review Findings
+
+- [x] [Review][Patch] Preserve the existing Node floor by pinning jsdom to a compatible release. jsdom 26.1.0 is installed and the lockfile is regenerated; its installed engine declaration supports Node 18 and later. [package.json:95]
+- [x] [Review][Patch] Build verification now asserts the required `/predictgame7/` base path with a cross-platform post-build script. [package.json:6; scripts/verify-build-base.mjs:1]
+- [x] [Review][Patch] Vitest now discovers `.test` and `.spec` files under `src/` and `tests/` without pulling Supabase function tests into the Vite test graph. [vitest.config.ts:16]
+- [x] [Review][Patch] CI now declares read-only `contents` permission for `GITHUB_TOKEN`. [.github/workflows/ci.yml:8]
+- [x] [Review][Defer] Vite 8 emits a native-loader warning for the shared `__dirname` path expression. Current Vite 8 runs successfully and only warns; replace it with `import.meta.dirname` when either config is next touched. [vite.config.ts:20; vitest.config.ts:3]
+
+#### Rejected
+
+- [Review][False] CI's `node-version: 22.x` does not guarantee the jsdom floor. The current Node 22.x runner satisfies the pinned jsdom engine and the clean workflow run passed.
+- [Review][False] Global DOM setup breaks Node tests. The Node-environment suite passed; RTL cleanup is a no-op without DOM containers.
+- [Review][False] Omitting typecheck leaves the new test files unvalidated. The owner explicitly assigned the blocking typecheck to Story 1.2 because the baseline has 33 errors.
+- [Review][Low] No permanent SVG smoke case. The merged app config inherits SVGR and the current harness/build pass; another harness-only test is unnecessary for this story's acceptance.
+- [Review][Low] Mutable GitHub Action major tags. This is supply-chain hardening with no demonstrated failure in the reviewed change.
+- [Review][False] Story metadata is contradictory because the spec is done while sprint status is review. Implementation completion and pending code review are distinct workflow states.
+- [Review][False] The unknown-team test lacks a nonblank unknown name. The utility has no specified unknown-name fallback; nonblank custom names intentionally derive abbreviations.
+- [Review][False] Windows support is unverified. The Vite 8 build, lint, and Vitest suite were run successfully on the Windows workspace.
