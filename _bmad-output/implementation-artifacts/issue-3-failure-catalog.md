@@ -13,8 +13,11 @@ FR-8 error state** (Story 1.3 shipped the handling; its suite pins the copy),
 **closed by Story 1.2** (settled before this story; Story 1.4 adds the render
 pass its `deferred-work.md` entry promised). Where a row carries two
 dispositions, they are named per clause. All `file:line` pins are as of this
-story's commit (`git show --stat` on the Story 1.4 commit), not the pre-story
-tree — the page edits here shift later lines by a few.
+story's commit `32e36e8` — reproduce any pin with `git show 32e36e8:<path>`
+(`git show --stat` prints only the diffstat, no line content). They are not
+the pre-story tree and not HEAD: the page edits here shift later lines by a
+few, and the landed Story 1.2/1.3 external reviews (`e2e6140`, `890fbf1`)
+shifted `PredictPage.tsx` and its error-state suite again after this commit.
 
 Spec: `spec-1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30.md`
 (Decisions 1–4). All test names below are exact.
@@ -200,8 +203,10 @@ Spec: `spec-1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30.md`
   issue #3's "error states" area.
 - **Disposition:** **owned by an FR-8 error state.** Story 1.3 shipped the
   classifier (`src/lib/error-envelope.ts`), the retry panel and the picker /
-  preload / result panels; its 11 tests in
-  `src/pages/__tests__/predict-error-states.test.tsx` pin the copy. Story 1.4
+  preload / result panels; its page tests in
+  `src/pages/__tests__/predict-error-states.test.tsx` pin the copy (11 at
+  this story's commit; 13 at HEAD once the landed 1.3 external review added
+  its two race-patch tests). Story 1.4
   deliberately does not re-derive them; it reuses the same harness
   (`src/pages/__tests__/helpers.tsx` now holds the shared mock-and-helper
   plumbing both suites import).

@@ -46,9 +46,13 @@ export const getTeamAbbreviation = (name: string): string => {
   return trimmedName.substring(0, 3).toUpperCase();
 };
 
-// Story 1.4 (issue #3): branch ORDER is the fix. 'Semifinals' contains
-// 'finals' and 'Conference' contains 'conf', so the semifinal and conference
-// branches must run before the bare-finals branch. Every value the pipeline
+// Story 1.4 (issue #3): branch order AND the conference predicate are the
+// fix. 'Semifinals' contains 'finals', so the semifinal branch must run
+// before the bare-finals branch; and no ordering of the old predicate
+// `includes('conf finals')` matches 'Conference Finals' (lowercased it reads
+// 'conference finals'), so the conference branch tests
+// `includes('conf') && includes('finals')` and also runs before the
+// bare-finals branch ('Conference' contains 'conf'). Every value the pipeline
 // vocabulary produced before ('NBA Finals' 4, 'Conference Semifinals' 2,
 // 'First Round' 1) is unchanged.
 export const getRoundImportance = (round: string) => {

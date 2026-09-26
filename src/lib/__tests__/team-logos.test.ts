@@ -6,9 +6,10 @@ import { TEAM_ABBREVIATIONS } from '@/lib/nba-utils';
 import { getTeamLogo, isRecognizedTeam, resolveTeamLogoUrl } from '@/lib/team-logos';
 
 // Node environment (the vitest.config.ts default): pure logic over the alias
-// map, no DOM. BASE_URL comes from the merged Vite config ('/predictgame7/');
-// it is stubbed explicitly so the prefixing assertion names its dependency.
-const BASE_URL = '/predictgame7/';
+// map, no DOM. BASE_URL is stubbed to a SENTINEL, not the real config base
+// ('/predictgame7/'): with the real value a hardcoded prefix would pass every
+// assertion — the stub must be the only possible source of the prefix.
+const BASE_URL = '/__base__/';
 
 let warn: ReturnType<typeof vi.spyOn>;
 

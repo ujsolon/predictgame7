@@ -89,6 +89,26 @@ describe('classifyInvokeResult — function rejects the request', () => {
     });
     expect(failure?.kind === 'service' && failure.message).not.toContain('<html>');
   });
+
+  it('treats a body stream whose text() rejects as unreadable, not as a crash', async () => {
+    // A Response-like context whose text() rejects mid-read (broken stream):
+    // the guarded `try` around `response.text()` must swallow it and fall to
+    // the invalid-response class with the status preserved.
+    const failure = await classifyInvokeResult(
+      {
+        name: 'FunctionsHttpError',
+        message: 'HttpError',
+        context: { status: 502, text: () => Promise.reject(new Error('stream broke')) },
+      },
+      null
+    );
+    expect(failure).toEqual({
+      kind: 'service',
+      reason: 'invalid-response',
+      message: SERVICE_MESSAGES.unreadable,
+      status: 502,
+    });
+  });
 });
 
 describe('classifyInvokeResult — transport failure', () => {
