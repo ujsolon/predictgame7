@@ -5,7 +5,7 @@ Standing instructions for AI agents working in this repo.
 ## Project
 
 NBA Game 7 prediction analytics app — live at https://ujsolon.github.io/predictgame7/.
-Stack: React 18 + TypeScript + Vite (`rolldown-vite`), Tailwind, Radix/shadcn, react-router 7 (basename `/predictgame7/`), Supabase (Postgres + Edge Functions `predict-game-7` / `handle-contact` + Auth), PostHog analytics, GitHub Pages hosting, Biome lint.
+Stack: React 18 + TypeScript + Vite 8 (Rolldown-powered), Tailwind, Radix/shadcn, react-router 7 (basename `/predictgame7/`), Supabase (Postgres + Edge Functions `predict-game-7` / `handle-contact` + Auth), PostHog analytics, GitHub Pages hosting, Biome lint, Vitest (Node by default, per-file jsdom for component tests).
 
 ## Requirements source of truth
 
@@ -23,9 +23,9 @@ Stack: React 18 + TypeScript + Vite (`rolldown-vite`), Tailwind, Radix/shadcn, r
 
 ## Verification gate (before any deploy or "done" claim)
 
-- `npm run build` passes and Biome lint is clean.
+- `npm run lint` (Biome), `npm test` (Vitest), and `npm run build` all pass. The build doubles as a base-path check: it fails if `dist/index.html` loses the `/predictgame7/` asset prefix. CI (`.github/workflows/ci.yml`) runs the same three on every push to `master`.
 - Local secrets live in `.env.local` — never committed. Vite needs a dev-server restart after env changes.
-- Deploy = publish to `gh-pages` branch via `npm run predeploy` / `npm run deploy`. Only run deploys when the owner asks for a release.
+- Deploy = publish to `gh-pages` branch via `npm run predeploy` / `npm run deploy` (`predeploy` runs lint + test + build). Note: `gh-pages` publishes are additive — `gh-pages` history mode does not prune files removed elsewhere, so clean stray paths off that branch explicitly if a publish ever leaves something behind. Only run deploys when the owner asks for a release.
 
 ## Versioning (NFR-D2)
 
