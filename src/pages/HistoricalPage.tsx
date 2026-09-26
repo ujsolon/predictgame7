@@ -260,10 +260,10 @@ export default function HistoricalPage() {
               <div className="flex items-center gap-4">
                 <div className="flex -space-x-2">
                   {resolveTeamLogoUrl(selectedSeries.team_a?.logo_url) && (
-                    <img src={resolveTeamLogoUrl(selectedSeries.team_a?.logo_url)} alt={selectedSeries.team_a?.full_name ?? ''} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                    <img src={resolveTeamLogoUrl(selectedSeries.team_a?.logo_url)} alt={selectedSeries.team_a?.full_name ?? 'Team A logo'} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
                   {resolveTeamLogoUrl(selectedSeries.team_b?.logo_url) && (
-                    <img src={resolveTeamLogoUrl(selectedSeries.team_b?.logo_url)} alt={selectedSeries.team_b?.full_name ?? ''} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
+                    <img src={resolveTeamLogoUrl(selectedSeries.team_b?.logo_url)} alt={selectedSeries.team_b?.full_name ?? 'Team B logo'} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
                 </div>
                 <div className="space-y-1">

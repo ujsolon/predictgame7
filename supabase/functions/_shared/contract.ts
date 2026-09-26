@@ -37,6 +37,7 @@ export interface PredictionInput {
   /** Full team name of the Game 7 home team, when known. */
   home_team?: string;
   method?: MethodSlug;
+  /** Reserved for per-method tuning values; the function currently ignores it. */
   parameters?: Record<string, number>;
 }
 

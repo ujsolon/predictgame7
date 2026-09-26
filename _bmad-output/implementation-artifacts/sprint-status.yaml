@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-toolchain-foundation-vite-8-vitest-ci-gate: done
-  1-2-one-prediction-contract-ad-2-consolidation: review
+  1-2-one-prediction-contract-ad-2-consolidation: done
   1-3-error-states-that-never-lose-your-place-fr-8: review
   1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30: review
   1-5-manual-qa-matrix-epic-verification-pass: backlog
