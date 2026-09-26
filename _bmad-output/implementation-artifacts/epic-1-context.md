@@ -4,7 +4,7 @@
 
 ## Goal
 
-Make the Predict flow trustworthy and locked down: users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by an automated regression suite every later epic builds on. The epic starts by migrating the build off the deprecated `rolldown-vite` shim onto a supported toolchain with a CI test gate — deliberately done now, off-peak, while no release pressure exists — then consolidates the prediction contract so frontend and Edge Function can never disagree, overhauls error states, and proves reliability with tests plus a documented manual QA pass.
+Make the Predict flow reliably selectable, understandable, and recoverable before the 2027 playoff window. The epic first establishes a supported Vite/Vitest/CI base, then makes the Edge Function and React app share one accurate prediction contract, adds non-destructive error handling, and locks the highest-risk paths behind automated and manual verification. It protects the product's core promise: transparent probability estimates for historical, active, and custom NBA Game 7 matchups—not betting advice, live scoring, or an accuracy guarantee.
 
 ## Stories
 
@@ -16,40 +16,32 @@ Make the Predict flow trustworthy and locked down: users can run, compare, and r
 
 ## Requirements & Constraints
 
-- Graceful degradation (FR-8): every failure — invalid input, network drop, Edge Function error — produces a non-breaking, retry-safe error state. UI must distinguish invalid-input errors (inline, field-level, pre-submission where possible) from service failures (retry-able). Retry re-runs without re-entering any data: series selection, custom inputs, and method choice all survive the failure.
-- Regression protection (FR-30): automated tests over the four highest-risk paths — historical series selection/preload, custom team-name resolution (full/nickname/abbreviation with placeholder fallback) and score validation bounds, method switching mid-flow without state loss, and both error classes. A documented catalog of issue #3's reproduced failure cases maps each case to a regression test or an FR-8 error state. The suite runs in CI and blocks merge on red.
-- Baseline surfaces under QA (FR-1/3/4/5/6/7): prediction outputs (winner, per-team probabilities, factors, confidence, computation time), method comparison, and one-action reset must keep working unchanged; the contract refactor is behavior-preserving — all four methods produce identical results pre/post, verified against a historical series and a custom matchup.
-- Predictions contract: canonical method slugs are `logistic_regression | bayes | elo | exponential_smoothing`; probabilities are 0–100 percent. Stale frontend unions get deleted, not mapped. Adding a method = union + Maths page + event registry in the same change; Maths page formulas must stay in sync with the Edge Function (FR-15 check when the contract lands).
-- Accessibility (NFR-A1): all new/changed UI is AA-clean — keyboard-reachable retry, screen-reader-announced errors, contrast-compliant styling, WCAG 2.1 AA as the standing bar.
-- Performance (NFR-P1 partial): computation-time display preserved; manual QA includes a spot-check of prediction full-request time on a mobile network against the provisional P95 ≤ 3s target.
-- Analytics boundary: failures emit through the existing `captureError` call pattern without importing `posthog-js` directly in feature code; full centralization lands in Epic 3 — do not pre-build the port here. The 10 event names stay verbatim.
-- Edge Function errors use one envelope: `{ "error": string }` + status code, never stack traces. Server secrets never in repo, bundle, or `VITE_*` vars.
-- Verification gate on every story: `npm run build` passes and Biome is lint-clean (plus Vitest green once 1.1 lands). No deploys unless the owner asks.
-- Migration constraint: the Vite 8 move is toolchain-only — zero user-visible behavior change; dev-server `.env.local` restart behavior must keep working; the gh-pages base path (`/predictgame7/`) must still deploy correctly. Tailwind deliberately stays on v3.
+- The Predict flow must preserve its existing behavior across historical, active, and custom matchups. Historical selection populates series facts and Games 1–6; custom matching accepts full team names, nicknames, and abbreviations, using a placeholder logo rather than failing on unrecognized teams. All four methods remain selectable and changing method must not discard the current inputs.
+- Prediction results must continue to provide a winner, two team probabilities that total 100% subject to rounding, contributing factors, confidence, and visible computation time. The probability scale is 0–100 percent, not a 0–1 fraction.
+- The Maths page documents the same four methods and formulas as the Edge Function. Any method-contract change must preserve this synchronization.
+- Failures must remain non-breaking and retry-safe. Later epic work distinguishes invalid input from service failures, preserves selections and custom input on retry, and uses the Edge Function error envelope `{ "error": string }`.
+- New or changed UI must meet WCAG 2.1 AA: keyboard operation, meaningful screen-reader status, and compliant contrast. Existing UI practice remains the baseline unless a story explicitly changes it.
+- Keep guarded work out of scope: do not introduce accounts, saved predictions, betting-adjacent outputs, odds, wagers, picks, or real-time/in-game scoring. Active-series data changes only through the future pipeline cadence.
+- Do not add secrets to source control or client-visible `VITE_*` variables. The frontend uses the anonymous read client only; server computation and all writes stay in Edge Functions or pipeline scripts.
+- Each story closes with `npm run build`, Biome lint, and the Vitest suite passing. Deployments and release/version changes happen only when the owner requests them.
 
 ## Technical Decisions
 
-- Toolchain: replace the deprecated `rolldown-vite@latest` shim with `vite@^8` (Rolldown-powered), add Vitest (^4.1 is compatible), and a GitHub Actions workflow running build + lint + test on push.
-- Single prediction contract at `supabase/functions/_shared/contract.ts` (also the future home of `SharePayload` for Epic 4's share features); frontend `src/types/prediction.ts` re-exports it type-only; `predict-game-7` imports from `_shared`. Contracts are shared via `_shared`, never via `src/`.
-- Frontend conventions (AD-9): `@/` alias for imports; one type barrel; PascalCase pages/components, kebab-case in `ui/hooks/lib`; error handling in UI stays inline try/catch + `console.error` + sonner toast (no new state library, no react-query); react-hook-form + zod for new/changed forms. Dead vestigial modules (`AuthContext`, `RouteGuard`, `SamplePage`) are off-limits import targets.
-- Client reads go only through the single anon Supabase client; all writes stay in Edge Functions/pipeline.
-- Tests + QA artifacts (failure catalog, results matrices) live in `_bmad-output/implementation-artifacts/`.
-- Dependency rule: the CI test gate from Story 1.1 is the enforcement mechanism for everything after; the contract consolidation is what makes the flow testable.
+- The canonical prediction contract lives in `supabase/functions/_shared/contract.ts`; Edge Functions share this directory directly and never import from `src/`. React re-exports the contract's types from `src/types/prediction.ts` through a type-only import, keeping one client-facing type barrel.
+- `MethodSlug` has exactly four current values: `logistic_regression`, `bayes`, `elo`, and `exponential_smoothing`. The database `prediction_methods` table has no runtime read path, so code must not treat it as a dynamic catalog.
+- `PredictionInput` and `PredictionResult` describe what `predict-game-7` actually accepts and returns. The result owns winner, per-team percentage probabilities, contributing factors, confidence, computation time, and `method_used`; obsolete frontend-only result fields and stale method unions are removed.
+- The same contract will later own the share payload schema. Keep this work general enough for that extension but do not build sharing in this epic.
+- Frontend imports use the `@/` alias. Pages and components use PascalCase filenames; `lib`, hooks, and UI helpers use kebab-case. UI errors remain local `try/catch`, console logging, and sonner—no new state or query library.
+- The codebase is on Vite 8 with Vitest and a CI build/lint/test gate from Story 1.1. Story 1.2 must also remove the known TypeScript contract drift, bring `npx tsc -b` to zero errors, and add the blocking type-check step between lint and test in CI.
 
 ## UX & Interaction Patterns
 
-- Retry panel is the treatment for re-attemptable service-failure regions (refines the toast-only default): replaces the failed region in place, not as a toast; preserves all inputs; a second failure re-renders the panel, never an infinite spinner. Announces via `role="status"` with Retry as the first tab stop; warning icon is decorative.
-- Predict service failure pattern: sonner toast for the mutation + retry panel around the result region, form inputs preserved.
-- Inline field errors: appear on submit (not per keystroke) via the zod resolver; deterministic constraints (e.g., score bounds) enforced pre-submission where possible; error text in `destructive-text #B91C1C`, field border `destructive #DC3C3C`, wired with `aria-describedby`; no toasts or alert boxes for validation.
-- Error/empty-state shared shape: icon tile → title → one line → single onward action. Error copy names what failed and what happens next; never blames the user or the network.
-- Contrast token floor lands in `src/index.css` while these surfaces are touched: small-text floor `#767676` (replacing `#808080` for small text app-wide), `on-muted #595959` for body copy on muted fills, `form-border #949494` for form control borders.
-- Voice guardrails: no "oracle"/"guarantee"/accuracy-claiming framing anywhere in product copy.
-- Reference mockup exists for error states, retry panel, inline errors, and empty states (see the UX package's `key-error-states.html`).
+- The core flow is selection → method → transparent result → optional detailed analysis or reset. Contract consolidation is intentionally invisible to users: visual results and all four method choices must remain unchanged for a historical series and a custom matchup.
+- Error work in this epic follows a state-preserving pattern: field-level feedback for invalid input, retryable service feedback for requests, and no forced re-entry of selections or scores. Error and retry controls must be keyboard reachable and announced.
 
 ## Cross-Story Dependencies
 
-- 1.1 → 1.4: Vitest harness and CI gate are prerequisites for the regression suite.
-- 1.2 → 1.4: consolidated contract makes the Predict paths testable against one canonical shape.
-- 1.3 → 1.4: both error classes (invalid input vs service failure) defined by 1.3 are covered by 1.4's tests.
-- 1.1–1.4 → 1.5: manual QA matrix runs only after the automated foundation is in.
-- Epic-outward: every later epic builds on this CI gate and contract; Epic 3 relocates `captureError` behind the analytics port (Story 1.3 must not fight that by building its own layer); Epic 4's `SharePayload` will come from the same contract file.
+- Story 1.1's Vite/Vitest/CI foundation is complete and supplies the test and type-check location for the remaining stories.
+- Story 1.2 is the foundation for the error-state and regression stories: one shared contract removes the `bayesian` versus `bayes` drift that made Predict behavior fragile.
+- Story 1.3's error states become test cases in Story 1.4. Story 1.5 verifies all completed Predict paths on desktop and mobile and records evidence before Epic 1 closes.
+- Future sharing uses the contract's planned share payload, analytics later owns any event isolation, and future pipeline work owns active-series freshness; neither is part of this story.
