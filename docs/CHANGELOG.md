@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-09-25
+
+### Changed
+
+- Moved the build off the deprecated `rolldown-vite` alias onto supported `vite@^8.3.1`, with `@vitejs/plugin-react` 5.2 and `vite-plugin-svgr` 4.5. No user-visible behavior change.
+- Deleted the unused Miaoda dev-config wrapper (`vite.config.dev.ts`), which imported a plugin that was no longer installed.
+
+### Added
+
+- Vitest test suite with a Node environment by default and per-file jsdom opt-in, plus logic and render smoke tests for `nba-utils`.
+- GitHub Actions CI gate running lint, test, and build on every push to `master` and on pull requests.
+- The test suite now runs as part of `predeploy`, so a red suite blocks a release.
+
+### Fixed
+
+- `.env.local` and other `*.local` env files are now gitignored, matching where local secrets are documented to live.
+
+> First publish to GitHub Pages since the 2026-05-31 build, so the `0.2.1` and `0.2.2` fixes (RLS lockdown, contact-form server-side validation and honeypot) reach the live site with this release.
+
 ## [0.2.2] - 2026-07-15
 
 ### Fixed
