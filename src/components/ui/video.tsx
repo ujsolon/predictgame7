@@ -18,10 +18,16 @@ import {
     TimeDivider,
     DurationDisplay,
     FullscreenToggle,
+    Player,
     VolumeMenuButton,
     ProgressControl
 } from 'video-react';
 import 'video-react/dist/video-react.css';
+import type { FC } from 'react';
+
+// ControlBar injects `actions` into its children at runtime; the vendor typing
+// demands it as a caller-supplied prop on FullscreenToggle only.
+const FullscreenToggleControl = FullscreenToggle as unknown as FC;
 
 interface VideoProps {
     /** Video resource URL */
@@ -102,7 +108,7 @@ display: block;
         <TimeDivider key="time-divider" />
         <DurationDisplay key="duration-display" />
         <ProgressControl key="progress-control" />
-        <FullscreenToggle key="fullscreen-toggle" />
+        <FullscreenToggleControl key="fullscreen-toggle" />
         </ControlBar>
         <BigPlayButton position="center" />
     </Player>

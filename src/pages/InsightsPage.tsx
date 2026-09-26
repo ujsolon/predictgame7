@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/db/supabase';
-import { InsightCache } from '@/types/types';
 import { Loader2, TrendingUp, Home, Target } from 'lucide-react';
 import { toast } from 'sonner';
 

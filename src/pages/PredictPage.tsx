@@ -8,13 +8,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
-import { PredictionInput, PredictionResult, Series } from '@/types/types';
+import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
+import type { Series } from '@/types/types';
+import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePostHog } from '@posthog/react';
 
 type SeriesSource = 'current' | 'historical' | 'custom';
-type PredictionMethod = 'logistic_regression' | 'bayesian' | 'elo' | 'exponential_smoothing' | 'ensemble_v1' | 'margin_model_v1';
 
 interface SelectedSeries {
   source: SeriesSource;
@@ -38,11 +39,17 @@ const SERIES_SELECT = `
   series_game_scores(*)
 `;
 
+// supabase-js has no generated Database types in this app, so `series` rows come
+// back with their to-one embeds typed as arrays. These two casts are the only
+// place a row is read as `Series`; nothing is validated.
+const asSeries = (rows: unknown): Series[] => (Array.isArray(rows) ? rows : []) as Series[];
+const asSeriesRow = (row: unknown): Series => row as Series;
+
 export default function PredictPage() {
   const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const [selectedSeries, setSelectedSeries] = useState<SelectedSeries | null>(null);
-  const [selectedMethod, setSelectedMethod] = useState<PredictionMethod | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<MethodSlug | null>(null);
   const [isSeriesDialogOpen, setIsSeriesDialogOpen] = useState(false);
   const [isMethodDialogOpen, setIsMethodDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,7 +101,7 @@ export default function PredictPage() {
         .order('year', { ascending: false });
 
       if (error) throw error;
-      setGames(Array.isArray(data) ? data : []);
+      setGames(asSeries(data));
     } catch (err) {
       console.error('Error fetching series:', err);
     }
@@ -111,7 +118,8 @@ export default function PredictPage() {
       if (error) throw error;
 
       if (data) {
-        setSelectedSeries({ source: data.status === 'active' ? 'current' : 'historical', data });
+        const series = asSeriesRow(data);
+        setSelectedSeries({ source: series.status === 'active' ? 'current' : 'historical', data: series });
       } else {
         toast.error('Series not found');
       }
@@ -277,15 +285,7 @@ export default function PredictPage() {
 
   const getMethodLabel = () => {
     if (!selectedMethod) return 'Not selected';
-    switch (selectedMethod) {
-      case 'logistic_regression': return 'Logistic Regression';
-      case 'bayesian': return 'Bayes Method';
-      case 'elo': return 'Elo Rating';
-      case 'exponential_smoothing': return 'Exponential Smoothing';
-      case 'ensemble_v1': return 'Ensemble V1';
-      case 'margin_model_v1': return 'Margin Model V1';
-      default: return 'Not selected';
-    }
+    return METHOD_LABELS[selectedMethod];
   };
 
   const selectSeries = (game: Series) => {
@@ -946,20 +946,17 @@ export default function PredictPage() {
         const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
         const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
         const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
+        const mathsAnchor = METHOD_MATHS_ANCHORS[prediction.method_used];
         return (
           <div className="space-y-8">
             <Card>
               <CardHeader>
                 <CardTitle>Prediction Result</CardTitle>
                 <CardDescription className="flex items-center gap-2">
-                  <span>Method: {prediction.method_used === 'logistic_regression' ? 'Logistic Regression' : 
-                                prediction.method_used === 'bayes' ? 'Bayes Method' :
-                                prediction.method_used === 'elo' ? 'Elo Rating' : 'Exponential Smoothing'}</span>
+                  <span>Method: {METHOD_LABELS[prediction.method_used] ?? prediction.method_used}</span>
                   <span className="text-muted-foreground/30">•</span>
                   <Link 
-                    to={`/maths#${prediction.method_used === 'logistic_regression' ? 'logistic-regression' : 
-                                  prediction.method_used === 'bayes' ? 'bayesian-inference' :
-                                  prediction.method_used === 'elo' ? 'elo-rating' : 'exponential-smoothing'}`}
+                    to={mathsAnchor ? `/maths#${mathsAnchor}` : '/maths'}
                     className="text-primary hover:underline text-xs flex items-center gap-0.5"
                   >
                     View Maths <ChevronRight className="h-3 w-3" />

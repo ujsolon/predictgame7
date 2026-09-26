@@ -85,6 +85,7 @@ npm run dev
 ```bash
 npm run build
 npm run lint
+npm run typecheck
 ```
 
 ## Deployment notes

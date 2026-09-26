@@ -50,53 +50,6 @@ export interface PredictionMethod {
   updated_at?: string | null;
 }
 
-export interface PredictionInput {
-  series_id?: string;
-  team_a?: string;
-  team_b?: string;
-  game_1_score_a: number;
-  game_1_score_b: number;
-  game_2_score_a: number;
-  game_2_score_b: number;
-  game_3_score_a: number;
-  game_3_score_b: number;
-  game_4_score_a: number;
-  game_4_score_b: number;
-  game_5_score_a: number;
-  game_5_score_b: number;
-  game_6_score_a: number;
-  game_6_score_b: number;
-  home_team?: string;
-  method?: 'logistic_regression' | 'bayesian' | 'elo' | 'exponential_smoothing' | 'ensemble_v1' | 'margin_model_v1';
-  parameters?: Record<string, number>;
-}
-
-export interface ContributingFactor {
-  factor: string;
-  description: string;
-  impact: number;
-}
-
-export interface PredictionResult {
-  prediction_id?: string;
-  series_id?: string;
-  method_id?: string;
-  prediction_type: string;
-  prediction_statement: string;
-  probability: number;
-  team_a: string;
-  team_b: string;
-  team_a_logo?: string;
-  team_b_logo?: string;
-  win_probability_a?: number;
-  win_probability_b?: number;
-  confidence_level: string;
-  contributing_factors: ContributingFactor[];
-  metadata?: Record<string, unknown>;
-  computation_time_ms: number;
-  method_used?: string;
-}
-
 export interface ModelParameters {
   id: string;
   parameter_name: string;

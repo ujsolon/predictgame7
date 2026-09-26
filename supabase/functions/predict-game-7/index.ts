@@ -1,4 +1,11 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import type {
+  ConfidenceLevel,
+  ContributingFactor,
+  MethodSlug,
+  PredictionInput,
+  PredictionResult,
+} from '../_shared/contract.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,32 +14,6 @@ const corsHeaders = {
 
 const W = [0.03, 0.03, 0.01, 0, 0.03, -0.01];
 const B = 0;
-
-interface PredictionInput {
-  team_a: string;
-  team_b: string;
-  game_1_score_a: number;
-  game_1_score_b: number;
-  game_2_score_a: number;
-  game_2_score_b: number;
-  game_3_score_a: number;
-  game_3_score_b: number;
-  game_4_score_a: number;
-  game_4_score_b: number;
-  game_5_score_a: number;
-  game_5_score_b: number;
-  game_6_score_a: number;
-  game_6_score_b: number;
-  home_team?: string;
-  method?: 'logistic_regression' | 'bayes' | 'elo' | 'exponential_smoothing';
-  parameters?: Record<string, number>;
-}
-
-interface ContributingFactor {
-  factor: string;
-  description: string;
-  impact: number;
-}
 
 function sigmoid(z: number): number {
   return 1 / (1 + Math.exp(-z));
@@ -322,7 +303,7 @@ Deno.serve(async (req) => {
       );
     }
     
-    const method = input.method || 'logistic_regression';
+    const method: MethodSlug = input.method || 'logistic_regression';
     const features = calculateFeatures(input);
     
     let probability_a: number;
@@ -348,7 +329,7 @@ Deno.serve(async (req) => {
     const predicted_winner = probability_a > 0.5 ? input.team_a : input.team_b;
     const max_prob = Math.max(probability_a, probability_b);
     
-    let confidence_level = 'Low';
+    let confidence_level: ConfidenceLevel = 'Low';
     if (max_prob > 0.7) {
       confidence_level = 'High';
     } else if (max_prob > 0.6) {
@@ -368,7 +349,7 @@ Deno.serve(async (req) => {
     const team_a_logo = logoMap.get(input.team_a);
     const team_b_logo = logoMap.get(input.team_b);
     
-    const result = {
+    const result: PredictionResult = {
       predicted_winner,
       team_a: input.team_a,
       team_b: input.team_b,

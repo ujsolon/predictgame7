@@ -24,11 +24,10 @@ jobs:
 
       - run: npm run lint
 
-      # `npx tsc -b` is deliberately not a step here: 33 pre-existing type
-      # errors in untouched app files (stale prediction unions, shadcn/vendor
-      # typing drift) make it permanently red today, and a step that can never
-      # fail is a fake gate. Story 1.2 adds it as a blocking step once it
-      # exits 0 — see _bmad-output/implementation-artifacts/deferred-work.md.
+      # Blocking typecheck of the app graph (`src` + `vite.config.ts`), which
+      # Story 1.2 made green — so this step can fail. It does not cover
+      # `supabase/functions/**`: no gate here type-checks the Edge Functions.
+      - run: npm run typecheck
 
       - run: npm test
 

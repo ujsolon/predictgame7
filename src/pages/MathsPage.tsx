@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookOpen, Calculator, Sigma, TrendingUp, History, Trophy } from 'lucide-react';
+import { BookOpen, Calculator, Sigma, TrendingUp, Trophy } from 'lucide-react';
 
 export default function MathsPage() {
   const methods = [
@@ -18,7 +18,7 @@ export default function MathsPage() {
       icon: Sigma,
       description: 'Updating historical priors with current series observations.',
       math: 'P(A|B) = [P(B|A) * P(A)] / P(B)',
-      details: 'This method starts with a "prior" probability — the historical win rate of home teams in Game 7s (approx. 75%). As the current series unfolds, this probability is updated based on the "likelihood" of the observed Game 1-6 results, providing a posterior probability that balances history with current reality.',
+      details: 'This method starts with a "prior" probability — the historical win rate of home teams in Game 7s (approx. 62%). As the current series unfolds, this probability is updated based on the "likelihood" of the observed Game 1-6 results, providing a posterior probability that balances history with current reality.',
     },
     {
       id: 'elo-rating',
