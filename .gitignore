@@ -100,5 +100,9 @@ Thumbs.db
 # BMAD method files
 _bmad/
 
+# Supabase CLI local state — holds project refs and connection endpoints
+supabase/.temp/
+supabase/.branches/
+
 # QODER
 .qoder/
