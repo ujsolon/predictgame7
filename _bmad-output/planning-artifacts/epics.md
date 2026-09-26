@@ -452,7 +452,7 @@ so that a shared link lands somewhere meaningful instead of a GitHub Pages 404.
 **And** live-deploy verification is an AC, not a follow-up: cold GET (no client cache, direct navigation) on the deployed gh-pages URL passes, recorded with date
 **And** new/changed UI is AA-clean; build/lint/test green
 
-Re-verified live on the `0.2.3` deploy (2026-09-25): a cold GET on `/predictgame7/predict` and `/predictgame7/historical` still returns the GitHub Pages 404 page; only the basename root serves `index.html`, and the repo carries no `public/404.html`. The shipped route surface is `/predict`, `/historical`, `/insights`, `/maths` plus query-string series selection (`/predict?series=<id>`) — there is no `/series/<id>` path today, so this story introduces it as an alias alongside the existing query form, and the fallback must serve every route above, not only the new one.
+Re-verified live on the `0.2.3` deploy (2026-09-26): a cold GET on `/predictgame7/predict` and `/predictgame7/historical` still returns the GitHub Pages 404 page; only the basename root serves `index.html`, and the repo carries no `public/404.html`. The shipped route surface is `/predict`, `/historical`, `/insights`, `/maths` plus query-string series selection (`/predict?series=<id>`) — there is no `/series/<id>` path today, so this story introduces it as an alias alongside the existing query form, and the fallback must serve every route above, not only the new one.
 
 ### Story 4.2: OG card rendering — `share-og` Edge Function
 
