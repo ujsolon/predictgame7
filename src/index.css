@@ -26,6 +26,12 @@ All colors MUST be HSL.
     --accent-foreground: 0 0% 15%;
     --destructive: 0 70% 55%;
     --destructive-foreground: 0 0% 98%;
+    /* DESIGN.md · Colors contrast tokens (Story 1.3). Destructive-text is
+       small error copy at >=4.5:1 (#B91C1C); on-muted is body copy on
+       muted fills (#595959). App-wide --muted-foreground stays untouched
+       until Story 5.2's AA pass. */
+    --destructive-text: 0 74% 42%;
+    --on-muted: 0 0% 35%;
     --border: 0 0% 90%;
     --input: 0 0% 90%;
     --ring: 0 0% 15%;

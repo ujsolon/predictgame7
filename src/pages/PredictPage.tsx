@@ -9,6 +9,10 @@ import { supabase } from '@/db/supabase';
 import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
+import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
+import { collectRangeHints, validateCustomMatchup } from '@/lib/custom-matchup';
+import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
+import { cn } from '@/lib/utils';
 import type { Series } from '@/types/types';
 import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
@@ -54,6 +58,14 @@ export default function PredictPage() {
   const [isMethodDialogOpen, setIsMethodDialogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PredictionResult | null>(null);
+  // Failure state for the result region (service class from the classifier).
+  const [predictFailure, setPredictFailure] = useState<ServiceFailure | null>(null);
+  // Mount-time series list and `?series=` preload query failures (retryable).
+  const [seriesListFailed, setSeriesListFailed] = useState(false);
+  const [seriesLoadFailed, setSeriesLoadFailed] = useState(false);
+  // Inline submit-time field errors for the custom matchup form, keyed by the
+  // input ids below (Decision 1: controlled state + pure validator, no form lib).
+  const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
   
   const [games, setGames] = useState<Series[]>([]);
   const [selectionLevel, setSelectionLevel] = useState<'decades' | 'years' | 'series'>('decades');
@@ -91,7 +103,19 @@ export default function PredictPage() {
   useEffect(() => {
     setResult(null);
     setShowDetails(false);
+    setPredictFailure(null);
+    // A new selection supersedes the previous preload failure; leaving it set
+    // would keep "Couldn't load this series." masking a result fetched by hand
+    // afterwards.
+    setSeriesLoadFailed(false);
   }, [selectedSeries, selectedMethod, customInput]);
+
+  // Field errors are the last submit's verdict on the last matchup, so a new
+  // series or method retires them. Typing does not — EXPERIENCE.md · Inline
+  // field error clears on the next valid submit, never per keystroke.
+  useEffect(() => {
+    setCustomFieldErrors({});
+  }, [selectedSeries, selectedMethod]);
 
   const fetchAllGames = async () => {
     try {
@@ -102,8 +126,13 @@ export default function PredictPage() {
 
       if (error) throw error;
       setGames(asSeries(data));
+      setSeriesListFailed(false);
     } catch (err) {
+      // Story 1.3: the picker explains itself instead of failing silently to
+      // an empty list. Only failure state changes here — selections survive.
       console.error('Error fetching series:', err);
+      setSeriesListFailed(true);
+      posthog?.captureException(err);
     }
   };
 
@@ -119,28 +148,70 @@ export default function PredictPage() {
 
       if (data) {
         const series = asSeriesRow(data);
+        setSeriesLoadFailed(false);
         setSelectedSeries({ source: series.status === 'active' ? 'current' : 'historical', data: series });
       } else {
+        // A genuinely absent row is not retryable — stays a toast (the 404
+        // treatment belongs to Story 4.1).
+        setSeriesLoadFailed(false);
         toast.error('Series not found');
       }
     } catch (err) {
+      // Query failure (broken link, unreadable id, network miss on mount):
+      // the retryable panel treatment, not a dead-end toast.
       console.error('Error loading series:', err);
-      toast.error('Failed to load series');
+      setSeriesLoadFailed(true);
+      posthog?.captureException(err);
     }
   };
 
   const handlePredict = async () => {
+    // Precondition on the whole flow, not a field error — stays a toast;
+    // both pickers already render "Not selected".
     if (!selectedSeries || !selectedMethod) {
       toast.error('Please select both a series and a method');
       return;
     }
 
-    setLoading(true);
-    setResult(null);
+    // Retry re-fires what the fan just submitted: the attempt is read from
+    // live state, and any change to it clears the panel before Retry exists.
+    const attempt = { method: selectedMethod, series: selectedSeries };
 
-    try {
-      let inputData: PredictionInput;
+    let inputData: PredictionInput;
 
+    if (attempt.series.source === 'custom') {
+      // Invalid input is reported inline before submit — the request never
+      // leaves the browser (Story 1.3 I/O matrix).
+      const fields = validateCustomMatchup(customInput);
+      setCustomFieldErrors(fields);
+      const firstInvalid = Object.keys(fields)[0];
+      if (firstInvalid) {
+        // No summary toast on this path (EXPERIENCE.md · Inline field error),
+        // so focus carries the announcement: the field's error is reachable
+        // through its own `aria-describedby` (WCAG 4.1.3 / 3.3.1).
+        document.getElementById(firstInvalid)?.focus();
+        return;
+      }
+
+      // A score outside 50-200 stays a non-blocking hint, not a field error.
+      for (const hint of collectRangeHints(customInput)) toast.warning(hint);
+
+      // Decision 4: both names are required above, so the 'Team A'/'Team B'
+      // placeholder fallback no longer silently supplies a request.
+      inputData = {
+        ...customInput,
+        team_a: (customInput.team_a ?? '').trim(),
+        team_b: (customInput.team_b ?? '').trim(),
+        home_team: undefined,
+        method: attempt.method,
+      } as PredictionInput;
+    } else if (attempt.series.data) {
+      const series = attempt.series.data;
+      const scores = series.series_game_scores ?? [];
+      const sortedScores = [...scores].sort((a, b) => a.game_number - b.game_number);
+
+      // Series-path checks stay toasts: they guard the whole flow with
+      // server-provided data, they are not per-field user input errors.
       const validateScores = (input: any) => {
         for (let i = 1; i <= 6; i++) {
           const scoreA = input[`game_${i}_score_a`];
@@ -172,96 +243,97 @@ export default function PredictPage() {
         return true;
       };
 
-      if (selectedSeries.source === 'custom') {
-        if (!validateScores(customInput)) {
-          setLoading(false);
-          return;
-        }
-
-        inputData = {
-          ...customInput,
-          team_a: (customInput.team_a ?? '').trim() || 'Team A',
-          team_b: (customInput.team_b ?? '').trim() || 'Team B',
-          home_team: undefined,
-          method: selectedMethod,
-        } as PredictionInput;
-      } else if (selectedSeries.data) {
-        const series = selectedSeries.data;
-        const scores = series.series_game_scores ?? [];
-        const sortedScores = [...scores].sort((a, b) => a.game_number - b.game_number);
-
-        if (sortedScores.length < 6) {
-          toast.error('Selected series does not include enough game scores for prediction.');
-          setLoading(false);
-          return;
-        }
-
-        const seriesInput: any = {
-          series_id: series.id,
-          team_a: series.team_a?.full_name || 'Team A',
-          team_b: series.team_b?.full_name || 'Team B',
-          method: selectedMethod,
-        };
-
-        for (let i = 1; i <= 6; i++) {
-          const scoreRow = sortedScores.find((row) => row.game_number === i);
-          if (!scoreRow) {
-            toast.error(`Game ${i} is missing for the selected series.`);
-            setLoading(false);
-            return;
-          }
-
-          const isTeamAHome = scoreRow.home_team_id === series.team_a_id;
-          seriesInput[`game_${i}_score_a`] = isTeamAHome ? scoreRow.home_score : scoreRow.away_score;
-          seriesInput[`game_${i}_score_b`] = isTeamAHome ? scoreRow.away_score : scoreRow.home_score;
-        }
-
-        if (!validateScores(seriesInput)) {
-          setLoading(false);
-          return;
-        }
-
-        const game7score = sortedScores.find((row) => row.game_number === 7);
-        seriesInput.home_team = game7score
-          ? game7score.home_team_id === series.team_a_id
-            ? series.team_a?.full_name
-            : series.team_b?.full_name
-          : undefined;
-
-        inputData = seriesInput as PredictionInput;
-      } else {
-        toast.error('Invalid series selection');
-        setLoading(false);
+      if (sortedScores.length < 6) {
+        toast.error('Selected series does not include enough game scores for prediction.');
         return;
       }
 
+      const seriesInput: any = {
+        series_id: series.id,
+        team_a: series.team_a?.full_name || 'Team A',
+        team_b: series.team_b?.full_name || 'Team B',
+        method: attempt.method,
+      };
+
+      for (let i = 1; i <= 6; i++) {
+        const scoreRow = sortedScores.find((row) => row.game_number === i);
+        if (!scoreRow) {
+          toast.error(`Game ${i} is missing for the selected series.`);
+          return;
+        }
+
+        const isTeamAHome = scoreRow.home_team_id === series.team_a_id;
+        seriesInput[`game_${i}_score_a`] = isTeamAHome ? scoreRow.home_score : scoreRow.away_score;
+        seriesInput[`game_${i}_score_b`] = isTeamAHome ? scoreRow.away_score : scoreRow.home_score;
+      }
+
+      if (!validateScores(seriesInput)) {
+        return;
+      }
+
+      const game7score = sortedScores.find((row) => row.game_number === 7);
+      seriesInput.home_team = game7score
+        ? game7score.home_team_id === series.team_a_id
+          ? series.team_a?.full_name
+          : series.team_b?.full_name
+        : undefined;
+
+      inputData = seriesInput as PredictionInput;
+    } else {
+      toast.error('Invalid series selection');
+      return;
+    }
+
+    await runPrediction(inputData, attempt);
+  };
+
+  const runPrediction = async (
+    inputData: PredictionInput,
+    attempt: { method: MethodSlug; series: SelectedSeries }
+  ) => {
+    setLoading(true);
+    setPredictFailure(null);
+    setResult(null);
+
+    try {
       const { data, error } = await supabase.functions.invoke<PredictionResult>('predict-game-7', {
         body: inputData,
       });
 
-      if (error) {
-        const errorMsg = await error?.context?.text();
-        throw new Error(errorMsg || error?.message);
+      // One classifier for everything the transport or function can return:
+      // no raw JSON reaches the UI, and a non-conforming 200 (the
+      // `win_probability_a: null` path) never renders `undefined%`.
+      const failure = await classifyInvokeResult(error, data);
+      if (failure) {
+        console.error('Prediction failure:', failure);
+        // Failure state only — series, method and scores survive the retry.
+        setPredictFailure(failure);
+        posthog?.captureException(
+          error instanceof Error ? error : new Error(failure.message)
+        );
+        return;
       }
 
-      if (data) {
-        const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-        setResult(parsedData as PredictionResult);
-        toast.success('Prediction generated successfully');
-        posthog?.capture('prediction_generated', {
-          method: selectedMethod,
-          series_source: selectedSeries.source,
-          series_id: selectedSeries.data?.id,
-          series_year: selectedSeries.data?.year,
-          predicted_winner: parsedData.predicted_winner,
-          win_probability_a: parsedData.win_probability_a,
-          win_probability_b: parsedData.win_probability_b,
-          confidence_level: parsedData.confidence_level,
-        });
-      }
+      // The classifier already proved this body conforms; `parseInvokeBody`
+      // hands back the same decoded copy a `text/plain` `200` arrives as.
+      const prediction = parseInvokeBody(data) as PredictionResult;
+      setResult(prediction);
+      toast.success('Prediction generated successfully');
+      posthog?.capture('prediction_generated', {
+        method: attempt.method,
+        series_source: attempt.series.source,
+        series_id: attempt.series.data?.id,
+        series_year: attempt.series.data?.year,
+        predicted_winner: prediction.predicted_winner,
+        win_probability_a: prediction.win_probability_a,
+        win_probability_b: prediction.win_probability_b,
+        confidence_level: prediction.confidence_level,
+      });
     } catch (err) {
+      // Last-resort guard for anything thrown outside the classified invoke
+      // path; the panel replaces a bare toast, inputs untouched.
       console.error('Prediction error:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to generate prediction');
+      setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
       posthog?.captureException(err);
     } finally {
       setLoading(false);
@@ -427,7 +499,7 @@ export default function PredictPage() {
                       {selectedSeries && selectedSeries.source === 'custom' && (
                         <div className="grid grid-cols-2 gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                           <div className="space-y-1">
-                            <Label className="text-[10px] uppercase text-muted-foreground">Team A</Label>
+                            <Label htmlFor="team_a" className="text-[10px] uppercase text-muted-foreground">Team A</Label>
                             <div className="flex items-center gap-2">
                               {(getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')) && (
                                 <img
@@ -436,17 +508,23 @@ export default function PredictPage() {
                                   className="h-8 w-8 object-contain shrink-0"
                                 />
                               )}
-                            <Input 
+                            <Input
+                              id="team_a"
                               size={1}
-                              className="h-8 text-xs"
+                              className={cn('h-8 text-xs', customFieldErrors.team_a && 'border-destructive')}
+                              aria-invalid={customFieldErrors.team_a ? true : undefined}
+                              aria-describedby={customFieldErrors.team_a ? 'team_a-error' : undefined}
                               value={customInput.team_a}
                               onChange={(e) => setCustomInput({ ...customInput, team_a: e.target.value })}
                               placeholder="e.g. BOS"
                             />
                             </div>
+                            {customFieldErrors.team_a && (
+                              <p id="team_a-error" className="text-sm text-destructive-text">{customFieldErrors.team_a}</p>
+                            )}
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-[10px] uppercase text-muted-foreground">Team B</Label>
+                            <Label htmlFor="team_b" className="text-[10px] uppercase text-muted-foreground">Team B</Label>
                             <div className="flex items-center gap-2">
                               {(getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')) && (
                                 <img
@@ -455,14 +533,20 @@ export default function PredictPage() {
                                   className="h-8 w-8 object-contain shrink-0"
                                 />
                               )}
-                            <Input 
+                            <Input
+                              id="team_b"
                               size={1}
-                              className="h-8 text-xs"
+                              className={cn('h-8 text-xs', customFieldErrors.team_b && 'border-destructive')}
+                              aria-invalid={customFieldErrors.team_b ? true : undefined}
+                              aria-describedby={customFieldErrors.team_b ? 'team_b-error' : undefined}
                               value={customInput.team_b}
                               onChange={(e) => setCustomInput({ ...customInput, team_b: e.target.value })}
                               placeholder="e.g. MIA"
                             />
                             </div>
+                            {customFieldErrors.team_b && (
+                              <p id="team_b-error" className="text-sm text-destructive-text">{customFieldErrors.team_b}</p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -486,30 +570,52 @@ export default function PredictPage() {
                                 : undefined;
 
                             if (selectedSeries.source === 'custom') {
+                              const keyA = `game_${g}_score_a`;
+                              const keyB = `game_${g}_score_b`;
+                              const errorA = customFieldErrors[keyA];
+                              const errorB = customFieldErrors[keyB];
                               return (
-                                <div key={g} className="flex items-center justify-between gap-4" onClick={(e) => e.stopPropagation()}>
-                                  <span className="text-xs text-muted-foreground font-medium w-12">Game {g}</span>
+                                <div key={g} className="flex items-start justify-between gap-4" onClick={(e) => e.stopPropagation()}>
+                                  <span className="text-xs text-muted-foreground font-medium w-12 pt-2">Game {g}</span>
                                   <div className="flex-1 grid grid-cols-2 gap-2">
-                                    <Input
-                                      type="number"
-                                      className="h-8 text-center text-xs px-1"
-                                      value={(customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined) ?? ''}
-                                      onChange={(e) => setCustomInput({ 
-                                        ...customInput, 
-                                        [`game_${g}_score_a`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                      })}
-                                      placeholder="A"
-                                    />
-                                    <Input
-                                      type="number"
-                                      className="h-8 text-center text-xs px-1"
-                                      value={(customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined) ?? ''}
-                                      onChange={(e) => setCustomInput({ 
-                                        ...customInput, 
-                                        [`game_${g}_score_b`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                      })}
-                                      placeholder="B"
-                                    />
+                                    <div className="space-y-1">
+                                      <Input
+                                        id={keyA}
+                                        type="number"
+                                        aria-label={`Game ${g} score, team A`}
+                                        className={cn('h-8 text-center text-xs px-1', errorA && 'border-destructive')}
+                                        aria-invalid={errorA ? true : undefined}
+                                        aria-describedby={errorA ? `${keyA}-error` : undefined}
+                                        value={(customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined) ?? ''}
+                                        onChange={(e) => setCustomInput({ 
+                                          ...customInput, 
+                                          [`game_${g}_score_a`]: e.target.value === '' ? undefined : Number(e.target.value) 
+                                        })}
+                                        placeholder="A"
+                                      />
+                                      {errorA && (
+                                        <p id={`${keyA}-error`} className="text-sm text-destructive-text">{errorA}</p>
+                                      )}
+                                    </div>
+                                    <div className="space-y-1">
+                                      <Input
+                                        id={keyB}
+                                        type="number"
+                                        aria-label={`Game ${g} score, team B`}
+                                        className={cn('h-8 text-center text-xs px-1', errorB && 'border-destructive')}
+                                        aria-invalid={errorB ? true : undefined}
+                                        aria-describedby={errorB ? `${keyB}-error` : undefined}
+                                        value={(customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined) ?? ''}
+                                        onChange={(e) => setCustomInput({ 
+                                          ...customInput, 
+                                          [`game_${g}_score_b`]: e.target.value === '' ? undefined : Number(e.target.value) 
+                                        })}
+                                        placeholder="B"
+                                      />
+                                      {errorB && (
+                                        <p id={`${keyB}-error`} className="text-sm text-destructive-text">{errorB}</p>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -538,6 +644,18 @@ export default function PredictPage() {
                   </DialogHeader>
                   
                   <div className="flex-1 overflow-y-auto p-6 pt-2 space-y-6">
+                    {seriesListFailed ? (
+                      // Story 1.3: the picker explains itself instead of
+                      // showing an empty list; Retry re-runs the mount fetch.
+                      <ErrorRetryPanel
+                        heading="Couldn't load the series list."
+                        message="Retry fetches the archive again. Your current selection stays put."
+                        onRetry={() => {
+                          setSeriesListFailed(false);
+                          void fetchAllGames();
+                        }}
+                      />
+                    ) : (
                     <div className="space-y-4">
                       {selectionLevel === 'decades' && games.some((game) => game.status === 'active') && (
                         <div className="space-y-4">
@@ -662,6 +780,7 @@ export default function PredictPage() {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
                 </DialogContent>
               </Dialog>
@@ -842,6 +961,31 @@ export default function PredictPage() {
                   <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
                   <p className="text-sm text-muted-foreground">Analyzing series data...</p>
                 </div>
+              ) : seriesLoadFailed || predictFailure ? (
+                // Story 1.3: a service failure replaces the result region in
+                // place — Retry re-fires the same attempt (series, method and
+                // scores are untouched), a second failure re-renders the panel.
+                <ErrorRetryPanel
+                  heading={seriesLoadFailed ? "Couldn't load this series." : "Couldn't generate the prediction."}
+                  message={
+                    seriesLoadFailed
+                      ? 'Retry fetches it again.'
+                      : predictFailure?.message ?? SERVICE_MESSAGES.transport
+                  }
+                  onRetry={() => {
+                    if (seriesLoadFailed) {
+                      // Only clear the flag when there is something to
+                      // re-fetch; otherwise Retry would dismiss the panel
+                      // and fetch nothing.
+                      const seriesId = searchParams.get('series');
+                      if (!seriesId) return;
+                      setSeriesLoadFailed(false);
+                      void loadSeriesById(seriesId);
+                    } else {
+                      void handlePredict();
+                    }
+                  }}
+                />
               ) : (() => {
                 if (!result) {
                   return (
