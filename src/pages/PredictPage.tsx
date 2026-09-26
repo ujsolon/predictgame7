@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -63,6 +63,10 @@ export default function PredictPage() {
   // Mount-time series list and `?series=` preload query failures (retryable).
   const [seriesListFailed, setSeriesListFailed] = useState(false);
   const [seriesLoadFailed, setSeriesLoadFailed] = useState(false);
+  // Bumped by every `?series=` load and every new fan input; an in-flight
+  // preload whose sequence no longer matches has been superseded, so its
+  // late response (success or failure) must not touch on-screen state.
+  const seriesLoadSeq = useRef(0);
   // Inline submit-time field errors for the custom matchup form, keyed by the
   // input ids below (Decision 1: controlled state + pure validator, no form lib).
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
@@ -89,6 +93,23 @@ export default function PredictPage() {
     game_6_score_b: undefined as any,
   });
 
+  // Declared before the `?series=` effect on purpose: effects run in
+  // declaration order, so on mount (and on every StrictMode remount pass) the
+  // sequence bump below happens before the preload captures its own sequence.
+  useEffect(() => {
+    setResult(null);
+    setShowDetails(false);
+    setPredictFailure(null);
+    // A new selection supersedes the previous preload failure; leaving it set
+    // would keep "Couldn't load this series." masking a result fetched by hand
+    // afterwards.
+    setSeriesLoadFailed(false);
+    // ...and supersedes any preload still in flight: bumping the sequence here
+    // is what stops a late-arriving response from re-setting the flag over a
+    // result the fan has already fetched, or overwriting the manual selection.
+    seriesLoadSeq.current++;
+  }, [selectedSeries, selectedMethod, customInput]);
+
   useEffect(() => {
     fetchAllGames();
     
@@ -99,16 +120,6 @@ export default function PredictPage() {
     }
   }, [searchParams]);
 
-
-  useEffect(() => {
-    setResult(null);
-    setShowDetails(false);
-    setPredictFailure(null);
-    // A new selection supersedes the previous preload failure; leaving it set
-    // would keep "Couldn't load this series." masking a result fetched by hand
-    // afterwards.
-    setSeriesLoadFailed(false);
-  }, [selectedSeries, selectedMethod, customInput]);
 
   // Field errors are the last submit's verdict on the last matchup, so a new
   // series or method retires them. Typing does not — EXPERIENCE.md · Inline
@@ -137,6 +148,7 @@ export default function PredictPage() {
   };
 
   const loadSeriesById = async (seriesId: string) => {
+    const seq = ++seriesLoadSeq.current;
     try {
       const { data, error } = await supabase
         .from('series')
@@ -145,6 +157,9 @@ export default function PredictPage() {
         .maybeSingle();
 
       if (error) throw error;
+      // Superseded while in flight (newer preload, or the fan picked by hand):
+      // this response no longer describes what should be on screen.
+      if (seq !== seriesLoadSeq.current) return;
 
       if (data) {
         const series = asSeriesRow(data);
@@ -160,8 +175,10 @@ export default function PredictPage() {
       // Query failure (broken link, unreadable id, network miss on mount):
       // the retryable panel treatment, not a dead-end toast.
       console.error('Error loading series:', err);
-      setSeriesLoadFailed(true);
       posthog?.captureException(err);
+      // A superseded preload still reports to analytics but must not mask
+      // whatever the fan has on screen by the time it lands.
+      if (seq === seriesLoadSeq.current) setSeriesLoadFailed(true);
     }
   };
 
@@ -299,6 +316,7 @@ export default function PredictPage() {
     setPredictFailure(null);
     setResult(null);
 
+    let prediction: PredictionResult;
     try {
       const { data, error } = await supabase.functions.invoke<PredictionResult>('predict-game-7', {
         body: inputData,
@@ -320,8 +338,23 @@ export default function PredictPage() {
 
       // The classifier already proved this body conforms; `parseInvokeBody`
       // hands back the same decoded copy a `text/plain` `200` arrives as.
-      const prediction = parseInvokeBody(data) as PredictionResult;
+      prediction = parseInvokeBody(data) as PredictionResult;
       setResult(prediction);
+    } catch (err) {
+      // Last-resort guard for anything thrown outside the classified invoke
+      // path; the panel replaces a bare toast, inputs untouched.
+      console.error('Prediction error:', err);
+      setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
+      posthog?.captureException(err);
+      return;
+    } finally {
+      setLoading(false);
+    }
+
+    // Success side-effects live outside the guarded region: a throwing toast
+    // or analytics call must not convert the prediction already on screen
+    // into a "service unreachable" panel.
+    try {
       toast.success('Prediction generated successfully');
       posthog?.capture('prediction_generated', {
         method: attempt.method,
@@ -334,13 +367,7 @@ export default function PredictPage() {
         confidence_level: prediction.confidence_level,
       });
     } catch (err) {
-      // Last-resort guard for anything thrown outside the classified invoke
-      // path; the panel replaces a bare toast, inputs untouched.
-      console.error('Prediction error:', err);
-      setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
-      posthog?.captureException(err);
-    } finally {
-      setLoading(false);
+      console.error('Prediction success side-effect failed:', err);
     }
   };
 

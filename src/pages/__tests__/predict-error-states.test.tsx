@@ -230,4 +230,55 @@ describe('PredictPage error states (Story 1.3)', () => {
     await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());
     expect(screen.queryByText("Couldn't load this series.")).toBeNull();
   });
+
+  it('keeps a hand-fetched result when a slow preload failure lands afterwards (review P1)', async () => {
+    // The preload hangs while the fan works; it only rejects once the
+    // prediction is already on screen.
+    let rejectPreload: () => void = () => {};
+    db.from.mockImplementation(() => ({
+      select: () => ({
+        order: () => Promise.resolve(db.list),
+        eq: () => ({
+          maybeSingle: () =>
+            new Promise((_resolve, reject) => {
+              rejectPreload = () => reject(new Error('late network miss'));
+            }),
+        }),
+      }),
+    }));
+    renderPage('/predict?series=s-1');
+
+    await chooseCustomMatchup();
+    await chooseMethod();
+    fillCustomForm();
+    db.invoke.mockResolvedValue({ data: conformingResult, error: null });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('61.25%')).toBeInTheDocument());
+
+    rejectPreload();
+
+    // The failure is still reported to analytics…
+    await waitFor(() => expect(db.captureException).toHaveBeenCalled());
+    // …but the superseded preload must not mask the result or the inputs.
+    expect(screen.queryByText("Couldn't load this series.")).toBeNull();
+    expect(screen.getByText('61.25%')).toBeInTheDocument();
+    expect((document.getElementById('team_a') as HTMLInputElement).value).toBe('BOS');
+  });
+
+  it('never turns a completed prediction into a failure panel when a success side-effect throws (review P2)', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    await chooseMethod();
+    fillCustomForm();
+    db.invoke.mockResolvedValue({ data: conformingResult, error: null });
+    db.capture.mockImplementationOnce(() => {
+      throw new Error('analytics down');
+    });
+
+    submitPrediction();
+
+    await waitFor(() => expect(screen.getByText('61.25%')).toBeInTheDocument());
+    expect(screen.queryByText("Couldn't generate the prediction.")).toBeNull();
+    expect(db.toast.success).toHaveBeenCalledWith('Prediction generated successfully');
+  });
 });
