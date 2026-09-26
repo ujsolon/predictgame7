@@ -130,6 +130,9 @@ Three layers ran against the staged diff (blind hunter, edge-case hunter, verifi
 - `npm run build` -- expected: succeeds and keeps the `/predictgame7/` asset prefix.
 
 **Manual checks:**
+
+Parked 2026-09-26 — owner unavailable. Ran as a runnable checklist with DevTools recipes at `_bmad-output/implementation-artifacts/qa-manual-checks-1-3.md`; the four lines below are the summary, that file is the procedure.
+
 - DevTools offline → Predict → panel with the transport copy and a working Retry; keyboard `Tab` reaches Retry first and the panel is announced.
 - DevTools → block `predict-game-7` with a `400` body → panel shows the server's string, not JSON.
 - Custom mode with two blank scores submitted → inline errors under those two fields only, no toast, and the Network tab shows no request.
