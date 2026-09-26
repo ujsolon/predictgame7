@@ -13,6 +13,7 @@
  * range stays a non-blocking hint (`collectRangeHints`), not a field error.
  */
 import type { PredictionInput } from '@/types/prediction';
+import { isRecognizedTeam } from '@/lib/team-logos';
 
 export type CustomFieldErrors = Record<string, string>;
 
@@ -66,6 +67,24 @@ export function collectRangeHints(input: PredictionInput): string[] {
     if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) continue;
     if (scoreA < 50 || scoreA > 200 || scoreB < 50 || scoreB > 200) {
       hints.push(`Note: Game ${game} scores (${scoreA}-${scoreB}) are outside the typical 50-200 range`);
+    }
+  }
+  return hints;
+}
+
+/**
+ * Non-blocking unrecognized-name hints (Story 1.4 / Decision 4), one per
+ * custom team name the logo alias map does not recognize: `toast.warning`
+ * naming the team and saying a placeholder logo is used — never a field
+ * error, never a blocked request. Blank names are skipped: the validator
+ * owns those.
+ */
+export function collectTeamNameHints(input: PredictionInput): string[] {
+  const hints: string[] = [];
+  for (const field of ['team_a', 'team_b'] as const) {
+    const name = (input[field] ?? '').trim();
+    if (name && !isRecognizedTeam(name)) {
+      hints.push(`Note: "${name}" isn't in our team list yet — showing a placeholder logo.`);
     }
   }
   return hints;

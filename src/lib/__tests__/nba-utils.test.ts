@@ -44,4 +44,19 @@ describe("getRoundImportance", () => {
   it("returns 0 for unknown rounds", () => {
     expect(getRoundImportance("Preseason")).toBe(0);
   });
+
+  it("ranks the full issue-#3 round vocabulary after the Story 1.4 branch-order fix", () => {
+    // The two shipped defects, now closed: a bare 'Semifinals' ranked 4
+    // (it matched the bare-finals branch) and 'Conference Finals' ranked 0
+    // ('con**fer**ence' contains 'conf', so it matched neither old branch).
+    expect(getRoundImportance("Conference Finals")).toBe(3);
+    expect(getRoundImportance("Semifinals")).toBe(2);
+    expect(getRoundImportance("Conference Semifinals")).toBe(2);
+    // Every value the data already produced correctly must come back unchanged.
+    expect(getRoundImportance("NBA Finals")).toBe(4);
+    expect(getRoundImportance("West Conf Finals")).toBe(3);
+    expect(getRoundImportance("East Conf Semifinals")).toBe(2);
+    expect(getRoundImportance("First Round")).toBe(1);
+    expect(getRoundImportance("Preseason")).toBe(0);
+  });
 });

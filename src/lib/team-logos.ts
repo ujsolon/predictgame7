@@ -76,6 +76,17 @@ const TEAM_LOGO_ALIAS_MAP = new Map(
   )
 );
 
+/**
+ * Side-effect-free "is this a recognized team?" check over the same alias map
+ * `getTeamLogo` resolves through (same normalization). Lets callers warn about
+ * an unrecognized custom team name without triggering `getTeamLogo`'s
+ * `console.warn`.
+ */
+export const isRecognizedTeam = (teamName: string): boolean => {
+  if (!teamName) return false;
+  return TEAM_LOGO_ALIAS_MAP.has(normalizeTeamAlias(teamName.trim()));
+};
+
 export const resolveTeamLogoUrl = (logoUrl?: string | null) => {
   if (!logoUrl) return undefined;
   if (/^(https?:)?\/\//.test(logoUrl)) return logoUrl;

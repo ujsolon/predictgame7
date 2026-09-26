@@ -10,7 +10,7 @@ import { getTeamAbbreviation } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
-import { collectRangeHints, validateCustomMatchup } from '@/lib/custom-matchup';
+import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
 import { cn } from '@/lib/utils';
 import type { Series } from '@/types/types';
@@ -195,6 +195,10 @@ export default function PredictPage() {
 
       // A score outside 50-200 stays a non-blocking hint, not a field error.
       for (const hint of collectRangeHints(customInput)) toast.warning(hint);
+      // Story 1.4 / Decision 4: an unrecognized team name gets the same
+      // non-blocking treatment — the request proceeds and the generic
+      // Team A/Team B placeholder logo stays shown.
+      for (const hint of collectTeamNameHints(customInput)) toast.warning(hint);
 
       // Decision 4: both names are required above, so the 'Team A'/'Team B'
       // placeholder fallback no longer silently supplies a request.

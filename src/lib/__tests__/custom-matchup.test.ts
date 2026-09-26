@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { collectRangeHints, validateCustomMatchup } from '@/lib/custom-matchup';
+import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
 
 const validInput = {
   team_a: 'Boston Celtics',
@@ -100,5 +100,36 @@ describe('collectRangeHints — out-of-50-200 stays a non-blocking hint', () => 
   it('a 250-point score produces a hint but never a field error', () => {
     expect(validateCustomMatchup(custom({ game_1_score_a: 250 }))).toEqual({});
     expect(collectRangeHints(custom({ game_1_score_a: 250 })).length).toBe(1);
+  });
+});
+
+describe('collectTeamNameHints — unrecognized names advise, never block', () => {
+  it('emits one hint per unrecognized name, in field order', () => {
+    expect(
+      collectTeamNameHints(custom({ team_a: 'Nowhere FC', team_b: 'Ontario Kings' }))
+    ).toEqual([
+      'Note: "Nowhere FC" isn\'t in our team list yet — showing a placeholder logo.',
+      'Note: "Ontario Kings" isn\'t in our team list yet — showing a placeholder logo.',
+    ]);
+  });
+
+  it('flags the team_b field independently of team_a', () => {
+    expect(collectTeamNameHints(custom({ team_b: 'Ontario Kings' }))).toEqual([
+      'Note: "Ontario Kings" isn\'t in our team list yet — showing a placeholder logo.',
+    ]);
+  });
+
+  it('stays silent for names the logo alias map recognizes, in any of its forms', () => {
+    expect(collectTeamNameHints(custom({}))).toEqual([]);
+    expect(collectTeamNameHints(custom({ team_a: 'Celtics', team_b: 'MIA' }))).toEqual([]);
+  });
+
+  it('skips blank and whitespace-only names — the validator owns those', () => {
+    expect(collectTeamNameHints(custom({ team_a: '', team_b: '   ' }))).toEqual([]);
+  });
+
+  it('an unrecognized name never produces a field error', () => {
+    expect(validateCustomMatchup(custom({ team_a: 'Nowhere FC' }))).toEqual({});
+    expect(collectTeamNameHints(custom({ team_a: 'Nowhere FC' })).length).toBe(1);
   });
 });

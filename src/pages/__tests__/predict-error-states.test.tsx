@@ -1,14 +1,26 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import PredictPage from '@/pages/PredictPage';
-import type { Series, Team } from '@/types/types';
+import {
+  chooseCustomMatchup,
+  chooseMethod,
+  conformingResult,
+  fetchError,
+  fillCustomForm,
+  fillField,
+  httpError,
+  panel,
+  pressRetry,
+  renderPage,
+  seriesFixture,
+  submitPrediction,
+} from './helpers';
 
 // The whole file is about what the page *does* with a classified failure, so
 // every boundary is stubbed: `vi.hoisted` keeps the controllable result objects
-// reachable from the mocked module factory.
+// reachable from the mocked module factory. (Shared page/DOM helpers live in
+// `./helpers.tsx`, reused by the Story 1.4 flow-regression suite.)
 const db = vi.hoisted(() => ({
   list: { data: [] as unknown, error: null as unknown },
   single: { data: null as unknown, error: null as unknown },
@@ -32,101 +44,7 @@ vi.mock('@posthog/react', () => ({
 
 vi.mock('sonner', () => ({ toast: db.toast }));
 
-const teamA: Team = { id: 11, full_name: 'Boston Celtics', abbreviation: 'BOS', created_at: 'a' };
-const teamB: Team = { id: 22, full_name: 'Miami Heat', abbreviation: 'MIA', created_at: 'b' };
-
-const seriesFixture: Series = {
-  id: 's-1',
-  year: 2022,
-  round: 'Finals',
-  team_a_id: 11,
-  team_b_id: 22,
-  status: 'historical',
-  created_at: 'c',
-  team_a: teamA,
-  team_b: teamB,
-  series_game_scores: [1, 2, 3, 4, 5, 6].map((game) => ({
-    id: `g${game}`,
-    series_id: 's-1',
-    game_number: game,
-    home_team_id: game % 2 === 0 ? 22 : 11,
-    away_team_id: game % 2 === 0 ? 11 : 22,
-    home_score: 100 + game,
-    away_score: 90 + game,
-    created_at: 'd',
-  })),
-};
-
-/** A `FunctionsHttpError`: `context` is the raw `Response`, body is JSON. */
-function httpError(status: number, body: string) {
-  return { name: 'FunctionsHttpError', message: 'HttpError', context: { status, text: () => Promise.resolve(body) } };
-}
-
-/** A `FunctionsFetchError`: `context` is NOT a `Response` — `:243` crashed here. */
-function fetchError() {
-  return { name: 'FunctionsFetchError', message: 'Failed to fetch', context: {} };
-}
-
 const TRANSPORT_COPY = "Couldn't reach the prediction service. It may be briefly unavailable.";
-
-// The contract's documented scale: percentages 0-100, two decimals.
-const conformingResult = {
-  predicted_winner: 'Boston Celtics',
-  team_a: 'Boston Celtics',
-  team_b: 'Miami Heat',
-  win_probability_a: 61.25,
-  win_probability_b: 38.75,
-  confidence_level: 'Medium',
-  computation_time_ms: 12,
-  method_used: 'logistic_regression',
-  contributing_factors: [{ factor: 'momentum', description: 'late-series margin', impact: 0.1 }],
-};
-
-function renderPage(entry = '/predict') {
-  return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <PredictPage />
-    </MemoryRouter>
-  );
-}
-
-async function chooseMethod(label = 'Logistic Regression') {
-  fireEvent.click(screen.getByText('Click to choose method'));
-  const option = await screen.findByRole('button', { name: new RegExp(label) });
-  fireEvent.click(option);
-}
-
-async function chooseCustomMatchup() {
-  fireEvent.click(screen.getByText('Click to choose series'));
-  const option = await screen.findByRole('button', { name: /Custom Matchup/ });
-  fireEvent.click(option);
-}
-
-function fillField(id: string, value: string) {
-  const input = document.getElementById(id) as HTMLInputElement;
-  fireEvent.change(input, { target: { value } });
-}
-
-function fillCustomForm() {
-  fillField('team_a', 'BOS');
-  fillField('team_b', 'MIA');
-  for (let game = 1; game <= 6; game++) {
-    fillField(`game_${game}_score_a`, `${100 + game}`);
-    fillField(`game_${game}_score_b`, `${90 + game}`);
-  }
-}
-
-function submitPrediction() {
-  fireEvent.click(screen.getByText('Click to generate prediction'));
-}
-
-function panel() {
-  return screen.getByRole('status');
-}
-
-function pressRetry() {
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Retry' }));
-}
 
 beforeEach(() => {
   vi.clearAllMocks();

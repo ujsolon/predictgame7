@@ -46,11 +46,16 @@ export const getTeamAbbreviation = (name: string): string => {
   return trimmedName.substring(0, 3).toUpperCase();
 };
 
+// Story 1.4 (issue #3): branch ORDER is the fix. 'Semifinals' contains
+// 'finals' and 'Conference' contains 'conf', so the semifinal and conference
+// branches must run before the bare-finals branch. Every value the pipeline
+// vocabulary produced before ('NBA Finals' 4, 'Conference Semifinals' 2,
+// 'First Round' 1) is unchanged.
 export const getRoundImportance = (round: string) => {
   const r = round.toLowerCase();
-  if (r.includes('finals') && !r.includes('conf')) return 4;
-  if (r.includes('conf finals')) return 3;
   if (r.includes('semifinals')) return 2;
+  if (r.includes('conf') && r.includes('finals')) return 3;
+  if (r.includes('finals')) return 4;
   if (r.includes('first round')) return 1;
   return 0;
 };
