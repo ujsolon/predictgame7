@@ -23,9 +23,9 @@ Stack: React 18 + TypeScript + Vite 8 (Rolldown-powered), Tailwind, Radix/shadcn
 
 ## Verification gate (before any deploy or "done" claim)
 
-- `npm run lint` (Biome), `npm test` (Vitest), and `npm run build` all pass. The build doubles as a base-path check: it fails if `dist/index.html` loses the `/predictgame7/` asset prefix. CI (`.github/workflows/ci.yml`) runs the same three on every push to `master`.
+- `npm run lint` (Biome), `npm run typecheck` (`tsc -b`), `npm test` (Vitest), and `npm run build` all pass. The build doubles as a base-path check: it fails if `dist/index.html` loses the `/predictgame7/` asset prefix. CI (`.github/workflows/ci.yml`) runs all four on every push to `master`. Note: `typecheck` covers `src` + `vite.config.ts` only — `supabase/functions/**` is type-checked by nothing in the repo.
 - Local secrets live in `.env.local` — never committed. Vite needs a dev-server restart after env changes.
-- Deploy = publish to `gh-pages` branch via `npm run predeploy` / `npm run deploy` (`predeploy` runs lint + test + build). Note: `gh-pages` publishes are additive — `gh-pages` history mode does not prune files removed elsewhere, so clean stray paths off that branch explicitly if a publish ever leaves something behind. Only run deploys when the owner asks for a release.
+- Deploy = publish to `gh-pages` branch via `npm run predeploy` / `npm run deploy` (`predeploy` runs lint + typecheck + test + build). Note: `gh-pages` publishes are additive — `gh-pages` history mode does not prune files removed elsewhere, so clean stray paths off that branch explicitly if a publish ever leaves something behind. Only run deploys when the owner asks for a release.
 
 ## Versioning (NFR-D2)
 
