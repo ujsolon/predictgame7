@@ -48,17 +48,21 @@ Spec: `spec-1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30.md`
   `'conf finals'` so it failed branch 2; it sorted with unrecognized rounds.
 - **Code location that produced it:** `src/lib/nba-utils.ts:49-56` (pre-fix);
   recorded in `deferred-work.md` (source_spec `spec-1-1`, second
-  round-vocabulary entry). The visible consequence is narrower than it looks:
+  round-vocabulary entry). The visible consequence is real:
   `src/pages/HistoricalPage.tsx:45-48` sorts **year descending first** and
-  round importance only *within* a year, and every seeded year holds exactly
-  one series (`supabase/migrations/00001_create_game_sevens_tables.sql:103-110`,
-  copied verbatim into `series.round` by
-  `00007_backfill_missing_historical_series.sql:44-46`). So **no row moves on
-  today's `/historical`** — the comparator is unchanged and the ranking is
-  currently a tie-break that never fires. What this closes is correctness for
-  the first year that carries two Game 7 series, where `Conference Finals`
-  must outrank `Conference Semifinals` and `First Round` instead of sinking
-  beside unrecognized rounds (spec Verification manual check).
+  round importance only *within* a year — and most years in the live table
+  hold several series (178 `status='historical'` rows; 2026, 2016 and 1994
+  hold 5 each), so the tie-break fires constantly. Verified in the browser
+  2026-09-28: 2026 now lists `Western Conference Finals` first, then
+  `Eastern Conf Semifinals`, then the three `Eastern Conf First Round` rows;
+  pre-fix `'Western Conference Finals'` scored 0 and sorted **last** within
+  its year. Across the live data 13 positions in 5 years move. *(An earlier
+  revision of this section claimed no row could move because "every seeded
+  year holds exactly one series" — that was read off the migration seed files
+  rather than the table. Corrected 2026-09-28; see the spec's Verification
+  note.)* What this closes is `Conference Finals` outranking
+  `Conference Semifinals` and `First Round` instead of sinking beside
+  unrecognized rounds (spec Verification manual check).
 - **Disposition:** **fixed-here** (Decision 1, same branch reorder as §1).
 - **Pinned by:** the same test as §1 (*"ranks the full issue-#3 round
   vocabulary…"*, `'Conference Finals'` → 3, `'NBA Finals'` → 4,
