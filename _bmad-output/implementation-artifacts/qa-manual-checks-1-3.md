@@ -12,8 +12,8 @@ Setup: DevTools → Network → throttle preset **Offline** (before predicting).
 
 - [x] Result region swaps in place for "Couldn't generate the prediction." / "Couldn't reach the prediction service. It may be briefly unavailable." — no raw JSON, and the series/method pickers above still show the selection.
 - [x] Back Online. In Console, `document.activeElement.getAttribute('role')` → `status` (focus landed on the panel itself).
-- [ ] Tab once → Retry focused. `Enter` → spinner, then a result, with the same series/method/scores as the failed attempt. — **Tab half passes** (one Tab from the panel lands on `BUTTON` "Retry"). **Enter half unproven in the agent run**: the keypress reached the page but did not fire the request through the fetch patch, so it proves nothing either way — the click path *was* proven (Retry cleared the panel and produced 70.47% / 29.53%). Re-run this line by hand.
-- [ ] Screen reader (NVDA/VoiceOver): the swap is announced without moving focus manually. — **owner-only**; no AT in the agent's browser.
+- [x] Tab once → Retry focused. `Enter` → spinner, then a result, with the same series/method/scores as the failed attempt. — **owner, 2026-09-28: done and confirmed.** (The agent run proved the Tab half only; its `Enter` press never reached the page's default action, which was a tooling limit, and the native `<button type="button">` behaved correctly by hand.)
+- [ ] Screen reader (NVDA/VoiceOver): the swap is announced without moving focus manually. — **cannot be run here: no assistive tech installed.** Deferred to `deferred-work.md` and parked with Story 1.5's WCAG matrix, which is where an AT pass belongs anyway.
 
 ## 2. A `400` whose body is the server's own string
 
@@ -48,20 +48,22 @@ Setup: DevTools → Network → shield icon → block the URL pattern `*/rest/v1
 Two facts from the agent run change what this setup actually exercises:
 
 1. **The archive is one request, made at mount.** `/predict` issues a single `GET /rest/v1/series?select=id,year,round,…` when the page mounts and filters decade → year → series **client-side**; drilling through the picker afterwards makes no request at all. So "block, then open the picker" only shows the panel if the *mount* fetch failed — blocking at any later point is a no-op, and a green-looking picker proves nothing.
-2. **Therefore the reload in the setup is load-bearing, and it also kills the Console-patch route for the preload lines.** Checks 1–3 above were driven with a patched `fetch`, which does survive client-side navigation: patch → click Home → click Predict remounts the page with the block still on, and that is enough to drive the first two lines below. A full reload wipes the patch, so the `?series=` lines need real DevTools request blocking (or an init script) and stay owner-side.
+2. **A full reload wipes a Console `fetch` patch**, so the patch alone cannot reach the `?series=` preload lines. It turned out not to need DevTools either: a malformed id (`?series=not-a-uuid`) drives the *same* `catch` branch a blocked request drives, and an absent-but-well-formed id drives the toast branch. The patch did survive client-side navigation though — patch → click Home → click Predict remounts the page with the block still on, and that is what drove the first two lines below.
 
 - [x] **Picker body:** opening the series picker shows "Couldn't load the series list." with "Retry fetches the archive again. Your current selection stays put." — not an empty decade list. (Driven by the patch → remount route above.)
 - [x] Turn blocking off, click that panel's Retry → list repopulates; a preloaded selection survives. — repopulates: yes, one fresh `rest/v1/series` request and the decade grid came back. **Preloaded selection survives: not covered** — the agent run had no `?series=` preload (see fact 2), so only the fetch half of this line is proven.
-- [ ] **Preload:** with blocking still on, reload `/predictgame7/predict?series=<a real series id>` → result region shows "Couldn't load this series." / "Retry fetches it again." and **no** "Series not found" toast (a genuinely missing row keeps the toast; a failed fetch does not). — owner-side. A real id for the local/prod data: `09d16ca2-8d45-4506-ba58-7e0f023aff48` (2026, Eastern Conf Semifinals).
-- [ ] **The regression the review caught:** with that preload panel showing, turn blocking off, pick a series and method by hand and predict → the panel must be gone and the result visible. If "Couldn't load this series." still masks the result, that is the bug fixed in review row 1 of the spec's triage log — report it. — owner-side (needs the `?series=` preload). The nearest proven thing is check 1's recovery: from the *transport* error panel, Retry cleared the panel and rendered a real result in its place, so the "panel masks the result" failure mode did not reproduce on that panel.
+- [x] **Preload:** reload a `/predict?series=<id>` that cannot be read → result region shows "Couldn't load this series." / "Retry fetches it again." and **no** "Series not found" toast (a genuinely missing row keeps the toast; a failed read does not). — **both halves proven 2026-09-28 without any blocking.** `?series=not-a-uuid` makes Postgres answer 400 (`invalid input syntax for type uuid`), which lands in the same `catch` → `setSeriesLoadFailed(true)` branch a blocked request takes (`src/pages/PredictPage.tsx:174-181`): panel on screen, zero `[data-sonner-toast]` nodes. `?series=00000000-0000-4000-8000-000000000000` — well-formed, no row — took the other branch, and the toast text was captured verbatim as **"Series not found"** with no panel. What remains unproven is only the literal DevTools-blocked network miss, which reaches that identical branch: a formality, not a gap.
+- [x] **The regression the review caught:** with that preload panel showing, pick a series and method by hand and predict → the panel must be gone and the result visible. — **driven end to end.** Loaded `?series=not-a-uuid` (panel confirmed), then 2020s → 2026 → OKC vs SAS + Logistic Regression and predicted: the panel disappeared the moment the hand-picked series landed, and the result rendered OKC **70.47%** / SAS **29.53%**. Review row 1 of the spec's triage log holds — `PredictPage.tsx:99-111` clears `seriesLoadFailed` and bumps the in-flight sequence on any new selection.
 
 ## 5. Owner-only run sheet
 
-The four lines the agent run could not reach, in the order that costs least. Why they are yours: `window.fetch` patches die on reload, and this toolset has no init-script hook and no DevTools request-blocking, while two of the checks need exactly that.
+Status after 2026-09-28: **A is done** (owner-confirmed). **B is deferred** — no assistive tech on this machine; it travels with Story 1.5's WCAG matrix. **C is closed** — the preload panel and the review-row-1 regression were both driven here without DevTools, using a malformed id and an absent id. Only the literal blocked-network flavour of the archive/preload read is left, and it reaches the same code branch, so it is a formality: run it if you want the screenshot, not because anything is unknown.
 
-**Prereqs.** `npm run preview` (or `npm run dev`) is already serving the current bundle at `http://localhost:4173/predictgame7/` — 4174 is running the identical build, either works; `index-W6mB6tzs.js` is what the gate just produced. Open DevTools → Network and find the **Request blocking** pane (shield icon at the right end of the Network toolbar; if it is not there, `Ctrl+Shift+P` → "Request blocking"). Add a rule with **Block** checked and regex off. Keep DevTools open the whole session — Chrome stops blocking when it closes. Blocking *does* survive reloads, which is the entire reason to use it instead of a Console patch.
+Why these were ever owner-only: `window.fetch` patches die on reload, and this toolset has no init-script hook and no DevTools request-blocking. The malformed-id route sidestepped both.
 
-### A. Enter-activation of Retry (check 1, line 3)
+**Prereqs (for the optional C formality).** `npm run preview` is serving the current bundle at `http://localhost:4173/predictgame7/` — 4174 is running the identical build, either works; `index-W6mB6tzs.js` is what the gate produced. Open DevTools → Network → the **Request blocking** pane (shield icon at the right end of the Network toolbar; if absent, `Ctrl+Shift+P` → "Request blocking"). Add a rule with **Block** checked and regex off, keep DevTools open the whole session — Chrome stops blocking when it closes, and there is a pane-level enable checkbox as well as the per-rule one, which is the usual reason a "blocked" request still succeeds. Blocking *does* survive reloads, which is the entire reason to use it over a Console patch.
+
+### A. Enter-activation of Retry (check 1, line 3) — DONE, owner 2026-09-28
 
 1. Rule: `*/functions/v1/predict-game-7*`, enabled.
 2. Reload `/predictgame7/predict`, then 2020s → 2026 → **OKC vs SAS** (Western Conference Finals), method **Logistic Regression**, predict.
@@ -72,7 +74,7 @@ The four lines the agent run could not reach, in the order that costs least. Why
 
 Retry is a native `<button type="button">`, so Enter and Space activation is the browser's own behaviour, not app code. If Enter or Space does nothing while the other works, that is a real defect — report it rather than shrugging.
 
-### B. The screen-reader lines (check 1 line 4, check 3's AT half)
+### B. The screen-reader lines (check 1 line 4, check 3's AT half) — DEFERRED, needs AT
 
 Needs actual assistive tech; the DevTools Accessibility pane only proves the tree, not what gets announced. NVDA (free, Windows) with Chrome/Edge/Firefox, or VoiceOver on macOS (`Cmd+F5`).
 
@@ -81,7 +83,9 @@ Needs actual assistive tech; the DevTools Accessibility pane only proves the tre
 3. Clear rule A. Series picker → Custom Matchup; blank Team A's name and Game 1's two scores, fill the rest, method Logistic Regression. Click predict (the Generate card is still outside the tab ring, so this one click needs the mouse — that is the `deferred-work.md` keyboard-accessibility entry, not this check).
 4. Expect focus to land on Team A's input on its own (the agent proved that half), and the SR to read the label **and** "Team name is required" as one utterance — that is the `aria-describedby="team_a-error"` wiring earning its keep. Then `Tab` to each of the two score fields and confirm each reads "Score is required".
 
-### C. Check 4's two `?series=` preload lines
+### C. Check 4's two `?series=` preload lines — CLOSED without blocking
+
+Steps 1 and 4–5 below are what actually got run, and they need no DevTools at all: `?series=not-a-uuid` is rejected by Postgres, so it drives the retryable-panel branch exactly as a blocked request would, and `?series=00000000-0000-4000-8000-000000000000` is well-formed with no row, so it drives the toast branch. Step 4's regression was then driven from the panel state on screen. Keep the blocking route only if you want the true network-miss shape on the record.
 
 Rule: `*/rest/v1/series*`, enabled. That one pattern covers **both** reads — the archive and the by-id preload hit the same `series` table — so the picker panel will be in its failed state too. Expected, not a confounder.
 
@@ -102,4 +106,4 @@ Add a row to the Result log below for whoever ran it. When every box in sections
 | Date | Checker | Outcome |
 |---|---|---|
 | 2026-09-28 | agent (browser-use, `npm run preview` + patched `fetch`) | Checks 1–3 pass on every line that a headless driver can reach; check 4 passes its first two lines. Still open: Enter-activation of Retry, all screen-reader lines, check 3's Tab-from-Generate (unrunnable — see finding), and check 4's two `?series=` preload lines. New finding filed to `deferred-work.md`: the Series/Method/Predict surfaces are outside the tab ring. |
-| | | |
+| 2026-09-28 | owner (§5 A) + agent (§5 C) | Enter-activation of Retry passes. The preload panel, the "Series not found" toast branch and the review-row-1 regression all pass, driven from a malformed / absent `?series=` id with no DevTools. Remaining open in this file: the AT announcements (§5 B, deferred to Story 1.5), check 3's Tab-from-Generate (blocked by the tab-ring gap, not by this QA), and two formality halves — the literal blocked-network shape and "a preloaded selection survives" on check 4 line 2. |
