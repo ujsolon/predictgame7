@@ -252,9 +252,15 @@ new issue-#3-class finding that came out of the pass is a **keyboard** one, not
 a data one, and it is now fixed rather than catalogued: the three Predict
 pickers were clickable `div`s sitting outside the tab ring (the
 `deferred-work.md` keyboard-operability entry filed under Story 1.4, settled by
-Story 1.5's Decisions 1–2). Two announcement cells in that matrix stay `[ ]`
-because no assistive tech is installed on this machine — the owner-side NVDA /
-VoiceOver run sheet is its §6.1–§6.2.
+Story 1.5's Decisions 1–2). Two announcement cells in that matrix were left
+`[ ]` because no assistive tech was installed on this machine; the owner has
+since run §6.1 with NVDA and it **passed** — the retry panel is spoken unprompted
+— which also produced one new issue-#3-class finding of its own: Chrome fuses a
+control's descendant text into its accessible name, so NVDA heard
+`"Select a SeriesClick to choose series"` (matrix F16, fixed on the two triggers
+Story 1.5 shipped, the pre-existing instances filed to 5.2). §6.2, the custom
+field error read together with its label, is the one announcement cell still
+open.
 
 ---
 

@@ -475,208 +475,218 @@ export default function PredictPage() {
                   setSelectedYear(null);
                 }
               }}>
-                  <CardContent className="flex-1 flex flex-col">
-                    <div className="flex-1 space-y-4 py-4">
-                      {/* Decision 1 (Story 1.5): the series trigger is a real
-                          focusable `<button>` narrowed to the card's header
-                          block. The custom-matchup grid and the score rows
-                          below are its SIBLINGS inside this CardContent, never
-                          its children — inputs nested in a button are hidden
-                          from assistive tech in browse mode, which would pass a
-                          tab-ring measurement while failing NFR-A1 in substance. */}
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="group flex h-auto w-full cursor-pointer flex-col items-stretch gap-0 space-y-1 whitespace-normal rounded-lg px-4 py-2 text-left transition-colors hover:bg-muted/50"
-                        >
-                          <div className="flex items-center justify-center gap-4 py-2">
-                            {selectedSeries && selectedSeries.data && (() => {
-                              const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
-                              const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
-                              const teamALogo = resolveTeamLogoUrl(selectedSeries.data.team_a?.logo_url) || getTeamLogo(teamAName);
-                              const teamBLogo = resolveTeamLogoUrl(selectedSeries.data.team_b?.logo_url) || getTeamLogo(teamBName);
-
-                              return (
-                                <>
-                                  {teamALogo && (
-                                    <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
-                                  )}
-                                  <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                                  {teamBLogo && (
-                                    <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
-                                  )}
-                                </>
-                              );
-                            })()}
-                            {!selectedSeries && (
-                              <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</p>
-                            )}
-                            {selectedSeries && selectedSeries.source === 'custom' && (() => {
-                              const teamAName = (customInput.team_a ?? '').trim() || 'Team A';
-                              const teamBName = (customInput.team_b ?? '').trim() || 'Team B';
-                              const teamALogo = getTeamLogo(teamAName) || getTeamLogo('Team A');
-                              const teamBLogo = getTeamLogo(teamBName) || getTeamLogo('Team B');
-
-                              return (
-                                <>
-                                  {teamALogo && (
-                                    <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
-                                  )}
-                                  <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                                  {teamBLogo && (
-                                    <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
-                          {!selectedSeries && (
-                            <p className="text-xs text-muted-foreground text-center">
-                              Click to choose series
-                            </p>
-                          )}
-                        </Button>
-                      </DialogTrigger>
-
-                      {selectedSeries && selectedSeries.source === 'custom' && (
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          <div className="space-y-1">
-                            <Label htmlFor="team_a" className="text-[10px] uppercase text-muted-foreground">Team A</Label>
-                            <div className="flex items-center gap-2">
-                              {(getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')) && (
-                                <img
-                                  src={getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')}
-                                  alt=""
-                                  className="h-8 w-8 object-contain shrink-0"
-                                />
-                              )}
-                            <Input
-                              id="team_a"
-                              size={1}
-                              className={cn('h-8 text-xs', customFieldErrors.team_a && 'border-destructive')}
-                              aria-invalid={customFieldErrors.team_a ? true : undefined}
-                              aria-describedby={customFieldErrors.team_a ? 'team_a-error' : undefined}
-                              value={customInput.team_a}
-                              onChange={(e) => setCustomInput({ ...customInput, team_a: e.target.value })}
-                              placeholder="e.g. BOS"
-                            />
-                            </div>
-                            {customFieldErrors.team_a && (
-                              <p id="team_a-error" className="text-sm text-destructive-text">{customFieldErrors.team_a}</p>
-                            )}
-                          </div>
-                          <div className="space-y-1">
-                            <Label htmlFor="team_b" className="text-[10px] uppercase text-muted-foreground">Team B</Label>
-                            <div className="flex items-center gap-2">
-                              {(getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')) && (
-                                <img
-                                  src={getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')}
-                                  alt=""
-                                  className="h-8 w-8 object-contain shrink-0"
-                                />
-                              )}
-                            <Input
-                              id="team_b"
-                              size={1}
-                              className={cn('h-8 text-xs', customFieldErrors.team_b && 'border-destructive')}
-                              aria-invalid={customFieldErrors.team_b ? true : undefined}
-                              aria-describedby={customFieldErrors.team_b ? 'team_b-error' : undefined}
-                              value={customInput.team_b}
-                              onChange={(e) => setCustomInput({ ...customInput, team_b: e.target.value })}
-                              placeholder="e.g. MIA"
-                            />
-                            </div>
-                            {customFieldErrors.team_b && (
-                              <p id="team_b-error" className="text-sm text-destructive-text">{customFieldErrors.team_b}</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedSeries && (
-                        <div className="space-y-2 pt-2 border-t border-border/50">
-                          {[1, 2, 3, 4, 5, 6].map((g) => {
-                            const scoreRow = selectedSeries.source === 'custom'
-                              ? undefined
-                              : selectedSeries.data?.series_game_scores?.find((row) => row.game_number === g);
-                            const scoreA = selectedSeries.source === 'custom' 
-                              ? (customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined)
-                              : scoreRow
-                                ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.home_score : scoreRow.away_score)
-                                : undefined;
-                            
-                            const scoreB = selectedSeries.source === 'custom'
-                              ? (customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined)
-                              : scoreRow
-                                ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.away_score : scoreRow.home_score)
-                                : undefined;
-
-                            if (selectedSeries.source === 'custom') {
-                              const keyA = `game_${g}_score_a`;
-                              const keyB = `game_${g}_score_b`;
-                              const errorA = customFieldErrors[keyA];
-                              const errorB = customFieldErrors[keyB];
-                              return (
-                                <div key={g} className="flex items-start justify-between gap-4">
-                                  <span className="text-xs text-muted-foreground font-medium w-12 pt-2">Game {g}</span>
-                                  <div className="flex-1 grid grid-cols-2 gap-2">
-                                    <div className="space-y-1">
-                                      <Input
-                                        id={keyA}
-                                        type="number"
-                                        aria-label={`Game ${g} score, team A`}
-                                        className={cn('h-8 text-center text-xs px-1', errorA && 'border-destructive')}
-                                        aria-invalid={errorA ? true : undefined}
-                                        aria-describedby={errorA ? `${keyA}-error` : undefined}
-                                        value={(customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined) ?? ''}
-                                        onChange={(e) => setCustomInput({ 
-                                          ...customInput, 
-                                          [`game_${g}_score_a`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                        })}
-                                        placeholder="A"
-                                      />
-                                      {errorA && (
-                                        <p id={`${keyA}-error`} className="text-sm text-destructive-text">{errorA}</p>
-                                      )}
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Input
-                                        id={keyB}
-                                        type="number"
-                                        aria-label={`Game ${g} score, team B`}
-                                        className={cn('h-8 text-center text-xs px-1', errorB && 'border-destructive')}
-                                        aria-invalid={errorB ? true : undefined}
-                                        aria-describedby={errorB ? `${keyB}-error` : undefined}
-                                        value={(customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined) ?? ''}
-                                        onChange={(e) => setCustomInput({ 
-                                          ...customInput, 
-                                          [`game_${g}_score_b`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                        })}
-                                        placeholder="B"
-                                      />
-                                      {errorB && (
-                                        <p id={`${keyB}-error`} className="text-sm text-destructive-text">{errorB}</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
+                <CardContent className="flex-1 flex flex-col">
+                  <div className="flex-1 space-y-4 py-4">
+                    {/* Decision 1 (Story 1.5): the series trigger is a real
+                        focusable `<button>` narrowed to the card's header
+                        block. The custom-matchup grid and the score rows
+                        below are its SIBLINGS inside this CardContent, never
+                        its children — inputs nested in a button are hidden
+                        from assistive tech in browse mode, which would pass a
+                        tab-ring measurement while failing NFR-A1 in substance. */}
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="group flex h-auto w-full cursor-pointer flex-col items-stretch gap-0 space-y-1 whitespace-normal rounded-lg px-4 py-2 text-left transition-colors hover:bg-muted/50"
+                      >
+                        {/* A `<button>` may only contain phrasing content, so
+                            the trigger's innards are spans — `block` keeps the
+                            box layout the `<div>`/`<p>` pair had. */}
+                        <span className="flex items-center justify-center gap-4 py-2">
+                          {selectedSeries && selectedSeries.data && (() => {
+                            const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
+                            const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
+                            const teamALogo = resolveTeamLogoUrl(selectedSeries.data.team_a?.logo_url) || getTeamLogo(teamAName);
+                            const teamBLogo = resolveTeamLogoUrl(selectedSeries.data.team_b?.logo_url) || getTeamLogo(teamBName);
 
                             return (
-                              <div key={g} className="flex items-center justify-between text-sm py-0.5">
-                                <span className="text-xs text-muted-foreground font-medium">Game {g}</span>
-                                <span className="font-mono tabular-nums">
-                                  {scoreA ?? '-'} — {scoreB ?? '-'}
-                                </span>
+                              <>
+                                {teamALogo && (
+                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                                <span className="block text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</span>
+                                {teamBLogo && (
+                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                              </>
+                            );
+                          })()}
+                          {!selectedSeries && (
+                            <span className="block text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</span>
+                          )}
+                          {selectedSeries && selectedSeries.source === 'custom' && (() => {
+                            const teamAName = (customInput.team_a ?? '').trim() || 'Team A';
+                            const teamBName = (customInput.team_b ?? '').trim() || 'Team B';
+                            const teamALogo = getTeamLogo(teamAName) || getTeamLogo('Team A');
+                            const teamBLogo = getTeamLogo(teamBName) || getTeamLogo('Team B');
+
+                            return (
+                              <>
+                                {teamALogo && (
+                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                                <span className="block text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</span>
+                                {teamBLogo && (
+                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                )}
+                              </>
+                            );
+                          })()}
+                        </span>
+                        {/* The accessible name is the concatenation of the
+                            trigger's descendant text, and JSX emits no text node
+                            between sibling elements — so without this space NVDA
+                            reads "Select a SeriesClick to choose series". A
+                            whitespace-only text node is not a flex item, so the
+                            layout is unchanged. */}
+                        {' '}
+                        {!selectedSeries && (
+                          <span className="block text-xs text-muted-foreground text-center">
+                            Click to choose series
+                          </span>
+                        )}
+                      </Button>
+                    </DialogTrigger>
+
+                    {selectedSeries && selectedSeries.source === 'custom' && (
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="team_a" className="text-[10px] uppercase text-muted-foreground">Team A</Label>
+                          <div className="flex items-center gap-2">
+                            {(getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')) && (
+                              <img
+                                src={getTeamLogo((customInput.team_a ?? '').trim() || 'Team A') || getTeamLogo('Team A')}
+                                alt=""
+                                className="h-8 w-8 object-contain shrink-0"
+                              />
+                            )}
+                          <Input
+                            id="team_a"
+                            size={1}
+                            className={cn('h-8 text-xs', customFieldErrors.team_a && 'border-destructive')}
+                            aria-invalid={customFieldErrors.team_a ? true : undefined}
+                            aria-describedby={customFieldErrors.team_a ? 'team_a-error' : undefined}
+                            value={customInput.team_a}
+                            onChange={(e) => setCustomInput({ ...customInput, team_a: e.target.value })}
+                            placeholder="e.g. BOS"
+                          />
+                          </div>
+                          {customFieldErrors.team_a && (
+                            <p id="team_a-error" className="text-sm text-destructive-text">{customFieldErrors.team_a}</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="team_b" className="text-[10px] uppercase text-muted-foreground">Team B</Label>
+                          <div className="flex items-center gap-2">
+                            {(getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')) && (
+                              <img
+                                src={getTeamLogo((customInput.team_b ?? '').trim() || 'Team B') || getTeamLogo('Team B')}
+                                alt=""
+                                className="h-8 w-8 object-contain shrink-0"
+                              />
+                            )}
+                          <Input
+                            id="team_b"
+                            size={1}
+                            className={cn('h-8 text-xs', customFieldErrors.team_b && 'border-destructive')}
+                            aria-invalid={customFieldErrors.team_b ? true : undefined}
+                            aria-describedby={customFieldErrors.team_b ? 'team_b-error' : undefined}
+                            value={customInput.team_b}
+                            onChange={(e) => setCustomInput({ ...customInput, team_b: e.target.value })}
+                            placeholder="e.g. MIA"
+                          />
+                          </div>
+                          {customFieldErrors.team_b && (
+                            <p id="team_b-error" className="text-sm text-destructive-text">{customFieldErrors.team_b}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedSeries && (
+                      <div className="space-y-2 pt-2 border-t border-border/50">
+                        {[1, 2, 3, 4, 5, 6].map((g) => {
+                          const scoreRow = selectedSeries.source === 'custom'
+                            ? undefined
+                            : selectedSeries.data?.series_game_scores?.find((row) => row.game_number === g);
+                          const scoreA = selectedSeries.source === 'custom' 
+                            ? (customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined)
+                            : scoreRow
+                              ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.home_score : scoreRow.away_score)
+                              : undefined;
+                          
+                          const scoreB = selectedSeries.source === 'custom'
+                            ? (customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined)
+                            : scoreRow
+                              ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.away_score : scoreRow.home_score)
+                              : undefined;
+
+                          if (selectedSeries.source === 'custom') {
+                            const keyA = `game_${g}_score_a`;
+                            const keyB = `game_${g}_score_b`;
+                            const errorA = customFieldErrors[keyA];
+                            const errorB = customFieldErrors[keyB];
+                            return (
+                              <div key={g} className="flex items-start justify-between gap-4">
+                                <span className="text-xs text-muted-foreground font-medium w-12 pt-2">Game {g}</span>
+                                <div className="flex-1 grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Input
+                                      id={keyA}
+                                      type="number"
+                                      aria-label={`Game ${g} score, team A`}
+                                      className={cn('h-8 text-center text-xs px-1', errorA && 'border-destructive')}
+                                      aria-invalid={errorA ? true : undefined}
+                                      aria-describedby={errorA ? `${keyA}-error` : undefined}
+                                      value={(customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined) ?? ''}
+                                      onChange={(e) => setCustomInput({ 
+                                        ...customInput, 
+                                        [`game_${g}_score_a`]: e.target.value === '' ? undefined : Number(e.target.value) 
+                                      })}
+                                      placeholder="A"
+                                    />
+                                    {errorA && (
+                                      <p id={`${keyA}-error`} className="text-sm text-destructive-text">{errorA}</p>
+                                    )}
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Input
+                                      id={keyB}
+                                      type="number"
+                                      aria-label={`Game ${g} score, team B`}
+                                      className={cn('h-8 text-center text-xs px-1', errorB && 'border-destructive')}
+                                      aria-invalid={errorB ? true : undefined}
+                                      aria-describedby={errorB ? `${keyB}-error` : undefined}
+                                      value={(customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined) ?? ''}
+                                      onChange={(e) => setCustomInput({ 
+                                        ...customInput, 
+                                        [`game_${g}_score_b`]: e.target.value === '' ? undefined : Number(e.target.value) 
+                                      })}
+                                      placeholder="B"
+                                    />
+                                    {errorB && (
+                                      <p id={`${keyB}-error`} className="text-sm text-destructive-text">{errorB}</p>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
+                          }
+
+                          return (
+                            <div key={g} className="flex items-center justify-between text-sm py-0.5">
+                              <span className="text-xs text-muted-foreground font-medium">Game {g}</span>
+                              <span className="font-mono tabular-nums">
+                                {scoreA ?? '-'} — {scoreB ?? '-'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
                 <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-2xl max-h-[90dvh] flex flex-col p-0 overflow-hidden">
                   <DialogHeader className="p-6 pb-2">
                     <DialogTitle>Select Series</DialogTitle>
@@ -828,161 +838,165 @@ export default function PredictPage() {
               </Dialog>
             </Card>
 
-          <Card className="h-full flex flex-col overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Method
-              </CardTitle>
-              <CardDescription>Choose a prediction method</CardDescription>
-            </CardHeader>
-            <Dialog open={isMethodDialogOpen} onOpenChange={setIsMethodDialogOpen}>
-              <DialogTrigger asChild>
-                {/* Decision 1 (Story 1.5): nothing interactive is nested in the
-                    method card's body — text and logos only — so it converts to
-                    a real focusable `<button>` directly, with the same copy. */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="group flex h-auto w-full flex-1 cursor-pointer flex-col items-stretch gap-0 space-y-4 whitespace-normal rounded-lg p-6 pt-0 text-left transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex-1 space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">{getMethodLabel()}</p>
-                      {!selectedMethod ? (
-                        <p className="text-xs text-muted-foreground text-center">
-                          Click to choose method
-                        </p>
-                      ) : (
-                        <div className="space-y-4 pt-2">
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            {(() => {
-                              switch (selectedMethod) {
-                                case 'logistic_regression':
-                                  return "A statistical model that predicts the probability of a binary outcome based on individual game point differentials from the series.";
-                                case 'bayes':
-                                  return "A Bayesian inference model that sequentially updates win probability using point differentials from each game as evidence.";
-                                case 'elo':
-                                  return "An Elo-based rating system where team ratings update after each game based on the result and margin of victory.";
-                                case 'exponential_smoothing':
-                                  return "A momentum-based model that applies a decay factor, giving exponentially more weight to recent game results.";
-                                default:
-                                  return "";
-                              }
-                            })()}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+            <Card className="h-full flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Method
+                </CardTitle>
+                <CardDescription>Choose a prediction method</CardDescription>
+              </CardHeader>
+              <Dialog open={isMethodDialogOpen} onOpenChange={setIsMethodDialogOpen}>
+                <DialogTrigger asChild>
+                  {/* Decision 1 (Story 1.5): nothing interactive is nested in the
+                      method card's body — text and logos only — so it converts to
+                      a real focusable `<button>` directly, with the same copy. */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="group flex h-auto w-full flex-1 cursor-pointer flex-col items-stretch gap-0 space-y-4 whitespace-normal rounded-lg p-6 pt-0 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <span className="block flex-1 space-y-4">
+                      <span className="block space-y-2">
+                        <span className="block text-lg font-medium text-center group-hover:text-primary transition-colors">{getMethodLabel()}</span>
+                        {/* Same accname gap as the Series trigger: without this
+                            space NVDA reads "Not selectedClick to choose method"
+                            and "Logistic RegressionA statistical model…". */}
+                        {' '}
+                        {!selectedMethod ? (
+                          <span className="block text-xs text-muted-foreground text-center">
+                            Click to choose method
+                          </span>
+                        ) : (
+                          <span className="block space-y-4 pt-2">
+                            <span className="block text-xs text-muted-foreground leading-relaxed">
+                              {(() => {
+                                switch (selectedMethod) {
+                                  case 'logistic_regression':
+                                    return "A statistical model that predicts the probability of a binary outcome based on individual game point differentials from the series.";
+                                  case 'bayes':
+                                    return "A Bayesian inference model that sequentially updates win probability using point differentials from each game as evidence.";
+                                  case 'elo':
+                                    return "An Elo-based rating system where team ratings update after each game based on the result and margin of victory.";
+                                  case 'exponential_smoothing':
+                                    return "A momentum-based model that applies a decay factor, giving exponentially more weight to recent game results.";
+                                  default:
+                                    return "";
+                                }
+                              })()}
+                            </span>
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Select Method</DialogTitle>
+                    <DialogDescription>
+                      Choose a statistical approach for the <span className="whitespace-nowrap">Game 7</span> prediction. {' '}
+                      <Link to="/maths" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
+                        Learn about our methodology <ChevronRight className="h-3 w-3" />
+                      </Link>
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <Button
+                      variant={selectedMethod === 'logistic_regression' ? 'default' : 'outline'}
+                      className="w-full justify-between h-14 px-4"
+                      onClick={() => {
+                        setSelectedMethod('logistic_regression');
+                        setIsMethodDialogOpen(false);
+                        toast.success('Logistic Regression selected');
+                        posthog?.capture('prediction_method_selected', { method: 'logistic_regression' });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {selectedMethod === 'logistic_regression' && <Check className="h-4 w-4" />}
+                        <span>Logistic Regression</span>
+                      </div>
+                      <Link 
+                        to="/maths#logistic-regression" 
+                        className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Details
+                      </Link>
+                    </Button>
+
+                    <Button
+                      variant={selectedMethod === 'bayes' ? 'default' : 'outline'}
+                      className="w-full justify-between h-14 px-4"
+                      onClick={() => {
+                        setSelectedMethod('bayes');
+                        setIsMethodDialogOpen(false);
+                        toast.success('Bayes Method selected');
+                        posthog?.capture('prediction_method_selected', { method: 'bayes' });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {selectedMethod === 'bayes' && <Check className="h-4 w-4" />}
+                        <span>Bayes Method</span>
+                      </div>
+                      <Link 
+                        to="/maths#bayesian-inference" 
+                        className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Details
+                      </Link>
+                    </Button>
+
+                    <Button
+                      variant={selectedMethod === 'elo' ? 'default' : 'outline'}
+                      className="w-full justify-between h-14 px-4"
+                      onClick={() => {
+                        setSelectedMethod('elo');
+                        setIsMethodDialogOpen(false);
+                        toast.success('Elo Rating selected');
+                        posthog?.capture('prediction_method_selected', { method: 'elo' });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {selectedMethod === 'elo' && <Check className="h-4 w-4" />}
+                        <span>Elo Rating</span>
+                      </div>
+                      <Link 
+                        to="/maths#elo-rating" 
+                        className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Details
+                      </Link>
+                    </Button>
+
+                    <Button
+                      variant={selectedMethod === 'exponential_smoothing' ? 'default' : 'outline'}
+                      className="w-full justify-between h-14 px-4"
+                      onClick={() => {
+                        setSelectedMethod('exponential_smoothing');
+                        setIsMethodDialogOpen(false);
+                        toast.success('Exponential Smoothing selected');
+                        posthog?.capture('prediction_method_selected', { method: 'exponential_smoothing' });
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {selectedMethod === 'exponential_smoothing' && <Check className="h-4 w-4" />}
+                        <span>Exponential Smoothing</span>
+                      </div>
+                      <Link 
+                        to="/maths#exponential-smoothing" 
+                        className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Details
+                      </Link>
+                    </Button>
                   </div>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>Select Method</DialogTitle>
-                  <DialogDescription>
-                    Choose a statistical approach for the <span className="whitespace-nowrap">Game 7</span> prediction. {' '}
-                    <Link to="/maths" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
-                      Learn about our methodology <ChevronRight className="h-3 w-3" />
-                    </Link>
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <Button
-                    variant={selectedMethod === 'logistic_regression' ? 'default' : 'outline'}
-                    className="w-full justify-between h-14 px-4"
-                    onClick={() => {
-                      setSelectedMethod('logistic_regression');
-                      setIsMethodDialogOpen(false);
-                      toast.success('Logistic Regression selected');
-                      posthog?.capture('prediction_method_selected', { method: 'logistic_regression' });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedMethod === 'logistic_regression' && <Check className="h-4 w-4" />}
-                      <span>Logistic Regression</span>
-                    </div>
-                    <Link 
-                      to="/maths#logistic-regression" 
-                      className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Details
-                    </Link>
-                  </Button>
-
-                  <Button
-                    variant={selectedMethod === 'bayes' ? 'default' : 'outline'}
-                    className="w-full justify-between h-14 px-4"
-                    onClick={() => {
-                      setSelectedMethod('bayes');
-                      setIsMethodDialogOpen(false);
-                      toast.success('Bayes Method selected');
-                      posthog?.capture('prediction_method_selected', { method: 'bayes' });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedMethod === 'bayes' && <Check className="h-4 w-4" />}
-                      <span>Bayes Method</span>
-                    </div>
-                    <Link 
-                      to="/maths#bayesian-inference" 
-                      className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Details
-                    </Link>
-                  </Button>
-
-                  <Button
-                    variant={selectedMethod === 'elo' ? 'default' : 'outline'}
-                    className="w-full justify-between h-14 px-4"
-                    onClick={() => {
-                      setSelectedMethod('elo');
-                      setIsMethodDialogOpen(false);
-                      toast.success('Elo Rating selected');
-                      posthog?.capture('prediction_method_selected', { method: 'elo' });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedMethod === 'elo' && <Check className="h-4 w-4" />}
-                      <span>Elo Rating</span>
-                    </div>
-                    <Link 
-                      to="/maths#elo-rating" 
-                      className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Details
-                    </Link>
-                  </Button>
-
-                  <Button
-                    variant={selectedMethod === 'exponential_smoothing' ? 'default' : 'outline'}
-                    className="w-full justify-between h-14 px-4"
-                    onClick={() => {
-                      setSelectedMethod('exponential_smoothing');
-                      setIsMethodDialogOpen(false);
-                      toast.success('Exponential Smoothing selected');
-                      posthog?.capture('prediction_method_selected', { method: 'exponential_smoothing' });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {selectedMethod === 'exponential_smoothing' && <Check className="h-4 w-4" />}
-                      <span>Exponential Smoothing</span>
-                    </div>
-                    <Link 
-                      to="/maths#exponential-smoothing" 
-                      className="text-[10px] text-muted-foreground hover:text-primary transition-colors uppercase tracking-widest font-semibold ml-4"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Details
-                    </Link>
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </Card>
+                </DialogContent>
+              </Dialog>
+            </Card>
         </div>
 
         <Card 
@@ -1007,7 +1021,7 @@ export default function PredictPage() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-auto max-w-full justify-start gap-0 overflow-hidden rounded-md p-0 text-left text-sm font-normal text-on-muted hover:bg-transparent hover:text-on-muted disabled:opacity-100"
+                  className="h-auto max-w-full justify-start gap-0 overflow-hidden rounded-md p-0 text-left text-sm font-normal whitespace-normal text-on-muted hover:bg-transparent hover:text-on-muted disabled:opacity-100"
                   disabled={!selectedSeries || !selectedMethod || loading}
                   onClick={(event) => {
                     // One invoke per activation: this click must not also
@@ -1017,9 +1031,11 @@ export default function PredictPage() {
                     void handlePredict();
                   }}
                 >
-                  {!selectedSeries || !selectedMethod
-                    ? 'Select series and method first'
-                    : 'Click to generate prediction'}
+                  {loading
+                    ? 'Generating prediction…'
+                    : !selectedSeries || !selectedMethod
+                      ? 'Select series and method first'
+                      : 'Click to generate prediction'}
                 </Button>
               </CardDescription>
             </CardHeader>

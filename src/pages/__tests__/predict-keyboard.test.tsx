@@ -120,6 +120,28 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     expect(ring.indexOf(series)).toBeLessThan(ring.indexOf(method));
   });
 
+  // Found by the owner's NVDA pass (§6.1), not by anything automated: Chrome's
+  // accessible-name computation concatenates a trigger's descendant text with no
+  // separator, so the real screen reader said "Select a SeriesClick to choose
+  // series" and "Not selectedClick to choose method". The regexes above match the
+  // fused string too, which is why they never caught it.
+  //
+  // This deliberately asserts `textContent`, NOT `getByRole({ name })`:
+  // `dom-accessibility-api` inserts a space between block-level siblings that
+  // Chrome does not, so a role/name query reports the separated name in jsdom
+  // either way and the test would pass on the broken tree. `textContent` is the
+  // raw concatenation, so it is the only assertion here that reddens when the
+  // whitespace text node is removed.
+  it('separates the trigger label from its hint in the rendered text', () => {
+    renderPage();
+
+    const series = screen.getByRole('button', { name: /Click to choose series/ });
+    const method = screen.getByRole('button', { name: /Click to choose method/ });
+
+    expect(series.textContent).toBe('Select a Series Click to choose series');
+    expect(method.textContent).toBe('Not selected Click to choose method');
+  });
+
   it('opens the series picker on Enter and on Space, Escape closing it back to the trigger', async () => {
     renderPage();
     const trigger = screen.getByRole('button', { name: /Click to choose series/ });
@@ -245,6 +267,8 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     fireEvent.click(submit);
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
     expect(submit).toBeDisabled();
+    // In flight the label must not invite the click the control cannot take.
+    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBe(submit);
 
     fireEvent.click(submit);
     await waitFor(() => expect(submit).toBeDisabled());
@@ -256,9 +280,11 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
 
     const submit = screen.getByRole('button', { name: 'Select series and method first' });
     // A real disabled `<button>`, not the opacity-only fakery the card wore.
+    // `tabRing()` filters on `disabled` by construction, so asserting exclusion
+    // here would test the probe; the browser's own exclusion of a disabled
+    // button from sequential focus navigation is matrix §2.1's measured cell.
     expect(submit.tagName).toBe('BUTTON');
     expect(submit).toBeDisabled();
-    expect(tabRing()).not.toContain(submit);
 
     // Neither the control nor the card that still carries its own click can
     // start a request or announce one.
