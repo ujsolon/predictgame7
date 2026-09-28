@@ -1,0 +1,19 @@
+#!/bin/sh
+# Blocks a push to master unless the verification gate is green.
+# Tracked source is .githooks/pre-push; reinstall after editing it:
+#   npm run hooks:install
+# Deliberate escape hatch: git push --no-verify
+remote="$1"
+targets_master=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/master" ] && targets_master=1
+done
+[ "$targets_master" = 1 ] || exit 0
+
+echo "pre-push: push to master ($remote) - running the verification gate"
+if npm run gate </dev/null; then
+  echo "pre-push: gate green"
+  exit 0
+fi
+echo "pre-push: gate RED - push blocked. Fix it, or bypass with --no-verify."
+exit 1

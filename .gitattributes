@@ -1,0 +1,4 @@
+# The pre-push hook runs under sh, which refuses CRLF line endings. With the
+# machine's core.autocrlf=true a plain checkout would rewrite it and silently
+# stop the gate from firing.
+.githooks/pre-push text eol=lf
