@@ -1,9 +1,10 @@
-// Shared harness for the Predict-page test suites (Story 1.3 error states +
-// Story 1.4 flow regressions). The vitest boilerplate that must live per-file
-// (`vi.hoisted` mock bags, `vi.mock` registrations, the `beforeEach` stub
-// wiring) stays in each suite; everything that is plain DOM/RTL plumbing is
-// defined exactly once here so the two files cannot drift.
-import { fireEvent, render, screen, within } from '@testing-library/react';
+// Shared harness for the Predict-page test suites (Story 1.3 error states,
+// Story 1.4 flow regressions, Story 1.5 keyboard operability). The vitest
+// boilerplate that must live per-file (`vi.hoisted` mock bags, `vi.mock`
+// registrations, the `beforeEach` stub wiring) stays in each suite; everything
+// that is plain DOM/RTL plumbing is defined exactly once here so the files
+// cannot drift.
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 import PredictPage from '@/pages/PredictPage';
@@ -80,16 +81,34 @@ export function renderPageWithLocationProbe(entry = '/predict') {
   );
 }
 
+// Story 1.5 (Decisions 1-2) turned the three Predict surfaces into real
+// `<button>`s, so the click helpers retarget once, centrally, to the accessible
+// element instead of the hint `<p>` inside it. Every suite shares these, and the
+// hint copy itself is unchanged — `predict-keyboard.test.tsx` pins the roles.
+//
+// A second, quieter consequence: because the trigger is now focusable, Radix
+// hands focus back to it when the picker unmounts, and that restore lands a
+// tick after the closing click. Anything that moves focus afterwards would
+// have it stolen mid-test, so the helpers wait the unmount out — focus then
+// rests where a real fan would have left it: on the trigger.
+async function settlePickerClose() {
+  await waitFor(() => {
+    if (screen.queryByRole('dialog')) throw new Error('the picker is still mounted');
+  });
+}
+
 export async function chooseMethod(label = 'Logistic Regression') {
-  fireEvent.click(screen.getByText('Click to choose method'));
+  fireEvent.click(screen.getByRole('button', { name: /Click to choose method/ }));
   const option = await screen.findByRole('button', { name: new RegExp(label) });
   fireEvent.click(option);
+  await settlePickerClose();
 }
 
 export async function chooseCustomMatchup() {
-  fireEvent.click(screen.getByText('Click to choose series'));
+  fireEvent.click(screen.getByRole('button', { name: /Click to choose series/ }));
   const option = await screen.findByRole('button', { name: /Custom Matchup/ });
   fireEvent.click(option);
+  await settlePickerClose();
 }
 
 export function fillField(id: string, value: string) {
@@ -107,7 +126,7 @@ export function fillCustomForm() {
 }
 
 export function submitPrediction() {
-  fireEvent.click(screen.getByText('Click to generate prediction'));
+  fireEvent.click(screen.getByRole('button', { name: 'Click to generate prediction' }));
 }
 
 export function panel() {

@@ -217,6 +217,39 @@ Spec: `spec-1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30.md`
 
 ---
 
+## 10. Epic 1 verification pass — the catalog re-driven in a real browser (Story 1.5, 2026-09-28)
+
+Every case above that has a browser-observable symptom was re-observed on
+`npm run preview` against the deployed Edge Function, not only in jsdom:
+
+- §1/§2 round ranking — automation-pinned (`nba-utils.test.ts`) and
+  re-confirmed against the corrected 2026-09-28 expectation; this pass added
+  nothing to the ordering question, but drove the same page at 1440 and 390
+  and found the row/detail-sheet surfaces keyboard-inert (matrix §2.6, filed
+  to 5.2).
+- §6/§7 series-list and preload failures — blocked network at mount produces
+  "Couldn't load the series list." with a Retry that restores the picker and
+  preserves the selection; an unknown `?series=` id produces exactly one
+  "Series not found" toast and no crash.
+- §8 invalid input — a blank custom score blocks the wire with the inline
+  field error and issues **zero** requests (request counter, not the
+  resource-timing API); `'Nowhere FC'` produces one naming warning and still
+  renders a prediction (NF 64.11 / MIA 35.89).
+- §9 error envelopes — two live methods re-observed end to end (bayes, elo);
+  all 11 `PredictionResult` keys present on the wire, no `undefined%`, no raw
+  JSON in a toast.
+
+Results matrix: `_bmad-output/implementation-artifacts/qa-matrix-1-5.md`. The
+new issue-#3-class finding that came out of the pass is a **keyboard** one, not
+a data one, and it is now fixed rather than catalogued: the three Predict
+pickers were clickable `div`s sitting outside the tab ring (the
+`deferred-work.md` keyboard-operability entry filed under Story 1.4, settled by
+Story 1.5's Decisions 1–2). Two announcement cells in that matrix stay `[ ]`
+because no assistive tech is installed on this machine — the owner-side NVDA /
+VoiceOver run sheet is its §6.1–§6.2.
+
+---
+
 ## Open owner action (Decision 2 — not touched by this story)
 
 The suite only protects the flow if red blocks merge. **Enabling branch

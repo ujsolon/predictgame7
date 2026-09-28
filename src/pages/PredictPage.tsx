@@ -475,57 +475,69 @@ export default function PredictPage() {
                   setSelectedYear(null);
                 }
               }}>
-                <DialogTrigger asChild>
-                  <CardContent className="flex-1 flex flex-col space-y-4 cursor-pointer hover:bg-muted/50 transition-colors group">
+                  <CardContent className="flex-1 flex flex-col">
                     <div className="flex-1 space-y-4 py-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-center gap-4 py-2">
-                          {selectedSeries && selectedSeries.data && (() => {
-                            const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
-                            const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
-                            const teamALogo = resolveTeamLogoUrl(selectedSeries.data.team_a?.logo_url) || getTeamLogo(teamAName);
-                            const teamBLogo = resolveTeamLogoUrl(selectedSeries.data.team_b?.logo_url) || getTeamLogo(teamBName);
+                      {/* Decision 1 (Story 1.5): the series trigger is a real
+                          focusable `<button>` narrowed to the card's header
+                          block. The custom-matchup grid and the score rows
+                          below are its SIBLINGS inside this CardContent, never
+                          its children — inputs nested in a button are hidden
+                          from assistive tech in browse mode, which would pass a
+                          tab-ring measurement while failing NFR-A1 in substance. */}
+                      <DialogTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="group flex h-auto w-full cursor-pointer flex-col items-stretch gap-0 space-y-1 whitespace-normal rounded-lg px-4 py-2 text-left transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex items-center justify-center gap-4 py-2">
+                            {selectedSeries && selectedSeries.data && (() => {
+                              const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
+                              const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
+                              const teamALogo = resolveTeamLogoUrl(selectedSeries.data.team_a?.logo_url) || getTeamLogo(teamAName);
+                              const teamBLogo = resolveTeamLogoUrl(selectedSeries.data.team_b?.logo_url) || getTeamLogo(teamBName);
 
-                            return (
-                              <>
-                                {teamALogo && (
-                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
-                                )}
-                                <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                                {teamBLogo && (
-                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
-                                )}
-                              </>
-                            );
-                          })()}
+                              return (
+                                <>
+                                  {teamALogo && (
+                                    <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                  )}
+                                  <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
+                                  {teamBLogo && (
+                                    <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                  )}
+                                </>
+                              );
+                            })()}
+                            {!selectedSeries && (
+                              <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</p>
+                            )}
+                            {selectedSeries && selectedSeries.source === 'custom' && (() => {
+                              const teamAName = (customInput.team_a ?? '').trim() || 'Team A';
+                              const teamBName = (customInput.team_b ?? '').trim() || 'Team B';
+                              const teamALogo = getTeamLogo(teamAName) || getTeamLogo('Team A');
+                              const teamBLogo = getTeamLogo(teamBName) || getTeamLogo('Team B');
+
+                              return (
+                                <>
+                                  {teamALogo && (
+                                    <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
+                                  )}
+                                  <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
+                                  {teamBLogo && (
+                                    <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                           {!selectedSeries && (
-                            <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">Select a Series</p>
+                            <p className="text-xs text-muted-foreground text-center">
+                              Click to choose series
+                            </p>
                           )}
-                          {selectedSeries && selectedSeries.source === 'custom' && (() => {
-                            const teamAName = (customInput.team_a ?? '').trim() || 'Team A';
-                            const teamBName = (customInput.team_b ?? '').trim() || 'Team B';
-                            const teamALogo = getTeamLogo(teamAName) || getTeamLogo('Team A');
-                            const teamBLogo = getTeamLogo(teamBName) || getTeamLogo('Team B');
-
-                            return (
-                              <>
-                                {teamALogo && (
-                                  <img src={teamALogo} alt="" className="h-10 w-10 object-contain" />
-                                )}
-                                <p className="text-xl font-medium group-hover:text-primary transition-colors">{getSeriesLabel()}</p>
-                                {teamBLogo && (
-                                  <img src={teamBLogo} alt="" className="h-10 w-10 object-contain" />
-                                )}
-                              </>
-                            );
-                          })()}
-                        </div>
-                        {!selectedSeries && (
-                          <p className="text-xs text-muted-foreground text-center">
-                            Click to choose series
-                          </p>
-                        )}
-                      </div>
+                        </Button>
+                      </DialogTrigger>
 
                       {selectedSeries && selectedSeries.source === 'custom' && (
                         <div className="grid grid-cols-2 gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
@@ -665,7 +677,6 @@ export default function PredictPage() {
                       )}
                     </div>
                   </CardContent>
-                </DialogTrigger>
                 <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-2xl max-h-[90dvh] flex flex-col p-0 overflow-hidden">
                   <DialogHeader className="p-6 pb-2">
                     <DialogTitle>Select Series</DialogTitle>
@@ -827,7 +838,14 @@ export default function PredictPage() {
             </CardHeader>
             <Dialog open={isMethodDialogOpen} onOpenChange={setIsMethodDialogOpen}>
               <DialogTrigger asChild>
-                <CardContent className="flex-1 flex flex-col space-y-4 cursor-pointer hover:bg-muted/50 transition-colors group">
+                {/* Decision 1 (Story 1.5): nothing interactive is nested in the
+                    method card's body — text and logos only — so it converts to
+                    a real focusable `<button>` directly, with the same copy. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="group flex h-auto w-full flex-1 cursor-pointer flex-col items-stretch gap-0 space-y-4 whitespace-normal rounded-lg p-6 pt-0 text-left transition-colors hover:bg-muted/50"
+                >
                   <div className="flex-1 space-y-4">
                     <div className="space-y-2">
                       <p className="text-lg font-medium text-center group-hover:text-primary transition-colors">{getMethodLabel()}</p>
@@ -857,7 +875,7 @@ export default function PredictPage() {
                       )}
                     </div>
                   </div>
-                </CardContent>
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
                 <DialogHeader>
@@ -981,9 +999,28 @@ export default function PredictPage() {
                 Predict
               </CardTitle>
               <CardDescription>
-                {!selectedSeries || !selectedMethod 
-                  ? 'Select series and method first' 
-                  : 'Click to generate prediction'}
+                {/* Decision 2 (Story 1.5): a real `<button>` is the
+                    keyboard-operable Generate affordance — it joins the tab
+                    ring, activates with Enter and Space, and an incomplete
+                    selection makes it `disabled` rather than opacity-only. The
+                    card's own click below stays exactly as shipped. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto max-w-full justify-start gap-0 overflow-hidden rounded-md p-0 text-left text-sm font-normal text-muted-foreground hover:bg-transparent hover:text-muted-foreground disabled:opacity-100"
+                  disabled={!selectedSeries || !selectedMethod || loading}
+                  onClick={(event) => {
+                    // One invoke per activation: this click must not also
+                    // reach the card's own handler.
+                    event.stopPropagation();
+                    if (!selectedSeries || !selectedMethod || loading) return;
+                    void handlePredict();
+                  }}
+                >
+                  {!selectedSeries || !selectedMethod
+                    ? 'Select series and method first'
+                    : 'Click to generate prediction'}
+                </Button>
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-center items-center space-y-6">
