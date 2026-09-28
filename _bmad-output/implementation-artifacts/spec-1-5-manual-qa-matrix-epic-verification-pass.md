@@ -2,7 +2,7 @@
 title: 'Story 1.5 — Manual QA matrix + Epic 1 verification pass'
 type: 'feature'
 created: '2026-09-28'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '7f19589687609b6e96f00be765976d9f5575c39e'
