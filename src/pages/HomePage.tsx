@@ -124,15 +124,24 @@ export default function HomePage() {
       });
 
       if (error) {
-        const errorText = await error?.context?.text();
+        // `context` is the raw Response for an HTTP error but NOT for a
+        // transport or relay failure, where the old unguarded `.text()` threw
+        // a TypeError and the toast showed a JavaScript message instead of
+        // copy — the same bug class Story 1.3 removed in Predict.
+        const context = (error as { context?: unknown }).context as
+          | { text?: () => Promise<string> }
+          | undefined;
         let parsedMessage = error.message;
 
-        if (errorText) {
-          try {
-            const parsed = JSON.parse(errorText);
-            parsedMessage = parsed?.error || parsed?.message || errorText;
-          } catch {
-            parsedMessage = errorText;
+        if (typeof context?.text === 'function') {
+          const errorText = await context.text();
+          if (errorText) {
+            try {
+              const parsed = JSON.parse(errorText);
+              parsedMessage = parsed?.error || parsed?.message || errorText;
+            } catch {
+              parsedMessage = errorText;
+            }
           }
         }
 
