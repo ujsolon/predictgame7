@@ -254,13 +254,16 @@ pickers were clickable `div`s sitting outside the tab ring (the
 `deferred-work.md` keyboard-operability entry filed under Story 1.4, settled by
 Story 1.5's Decisions 1–2). Two announcement cells in that matrix were left
 `[ ]` because no assistive tech was installed on this machine; the owner has
-since run §6.1 with NVDA and it **passed** — the retry panel is spoken unprompted
-— which also produced one new issue-#3-class finding of its own: Chrome fuses a
-control's descendant text into its accessible name, so NVDA heard
-`"Select a SeriesClick to choose series"` (matrix F16, fixed on the two triggers
-Story 1.5 shipped, the pre-existing instances filed to 5.2). §6.2, the custom
-field error read together with its label, is the one announcement cell still
-open.
+since run **both** with NVDA on 2026-09-29, and both **passed**. §6.1 — the
+retry panel is spoken unprompted when the result region swaps — also produced
+one new issue-#3-class finding of its own: Chrome fuses a control's descendant
+text into its accessible name, so NVDA heard `"Select a SeriesClick to choose
+series"` (matrix F16, fixed on the two triggers Story 1.5 shipped, the
+pre-existing instances filed to 5.2). §6.2 — the custom field error read
+together with its label — needed no fix: the `aria-invalid` /
+`aria-describedby` wiring was already present and test-pinned, and NVDA read
+`"TEAM A edit invalid entry Team name is required e.g. BOS"` as one utterance.
+No announcement cell is open any more.
 
 ---
 
