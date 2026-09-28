@@ -540,7 +540,7 @@ export default function PredictPage() {
                       </DialogTrigger>
 
                       {selectedSeries && selectedSeries.source === 'custom' && (
-                        <div className="grid grid-cols-2 gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="grid grid-cols-2 gap-2 pt-2">
                           <div className="space-y-1">
                             <Label htmlFor="team_a" className="text-[10px] uppercase text-muted-foreground">Team A</Label>
                             <div className="flex items-center gap-2">
@@ -618,7 +618,7 @@ export default function PredictPage() {
                               const errorA = customFieldErrors[keyA];
                               const errorB = customFieldErrors[keyB];
                               return (
-                                <div key={g} className="flex items-start justify-between gap-4" onClick={(e) => e.stopPropagation()}>
+                                <div key={g} className="flex items-start justify-between gap-4">
                                   <span className="text-xs text-muted-foreground font-medium w-12 pt-2">Game {g}</span>
                                   <div className="flex-1 grid grid-cols-2 gap-2">
                                     <div className="space-y-1">
@@ -1007,7 +1007,7 @@ export default function PredictPage() {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-auto max-w-full justify-start gap-0 overflow-hidden rounded-md p-0 text-left text-sm font-normal text-muted-foreground hover:bg-transparent hover:text-muted-foreground disabled:opacity-100"
+                  className="h-auto max-w-full justify-start gap-0 overflow-hidden rounded-md p-0 text-left text-sm font-normal text-on-muted hover:bg-transparent hover:text-on-muted disabled:opacity-100"
                   disabled={!selectedSeries || !selectedMethod || loading}
                   onClick={(event) => {
                     // One invoke per activation: this click must not also

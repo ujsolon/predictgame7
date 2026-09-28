@@ -213,16 +213,42 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     activateByKeyboard(submit, 'Enter');
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
     expect(db.invoke.mock.calls[0][1].body.method).toBe('logistic_regression');
+    await waitFor(() => expect(submit).toBeEnabled());
 
     db.invoke.mockClear();
     activateByKeyboard(submit, ' ');
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(submit).toBeEnabled());
 
     // Decision 2: the card keeps its own click as shipped (the accidental
     // re-predict footgun is recorded in `deferred-work.md`, not removed here).
     db.invoke.mockClear();
     fireEvent.click(screen.getByText('Predict'));
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+  });
+
+  it('holds the in-flight Generate disabled so a second activation cannot double-fire', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    await chooseMethod();
+    fillCustomForm();
+
+    const submit = screen.getByRole('button', { name: 'Click to generate prediction' });
+    // A request that never resolves is the state the fan actually sits in while
+    // waiting, and `loading` is the only thing separating a repeated activation
+    // from a second concurrent prediction — `handlePredict` has no guard of its
+    // own. Both halves matter: `disabled` is what the browser enforces, the
+    // onClick guard is what holds in jsdom, where a disabled `<button>` still
+    // receives a dispatched click.
+    db.invoke.mockImplementation(() => new Promise(() => {}));
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    expect(submit).toBeDisabled();
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(db.invoke).toHaveBeenCalledTimes(1);
   });
 
   it('leaves an incomplete selection with a disabled submit control, outside the ring and inert', () => {

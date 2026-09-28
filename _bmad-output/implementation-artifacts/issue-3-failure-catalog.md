@@ -239,6 +239,14 @@ Every case above that has a browser-observable symptom was re-observed on
   all 11 `PredictionResult` keys present on the wire, no `undefined%`, no raw
   JSON in a toast.
 
+Sections **not** re-driven here, so the traceability gap is stated rather than
+silent: §3 and §4 are copy/label cases already pinned by
+`prediction-contract.test.ts` and visible in the §2.1/§2.3 evidence above
+("Bayes Method", the four `MethodSlug` descriptions on `/maths`); §5 is the
+`useIsMobile` hook, which has no browser symptom that a DOM measurement can
+show — its seam is pinned by `use-mobile.test.tsx`, and its fractional-viewport
+quirk stays open in `deferred-work.md`.
+
 Results matrix: `_bmad-output/implementation-artifacts/qa-matrix-1-5.md`. The
 new issue-#3-class finding that came out of the pass is a **keyboard** one, not
 a data one, and it is now fixed rather than catalogued: the three Predict
