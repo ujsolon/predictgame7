@@ -55,6 +55,48 @@ Two facts from the agent run change what this setup actually exercises:
 - [ ] **Preload:** with blocking still on, reload `/predictgame7/predict?series=<a real series id>` → result region shows "Couldn't load this series." / "Retry fetches it again." and **no** "Series not found" toast (a genuinely missing row keeps the toast; a failed fetch does not). — owner-side. A real id for the local/prod data: `09d16ca2-8d45-4506-ba58-7e0f023aff48` (2026, Eastern Conf Semifinals).
 - [ ] **The regression the review caught:** with that preload panel showing, turn blocking off, pick a series and method by hand and predict → the panel must be gone and the result visible. If "Couldn't load this series." still masks the result, that is the bug fixed in review row 1 of the spec's triage log — report it. — owner-side (needs the `?series=` preload). The nearest proven thing is check 1's recovery: from the *transport* error panel, Retry cleared the panel and rendered a real result in its place, so the "panel masks the result" failure mode did not reproduce on that panel.
 
+## 5. Owner-only run sheet
+
+The four lines the agent run could not reach, in the order that costs least. Why they are yours: `window.fetch` patches die on reload, and this toolset has no init-script hook and no DevTools request-blocking, while two of the checks need exactly that.
+
+**Prereqs.** `npm run preview` (or `npm run dev`) is already serving the current bundle at `http://localhost:4173/predictgame7/` — 4174 is running the identical build, either works; `index-W6mB6tzs.js` is what the gate just produced. Open DevTools → Network and find the **Request blocking** pane (shield icon at the right end of the Network toolbar; if it is not there, `Ctrl+Shift+P` → "Request blocking"). Add a rule with **Block** checked and regex off. Keep DevTools open the whole session — Chrome stops blocking when it closes. Blocking *does* survive reloads, which is the entire reason to use it instead of a Console patch.
+
+### A. Enter-activation of Retry (check 1, line 3)
+
+1. Rule: `*/functions/v1/predict-game-7*`, enabled.
+2. Reload `/predictgame7/predict`, then 2020s → 2026 → **OKC vs SAS** (Western Conference Finals), method **Logistic Regression**, predict.
+3. Panel should read "Couldn't generate the prediction." / "Couldn't reach the prediction service. It may be briefly unavailable."
+4. Press `Tab` **once** — focus moves off the panel container onto Retry, the only tab stop inside it (`src/components/common/ErrorRetryPanel.tsx:48`).
+5. **Uncheck** the rule (leave the row in place), then press `Enter`. Do not touch the mouse.
+6. Expect: spinner → result for the same series/method/scores, panel gone. Then re-enable the rule and repeat once with `Space` instead.
+
+Retry is a native `<button type="button">`, so Enter and Space activation is the browser's own behaviour, not app code. If Enter or Space does nothing while the other works, that is a real defect — report it rather than shrugging.
+
+### B. The screen-reader lines (check 1 line 4, check 3's AT half)
+
+Needs actual assistive tech; the DevTools Accessibility pane only proves the tree, not what gets announced. NVDA (free, Windows) with Chrome/Edge/Firefox, or VoiceOver on macOS (`Cmd+F5`).
+
+1. With the SR running and blocking rule A still enabled, generate a failure. Then wait without clicking or tabbing: expect the SR to read the panel — heading, message, and "Retry button" — from the focused container (`role="status"`, `:30`/`:36`). A silent appearance is an NFR-A1 finding for Story 1.5, not a nuisance.
+2. `Tab` to Retry → expect it announced as a button with its name.
+3. Clear rule A. Series picker → Custom Matchup; blank Team A's name and Game 1's two scores, fill the rest, method Logistic Regression. Click predict (the Generate card is still outside the tab ring, so this one click needs the mouse — that is the `deferred-work.md` keyboard-accessibility entry, not this check).
+4. Expect focus to land on Team A's input on its own (the agent proved that half), and the SR to read the label **and** "Team name is required" as one utterance — that is the `aria-describedby="team_a-error"` wiring earning its keep. Then `Tab` to each of the two score fields and confirm each reads "Score is required".
+
+### C. Check 4's two `?series=` preload lines
+
+Rule: `*/rest/v1/series*`, enabled. That one pattern covers **both** reads — the archive and the by-id preload hit the same `series` table — so the picker panel will be in its failed state too. Expected, not a confounder.
+
+Useful ids, straight from the live data: `09d16ca2-8d45-4506-ba58-7e0f023aff48` (2026 Eastern Conf Semifinals, CLE vs DET, `status: historical`) for the retryable case, `00000000-0000-4000-8000-000000000000` for the genuinely-absent case, `not-a-uuid` for the malformed case.
+
+1. **Preload panel.** Reload `/predictgame7/predict?series=09d16ca2-8d45-4506-ba58-7e0f023aff48`. Expect "Couldn't load this series." / "Retry fetches it again." in the result region, and **no** "Series not found" toast anywhere. A failed fetch and a missing row are different classes; the toast here would mean the code guessed wrong (`src/pages/PredictPage.tsx:168-179`).
+2. **Cross-check the picker.** With the rule still on, open the Series picker → "Couldn't load the series list." with "Retry fetches the archive again. Your current selection stays put."
+3. **Recover.** Uncheck the rule, click the *preload* panel's Retry → the CLE vs DET series loads into the card with its scores, method + predict then behave normally.
+4. **The regression the review caught.** Repeat step 1 to get the preload panel showing, then uncheck the rule and **do not** press that panel's Retry: pick a series and a method by hand and predict. The panel must be gone and the result visible. If "Couldn't load this series." still masks the result, report it — that is review row 1 of the spec's triage log, defended by `PredictPage.tsx:99-111` clearing `seriesLoadFailed` and bumping the in-flight sequence on any new selection.
+5. **The other branch, no blocking.** Rule off, reload `/predictgame7/predict?series=00000000-0000-4000-8000-000000000000` → expect the "Series not found" **toast** and no panel. Then `/predictgame7/predict?series=not-a-uuid` → Postgres rejects the shape, so this is a query failure: expect the **retryable panel**, not the toast. A toast on the malformed id means the two classes are being told apart by the wrong signal.
+
+### Recording it
+
+Add a row to the Result log below for whoever ran it. When every box in sections 1–4 is checked, this file's own rule applies and it can be deleted.
+
 ## Result log
 
 | Date | Checker | Outcome |
