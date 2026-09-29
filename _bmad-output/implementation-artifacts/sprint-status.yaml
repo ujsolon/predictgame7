@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 09-30-2026 01:43
+last_updated: 09-30-2026 01:55
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -130,7 +130,7 @@ action_items:
       and delete D6's landing promise from deferred-work.md so the preamble claim
       is true for every entry."
     owner: "owner - planning pass"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-7-add-a-scheduled-ci-job-that-fails-loudly"
     epic: 1
@@ -138,7 +138,7 @@ action_items:
       and reword Story 1.4's blocks-merge-on-red AC to name it plus the pre-push hook.
       The AC stays textually unmet until this exists (Q2)."
     owner: "owner"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-8-promote-two-durable-rules-into-agents-md"
     epic: 1
@@ -161,7 +161,7 @@ action_items:
     action: "Deploy handle-contact so the age checks on master are the live behavior,
       then probe the wire to confirm which build is serving."
     owner: "owner - deploy"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-11-cut-0-2-4-package-json-is-still-0-2-3-an"
     epic: 1
