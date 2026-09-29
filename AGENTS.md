@@ -28,6 +28,12 @@ Stack: React 18 + TypeScript + Vite 8 (Rolldown-powered), Tailwind, Radix/shadcn
 - Local secrets live in `.env` — never committed (`.env.local` is not used here). Vite needs a dev-server restart after env changes.
 - Deploy = publish to `gh-pages` branch via `npm run predeploy` / `npm run deploy` (`predeploy` runs `npm run gate`). Note: `gh-pages` publishes are additive — `gh-pages` history mode does not prune files removed elsewhere, so clean stray paths off that branch explicitly if a publish ever leaves something behind. Only run deploys when the owner asks for a release. Edge Function deploys are a separate mechanism (`supabase functions deploy`) and are gated by nothing — probe the live function before blaming client code.
 
+## Evidence discipline
+
+- **Look for the programmatic substitute before writing a step for the human, and state which one you tried.** "No harness can see it" has been wrong four times in one epic; the usual truth is that the harness ran out, not that the measurement is inherently human. What CDP reaches here is demonstrated rather than assumed — `node scripts/measure-predict-latency.mjs --probe-evidence` (against `npm run preview`) prints the computed style of a focused element, a real screenshot, and the accessibility tree, from a headless Chrome that script spawns itself. What genuinely stays human: screen-reader announcement *behaviour*, and "does this look right".
+- **Re-read the edited region of a markdown artifact in the same turn.** These files are load-bearing and Biome's `files.includes` covers `src/**` only, so a duplicated paragraph, a dropped table row or a broken code fence passes every gate in the repo and still reads as authoritative to the next agent.
+- **No test may assert a computed accessible *name* in jsdom.** `dom-accessibility-api` inserts a separator between block-level siblings that Chrome's accname implementation does not, so `getByRole({ name })` can stay green on a tree real AT reads as fused (`qa-matrix-1-5.md` §5 note 4, finding F16). Assert `textContent` for the raw concatenation, or settle names over CDP / with real AT.
+
 ## Versioning (NFR-D2)
 
 - `package.json` is the single source of truth for the version.
