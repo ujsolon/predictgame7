@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 09-29-2026 07:35
+last_updated: 09-30-2026 00:01
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -41,9 +41,10 @@ development_status:
   1-3-error-states-that-never-lose-your-place-fr-8: done
   1-4-regression-suite-on-the-highest-risk-predict-paths-fr-30: done
   1-5-manual-qa-matrix-epic-verification-pass: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
+  2-0-gate-the-server-side-edge-function-type-check-and-input-validation: backlog
   2-1-q-4-data-source-feasibility-spike: backlog
   2-2-schema-prerequisites-derived-phase-on-the-read-path: backlog
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: backlog
@@ -77,3 +78,94 @@ development_status:
   5-3-whole-site-responsiveness-matrix-nfr-u1: backlog
   5-4-release-ceremony-nfr-d2: backlog
   epic-5-retrospective: optional
+action_items:
+  - id: "epic-1-retro-item-1-fix-the-runprediction-staleness-race-a1"
+    epic: 1
+    action: "Fix the runPrediction staleness race (A1): guard the response with the
+      seriesLoadSeq pattern already used by the preload path, cover it with a test,
+      and restore a card-click series-path test. Owner gated this ahead of the 0.2.4
+      cut."
+    owner: "agent - next build session"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-2-rename-predict-keyboard-test-tsx-line-22"
+    epic: 1
+    action: "Rename predict-keyboard.test.tsx line 222 so its title matches its not.toHaveBeenCalled()
+      body (A4)."
+    owner: "agent - next build session"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-3-run-qa-matrix-1-5-section-6-5-option-c-g"
+    epic: 1
+    action: "Run qa-matrix 1-5 section 6.5 option (c): give scripts/measure-predict-latency.mjs
+      CDP Fetch response interception, drive the active-series surfaces against a
+      faked six-rows / null-winner response, record the cell. Epic 1's last unrun
+      cell."
+    owner: "agent, owner for anything visual"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-4-close-the-evidence-integrity-gap-in-the"
+    epic: 1
+    action: "Close the evidence-integrity gap in the same pass: demonstrate the getComputedStyle
+      / screenshot reachability that matrix section 6.4 claims over CDP, or downgrade
+      that sentence to owner-observed-in-DevTools (B3)."
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-5-story-2-0-created-2026-09-30-in-epics-md"
+    epic: 1
+    action: "Story 2.0 (created 2026-09-30 in epics.md): gate the server side - deno
+      check on supabase/functions in CI via actions/setup-deno, widened Biome includes,
+      and predict-game-7 400 vocabulary (method slug, non-numeric game_N_score_*,
+      self-vs-self) with the 400/500 shapes typed in contract.ts. Closes deferred-work
+      D1 and D2."
+    owner: "agent - Epic 2"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-6-route-the-remaining-deferrals-annotate-d"
+    epic: 1
+    action: "Route the remaining deferrals: annotate deferred-work D3 to Story 4.4,
+      and delete D6's landing promise from deferred-work.md so the preamble claim
+      is true for every entry."
+    owner: "owner - planning pass"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-7-add-a-scheduled-ci-job-that-fails-loudly"
+    epic: 1
+    action: "Add a scheduled CI job that fails loudly on red with a notification,
+      and reword Story 1.4's blocks-merge-on-red AC to name it plus the pre-push hook.
+      The AC stays textually unmet until this exists (Q2)."
+    owner: "owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-8-promote-two-durable-rules-into-agents-md"
+    epic: 1
+    action: "Promote two durable rules into AGENTS.md: find the programmatic substitute
+      before writing an owner-only run step and name what you tried (B2); re-read
+      the edited region after editing a markdown artifact (C2, C3)."
+    owner: "owner - agent-context edit"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-9-reconcile-three-doc-defects-before-the-r"
+    epic: 1
+    action: "Reconcile three doc defects before the release entry: README .env.local
+      vs AGENTS.md .env (P2); spec-1-1 jsdom and engines claims vs package.json (P1);
+      epics.md line 87 five-canonical-slugs vs four (P1)."
+    owner: "agent - docs pass"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-10-deploy-handle-contact-so-the-age-checks"
+    epic: 1
+    action: "Deploy handle-contact so the age checks on master are the live behavior,
+      then probe the wire to confirm which build is serving."
+    owner: "owner - deploy"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
+  - id: "epic-1-retro-item-11-cut-0-2-4-package-json-is-still-0-2-3-an"
+    epic: 1
+    action: "Cut 0.2.4: package.json is still 0.2.3 and the CHANGELOG's newest entry
+      is 0.2.3/2026-09-26, so NFR-D2 is unsatisfied for the 43 commits the live site
+      is missing. Push precedes it; the A1 fix precedes the push."
+    owner: "owner - release"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
