@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 09-30-2026 01:55
+last_updated: 09-30-2026 07:14
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -43,8 +43,8 @@ development_status:
   1-5-manual-qa-matrix-epic-verification-pass: done
   epic-1-retrospective: done
 
-  epic-2: backlog
-  2-0-gate-the-server-side-edge-function-type-check-and-input-validation: backlog
+  epic-2: in-progress
+  2-0-gate-the-server-side-edge-function-type-check-and-input-validation: review
   2-1-q-4-data-source-feasibility-spike: backlog
   2-2-schema-prerequisites-derived-phase-on-the-read-path: backlog
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: backlog
@@ -121,8 +121,12 @@ action_items:
       and predict-game-7 400 vocabulary (method slug, non-numeric game_N_score_*,
       self-vs-self) with the 400/500 shapes typed in contract.ts. Closes deferred-work
       D1 and D2."
-    owner: "agent - Epic 2"
-    status: open
+    owner: "agent - Epic 2 (implemented 2026-09-30, story at review; two owner actions
+      left and neither producible locally -- deploy predict-game-7 then
+      `node scripts/probe-predict-contract.mjs --expect=validated` must exit 0, and
+      the push whose CI run is the first evidence the new `deno check` step can give
+      -- spec Handoff)"
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-6-route-the-remaining-deferrals-annotate-d"
     epic: 1
