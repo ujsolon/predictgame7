@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-09-30
+
+### Added
+
+- Shared prediction contract `supabase/functions/_shared/contract.ts` as the single definition of a prediction request and result, with `src/types/prediction.ts` re-exporting its types and the stale client-side unions deleted (Story 1.2, AD-2).
+- Non-destructive error states on `/predict` via `src/lib/error-envelope.ts` and `src/components/common/ErrorRetryPanel.tsx`: Retry re-fires the identical attempt, a `?series=` preload failure gets the same panel treatment instead of a bare toast, and a `200` carrying a null probability no longer renders `undefined%` (Story 1.3).
+- Inline submit-time validation for the custom matchup grid, so an impossible score combination is reported on the form instead of reaching the service (`src/lib/custom-matchup.ts`).
+- Predict's three primary surfaces — series picker, method picker, Generate — are real buttons: in the tab ring, activated by Enter and Space, with focus returned to the trigger (Story 1.5, NFR-A1).
+- A single source for method labels and anchors (`src/lib/method-display.ts`).
+- A `pre-push` hook that runs the full gate on any push to `master`.
+- A test suite that grew from 8 tests in 2 files to 123 in 11, including a shared Predict rendering harness (Story 1.4, FR-30).
+
+### Changed
+
+- The result card is inert once a result is on screen; re-running a prediction is Generate's job.
+- `handle-contact` source now requires the `startedAt` timing field, raises its ceiling from 2 hours to 24, rejects an empty `message` with `400` instead of writing it, and no longer logs submission PII. Edge Function deploys are a separate step, so the live function still runs the previous version until it is redeployed.
+- `npm run gate` is the single definition of the lint, typecheck, test, and build gate; the dead `tsconfig.check.json` was dropped.
+
+### Fixed
+
+- A prediction response landing after the fan switched method, changed the selection, or submitted again could paint its probabilities under the newer attempt's label. In-flight attempts are now superseded through a sequence counter, so only the newest one writes a result, owns the spinner, and reports success.
+
+### Removed
+
+- `src/pages/CurrentGame7sPage.tsx`, an unrouted remnant of the two-table merge (FR-2).
+
 ## [0.2.3] - 2026-09-26
 
 ### Changed
