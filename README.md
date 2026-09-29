@@ -60,7 +60,7 @@ npm install
 
 ### 2. Create environment variables
 
-Create a local env file such as `.env.local` with:
+Create a local `.env` file (gitignored — `.env.local` is not used here) with:
 
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
