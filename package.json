@@ -8,6 +8,7 @@
     "preview": "vite build && vite preview",
     "gate": "npm run lint && npm run typecheck && npm run test && npm run build",
     "hooks:install": "node scripts/install-hooks.mjs",
+    "perf:predict": "node scripts/measure-predict-latency.mjs",
     "predeploy": "npm run gate",
     "deploy": "gh-pages -d dist",
     "lint": "biome lint .",
