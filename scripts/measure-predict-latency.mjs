@@ -24,6 +24,13 @@
 // you the tail is Supabase edge cold boot rather than the maths. It needs
 // VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env and no preview server.
 //
+//   npm run perf:predict -- --probe-evidence       # what this harness can actually see
+//
+// --probe-evidence answers an evidence question instead of a latency one. It reads
+// getComputedStyle on the focused Predict triggers, captures a screenshot and the
+// accessibility tree, and prints the results, so a claim about what CDP can observe
+// can be checked in-repo rather than taken on faith (qa-matrix-1-5.md §6.4).
+//
 // The run reports two independent numbers per sample, because conflating them is
 // what made the earlier mobile reading look like a network problem:
 //   request_ms  send -> response complete for the predict-game-7 invoke (network)
@@ -37,7 +44,7 @@
 // is closer to a real user's bandwidth contention but pollutes the dashboard.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,6 +92,7 @@ function parseArgs(argv) {
     withAnalytics: false,
     timeout: 90000,
     serverOnly: false,
+    probeEvidence: false,
     perMethod: 6,
     methods: METHOD_SLUGS,
   };
@@ -100,6 +108,7 @@ function parseArgs(argv) {
     else if (a === "--timeout") opts.timeout = Number(next());
     else if (a === "--with-analytics") opts.withAnalytics = true;
     else if (a === "--server-only") opts.serverOnly = true;
+    else if (a === "--probe-evidence") opts.probeEvidence = true;
     else if (a === "--per-method") opts.perMethod = Number(next());
     else if (a === "--methods") opts.methods = next().split(",").map((s) => s.trim()).filter(Boolean);
     else if (a === "--help" || a === "-h") {
@@ -627,6 +636,105 @@ async function main() {
         `({ visibilityState: document.visibilityState, hidden: document.hidden })`
       );
     };
+
+    // --probe-evidence: settle an evidence claim by measuring, not by asserting.
+    // qa-matrix-1-5.md §6.4 says focus-ring presence and box geometry are readable
+    // over CDP; retro finding B3 objected that nothing in the repo demonstrated it.
+    // This runs the three calls that claim names — getComputedStyle on a focused
+    // element, Page.captureScreenshot, Accessibility.getFullAXTree — against the real
+    // page in the Chrome this script already spawns, and prints what each returns.
+    // The PNG goes to the temp dir, never into the repo.
+    if (opts.probeEvidence) {
+      const vis = await loadPage();
+      await evaluate(`(() => {
+        window.__p1Read = (el, label) => {
+          if (!el) return { label, missing: true };
+          el.focus();
+          const cs = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return {
+            label,
+            tag: el.tagName,
+            activeElementIsTarget: document.activeElement === el,
+            matchesFocusPseudo: el.matches(":focus"),
+            outline: [cs.outlineWidth, cs.outlineStyle, cs.outlineColor].join(" "),
+            outlineOffset: cs.outlineOffset,
+            boxShadow: cs.boxShadow,
+            rect: {
+              x: Math.round(r.x), y: Math.round(r.y),
+              w: Math.round(r.width), h: Math.round(r.height),
+            },
+          };
+        };
+        return true;
+      })()`);
+      // Nothing is selected yet, so the two picker triggers carry their
+      // unselected names and Generate is not on the page — the harness's own
+      // trigger()/generate() matchers see exactly what the fan sees per state.
+      const beforeSelect = await evaluate(`[
+        window.__p1Read(window.__p1.trigger("series"), "series trigger"),
+        window.__p1Read(window.__p1.trigger("method"), "method trigger"),
+      ]`);
+      const picked = await evaluate(`(async () => {
+        const a = await window.__p1SelectSeries("2020s", "2026", /vs/i, ${opts.timeout});
+        const b = await window.__p1SelectMethod(/Bayes/i, ${opts.timeout});
+        return Object.assign({}, a, b);
+      })()`);
+      const afterSelect = await evaluate(
+        `[window.__p1Read(window.__p1.generate(), "Generate")]`
+      );
+      const surfaces = [...beforeSelect, ...afterSelect];
+      const target = surfaces.find((s) => s.rect);
+      const shot = await cdp.send("Page.captureScreenshot", { format: "png" });
+      const png = Buffer.from(shot.data, "base64");
+      const pngPath = join(tmpdir(), "p1-evidence-probe.png");
+      writeFileSync(pngPath, png);
+      let clip = null;
+      if (target) {
+        const clipShot = await cdp.send("Page.captureScreenshot", {
+          format: "png",
+          clip: {
+            x: Math.max(0, target.rect.x - 8),
+            y: Math.max(0, target.rect.y - 8),
+            width: target.rect.w + 16,
+            height: target.rect.h + 16,
+            scale: 2,
+          },
+        });
+        clip = Buffer.from(clipShot.data, "base64");
+      }
+      await cdp.send("Accessibility.enable").catch(() => {});
+      const ax = await cdp.send("Accessibility.getFullAXTree");
+      const axButtons = ax.nodes.filter((n) => n.role && n.role.value === "button");
+      console.log(
+        [
+          "Evidence probe — qa-matrix-1-5.md §6.4 / retro finding B3",
+          `  url              ${opts.url}`,
+          `  viewport         ${vw}x${vh} (mobile=${vw < 768})`,
+          `  page visibility  visibilityState=${vis?.visibilityState} hidden=${vis?.hidden}`,
+          `  selection        ${JSON.stringify(picked)}`,
+          "",
+          "  getComputedStyle on a focused element (ring presence + geometry):",
+          ...surfaces.map((s) =>
+            s.missing
+              ? `    ${s.label.padEnd(15)} NOT FOUND`
+              : [
+                  `    ${s.label.padEnd(15)} <${s.tag.toLowerCase()}> activeElement=${s.activeElementIsTarget} :focus=${s.matchesFocusPseudo}`,
+                  `      outline      ${s.outline} / offset ${s.outlineOffset}`,
+                  `      box-shadow   ${s.boxShadow}`,
+                  `      rect         ${s.rect.w}x${s.rect.h} at (${s.rect.x}, ${s.rect.y})`,
+                ].join("\n")
+          ),
+          "",
+          `  Page.captureScreenshot  ${png.length} bytes, ${png.readUInt32BE(16)}x${png.readUInt32BE(20)} px -> ${pngPath}`,
+          ...(clip ? [`  clipped capture       ${clip.length} bytes, ${clip.readUInt32BE(16)}x${clip.readUInt32BE(20)} px`] : []),
+          `  Accessibility tree        ${ax.nodes.length} nodes, ${axButtons.length} with role=button`,
+          "",
+        ].join("\n")
+      );
+      browserWs.close();
+      return;
+    }
 
     console.log(
       [
