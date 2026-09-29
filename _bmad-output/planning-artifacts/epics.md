@@ -154,8 +154,8 @@ Users can run, compare, and retry predictions without losing state or hitting my
 **FRs covered:** FR-8, FR-30 (+ FR-1/3/4/5/6/7 as QA surfaces); NFRs R2, A1 (partial), P1 (partial).
 
 ### Epic 2: Playoff-Current Active Series
-During the 2027 window, Active Series reflect the latest results with zero manual heroics — and the epic still completes if both external sources fail. Story order: Q-4 feasibility spike (Fantrax reachability, nba.com rate limits; also carries the read-only archive audit) → prerequisite migration (`UNIQUE (year, round)` + `round` CHECK) + the read-path flip to AD-4's derived phase, shipped in the same release → pipeline runner + `SeriesDataSource` port + **`manual_csv` floor adapter as an explicit early story** (owner decision 2026-09-25: E2 ships even if both API adapters fail; spreadsheet-export cadence is the fallback, `load-games` precedent) → `fantrax` adapter → `nba_com` adapter → `insights_cache` refresh (FR-12) → GH Actions workflows (offseason + inseason) with non-zero-exit failure → GitHub notification (SM-4).
-**FRs covered:** FR-2, FR-12, FR-19, FR-20, FR-21; NFRs D1, R1.
+During the 2027 window, Active Series reflect the latest results with zero manual heroics — and the epic still completes if both external sources fail. Story order: **Story 2.0 — the server-side gate (`deno check` on the Edge Functions + `predict-game-7` input validation), added by Epic 1's retrospective on 2026-09-30 to close `deferred-work.md` D1/D2 before this epic writes its first line of Deno** → Q-4 feasibility spike (Fantrax reachability, nba.com rate limits; also carries the read-only archive audit) → prerequisite migration (`UNIQUE (year, round)` + `round` CHECK) + the read-path flip to AD-4's derived phase, shipped in the same release → pipeline runner + `SeriesDataSource` port + **`manual_csv` floor adapter as an explicit early story** (owner decision 2026-09-25: E2 ships even if both API adapters fail; spreadsheet-export cadence is the fallback, `load-games` precedent) → `fantrax` adapter → `nba_com` adapter → `insights_cache` refresh (FR-12) → GH Actions workflows (offseason + inseason) with non-zero-exit failure → GitHub notification (SM-4).
+**FRs covered:** FR-2, FR-12, FR-19, FR-20, FR-21; NFRs D1, R1. Story 2.0 also carries the server-side half of FR-30's gate (AD-2 producer-side enforcement, `deferred-work.md` D1/D2 — owner decision 2026-09-30).
 
 ### Epic 3: Owner Operations — Measurable and Contactable
 The owner can read every Traffic Gate figure programmatically and never misses a contact submission; PostHog is one module away from removable. AD-1 analytics port (`src/lib/analytics/`: EVENTS registry, track/identify/resetUser/captureError, provider bootstrap) — **every port story carries a measurement-continuity AC: events fire at identical trigger points, verified in PostHog live view before/after deploy** (owner decision 2026-09-25; protects the SM-2 baseline from splitting into two measurement regimes). AD-3 `handle-contact` migration + Resend provisioning (free tier, server-side key) + `_started`/`_failed` events + inline form UX (FR-17). FR-25 reporting surface (owner-local query execution, personal API key never bundled) + SM-1 unique-visitor definition pinned in module docs before Apr 2027.
@@ -251,6 +251,34 @@ so that what tests can't see (layout, touch targets, real network conditions) is
 ## Epic 2: Data Pipeline — Active Series stay true without manual heroics
 
 Playoff-week data accuracy stops depending on hand-editing. Delivers FR-20/21 (offseason + inseason pipeline modes) and the FR-19 data-integrity invariants they rest on, behind the `SeriesDataSource` port (AD-5). Calendar-critical: inseason automation must be deployed and drilled **before** the Apr 2027 playoff window — a stale Active Series list during the playoffs would invalidate the Traffic Gate measurement itself.
+
+### Story 2.0: Gate the server side — Edge Function type-check and input validation
+
+*Created from Epic 1's retrospective (`../implementation-artifacts/epic-1-retro-2026-09-29.md`, finding §F; `deferred-work.md` D1 and D2). Owner decision 2026-09-30: it gets an Epic 2 slot rather than a Story 1.6. It runs first because it is the prerequisite every later `supabase/` story inherits — Epic 2's pipeline, Epic 3's `handle-contact` migration and Epic 4's `share-og` all write server code into a directory no gate checks today.*
+
+As a developer (human or agent),
+I want the Edge Functions type-checked and their request inputs validated,
+so that the AD-2 contract is enforced on the producer side too, and a malformed request fails with a real 400 instead of returning a plausible-looking wrong answer.
+
+**Acceptance Criteria:**
+
+**Given** `tsc -b` covers `src` + `vite.config.ts` only and Biome's `files.includes` is `src/**` + `tailwind.config.js`, so `supabase/functions/**` is checked by nothing (D1)
+**When** the CI workflow gains a `deno check supabase/functions/**/*.ts` step with `actions/setup-deno`, and Biome's includes widen over the same paths
+**Then** renaming a `PredictionResult` field, or emitting a `confidence_level` the contract does not list, turns CI red — including a break across the `../_shared/contract.ts` hop
+**And** no local Deno install is required: the step is CI-only, `npm run gate` keeps its four commands, and the documentation says honestly that the first evidence this step can produce is a CI run (README + AGENTS.md), not a local check
+**And** the story names a checker per directory under `supabase/` — Deno for the functions, and whatever fits Story 2.3's `supabase/scripts/pipeline/` runner. If that lands Python (the `load-games/main.py` precedent), the remaining gap is recorded explicitly rather than left for D1 to silently reopen
+
+**Given** `predict-game-7` annotates `const input: PredictionInput = await req.json()` without validating it, and its branch chain's final `else` is logistic regression, so any unknown slug silently runs logistic and echoes the wrong slug back as `method_used` (D2)
+**When** the request body is validated at the boundary
+**Then** an out-of-contract `method` slug returns 400 with the `{ "error": string }` envelope, naming the accepted slugs
+**And** non-numeric or missing `game_N_score_*` takes the same 400 path, instead of flowing through the arithmetic and serialising NaN probabilities as `null` — which renders `null%` client-side
+**And** a self-vs-self custom matchup (`team_a === team_b`) returns 400; today it produces a successful 50/50, and the client's frozen validation matrix deliberately does not check it, so the function is the enforcement point
+**And** the 400 and 500 shapes are typed in `_shared/contract.ts`, so the single source of truth documents the failure wire and not only the success path — one vocabulary, pinned by tests
+
+**Given** Story 1.2's boundaries froze the function's existing validation and error response
+**When** this story lands
+**Then** the success path is unchanged for all four methods, verified against a historical series and a custom matchup, and `npm run gate` stays green
+**And** the function is redeployed and probed over the wire before the story is called done — `supabase functions deploy` is a separate, ungated mechanism (AGENTS.md), so a green CI proves nothing about what production is serving
 
 ### Story 2.1: Q-4 data-source feasibility spike
 
