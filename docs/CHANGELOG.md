@@ -12,12 +12,12 @@ All notable changes to this project will be documented in this file.
 - Predict's three primary surfaces — series picker, method picker, Generate — are real buttons: in the tab ring, activated by Enter and Space, with focus returned to the trigger (Story 1.5, NFR-A1).
 - A single source for method labels and anchors (`src/lib/method-display.ts`).
 - A `pre-push` hook that runs the full gate on any push to `master`.
-- A test suite that grew from 8 tests in 2 files to 123 in 11, including a shared Predict rendering harness (Story 1.4, FR-30).
+- A test suite that grew from 8 tests in 2 files to 123 across 11 files, including a shared Predict rendering harness (Story 1.4, FR-30).
 
 ### Changed
 
 - The result card is inert once a result is on screen; re-running a prediction is Generate's job.
-- `handle-contact` source now requires the `startedAt` timing field, raises its ceiling from 2 hours to 24, rejects an empty `message` with `400` instead of writing it, and no longer logs submission PII. Edge Function deploys are a separate step, so the live function still runs the previous version until it is redeployed.
+- `handle-contact` source now requires the `startedAt` timing field, raises its ceiling from 2 hours to 24, rejects an empty `message` with `400` instead of writing it, and no longer logs submission PII. Edge Function deploys are a separate mechanism, so this entry covers the source on `master` and not the version currently serving.
 - `npm run gate` is the single definition of the lint, typecheck, test, and build gate; the dead `tsconfig.check.json` was dropped.
 
 ### Fixed
