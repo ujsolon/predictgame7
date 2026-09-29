@@ -2,6 +2,7 @@
 
 Trigger: owner decision recorded in `_bmad-output/brainstorming/brainstorm-series-status-semantics-2026-09-29/brainstorm-intent.md` (commit `27580b6`), reached in a facilitator-mode brainstorm off Story 1.5's QA matrix §6.5 / F9.
 Scope of this document: **planning artifacts only.** No code, no migration, no deploy authorized here.
+**Status 2026-09-29: approved by the owner and the §4.1–§4.11 artifact edits are applied** (spine AD-4/AD-5/AD-7 + its tree comment, addendum §B and §E, `AGENTS.md`, `epics.md` AD summaries/Epic 2 list/Stories 2.1–2.3, 2.5, 2.7, 4.3, PRD FR-19 + the FR-26 block, `CURRENT_DATA_MODEL.md` note, `qa-matrix-1-5.md` §2.2/§6.5/F9, `deferred-work.md` F9 + the round-vocabulary entry, `sprint-status.yaml` Story 2.2 slug, and a supersession marker in the 2026-09-25 proposal). Still blocked on the owner: **§4.2(a)** column disposition, **§4.2(b)** integrity enforcement, **§4.9** Home-highlight placement, the `CurrentGame7sPage.tsx` deletion go-ahead, and **§4.10**'s measurement — so §5's "do not implement" bar still stands.
 Supersedes: `sprint-change-proposal-2026-09-25.md` §"AD-4 / series.status" line only (see §2.4 — the spoiler-split decisions in that proposal stand).
 
 ---

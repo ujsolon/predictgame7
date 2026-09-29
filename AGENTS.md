@@ -55,4 +55,4 @@ Stack: React 18 + TypeScript + Vite 8 (Rolldown-powered), Tailwind, Radix/shadcn
 - No live/in-game scoring features — Active Series data updates only via the pipeline cadence (FR-20/21).
 - New surfaces: WCAG 2.1 AA is the standing bar (NFR-A1); responsive on mobile and desktop (NFR-U1).
 - `prediction_methods` has no runtime read path today (FR-4 note) — don't write code assuming catalog-driven behavior until that changes.
-- `series.status` has no defined value domain yet (addendum §B) — don't build on it until pipeline work fixes the enumeration.
+- A series' phase is **derived, never stored**: `winner_team_id IS NULL` means Game 7 pending, `IS NOT NULL` means archive (AD-4, 2026-09-29). Do not branch on `series.status` in new code — it is a vestigial remnant of the un-cascaded two-table merge. Do not derive phase from dates or `created_at`.

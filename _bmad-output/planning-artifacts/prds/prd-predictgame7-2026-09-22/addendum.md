@@ -40,7 +40,7 @@ Depth material that earned a place but doesn't fit the PRD body: technical imple
 
 Active `public` schema:
 - `teams` — canonical franchises: full_name, abbreviation, city, nickname, logo_url (one logo each). Custom-mode matching accepts full name / nickname / abbreviation. Coverage includes modern **and historical** franchises (defunct/relocated records backfilled in v0.1.0 — see PRD FR-11).
-- `series` — year, round, team_a/team_b, winner, status. **The `status` value domain is undefined in every doc** — the pipeline design (FR-20/21) must fix the status enumeration and the Active-vs-Historical distinction rule; FR-2/FR-11/FR-21 acceptance criteria depend on it.
+- `series` — year, round, team_a/team_b, winner, status. `series.status` is **vestigial** — the 2026-09-29 decision (AD-4 as amended) derives phase from `winner_team_id` nullity plus `series_game_scores` instead of storing it, so no enumeration is needed; the Active-vs-Historical distinction rule is `winner_team_id IS NULL`. Column disposition and the integrity-enforcement choice are recorded in AD-4 §4.2 of `sprint-change-proposal-2026-09-29.md`. FR-2/FR-10/FR-11/FR-21 acceptance read the derivation.
 - `series_game_scores` — one row per game: home/away team + scores + winner.
 - `prediction_methods` — slug, name, description, `is_active` catalog. **No runtime read path (code audit 2026-09-22)** — reference data only; see PRD FR-4 note.
 - `predictions` — method, type, statement, probability, confidence, input scores, model parameters, contributing factors, metadata. Private by RLS default. **No runtime read/write path anywhere in src/ or edge functions (code audit 2026-09-22)** — CURRENT_DATA_MODEL's "active storage" phrasing describes schema presence, not behavior; PRD FR-23's "anonymous runs are ephemeral" premise is verified. Post-accounts persistence is Q-1 territory.
@@ -86,6 +86,11 @@ Sources: [ESPN BPI](https://www.espn.com/nba/bpi) · [538 removal — NYT](https
 | #4 Release-quality copy | open | FR-18 | Major-release candidate; voice anchors in §H |
 | #5 Series video content | open | FR-13 (+ NFR-U1 for its responsive AC) | Post-gate; keep open but deprioritized |
 | #6 Over/under + spread outputs | open | FR-26..29 | Post-gate + Q-2 posture decision |
+
+**Dependency notes filed 2026-09-29** (`sprint-change-proposal-2026-09-29.md` §4.11 — surfaced by the series-status brainstorm, deliberately kept out of Epic 2):
+- **FR-23 (saved predictions) gains a consumer it did not have.** The series/result page as "an account of what happened versus what was predicted" is the memorabilia framing the owner reached for, and it needs a `predictions` **read/write path** — which §B records as not existing, and which FR-23 places behind accounts. So FR-23 is not just persistence plumbing waiting for the Traffic Gate: the post-gate product surface that wants it is now named. Gate-free approximation available earlier inside Epic 4/5: compare against the archived series' actual outcome, shown to everyone, touching no persistence.
+- **FR-26..29 cover prop-threshold framing, not just spread and totals.** "Will the star player exceed X points" was floated as a simulation option on the pending-Game-7 page. That is a player-projection product — **betting-adjacent**, so it sits behind this gate, and the app has no player-level data at all today. Winner and margin simulations are unconstrained. Recorded so the framing doesn't return as a "small addition".
+- **`game_date` is FR-20/21 pipeline work, not Epic 2 Story 2.2.** The owner's use is scheduler/marketing automation (write-side); AD-4 as amended forbids the app from reading it to decide any user-facing state. Own small migration when the need is real.
 
 ## F. Traffic Benchmarks (subagent research, 2026-09-22 — third-party estimates, Sep 2026)
 

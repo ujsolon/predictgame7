@@ -45,7 +45,7 @@ development_status:
 
   epic-2: backlog
   2-1-q-4-data-source-feasibility-spike: backlog
-  2-2-schema-prerequisites-status-domain-uniqueness-guards: backlog
+  2-2-schema-prerequisites-derived-phase-on-the-read-path: backlog
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: backlog
   2-4-automated-adapter-per-the-spike-decision: backlog
   2-5-insights-cache-refresh: backlog

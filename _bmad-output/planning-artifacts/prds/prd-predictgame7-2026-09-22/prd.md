@@ -224,6 +224,7 @@ Home hero, Insights labels, contact copy, and empty/error states read as intenti
 The normalized schema (`teams`, `series`, `series_game_scores`) holds 177 migrated Historical series with logos; legacy flat tables archived (addendum).
 **Consequences (testable):**
 - Archive counts reconcile with source spreadsheet totals; legacy tables retained in `archive` schema for audit only.
+- `[Count caveat 2026-09-29]` 177 is the source-spreadsheet figure; the live table measured 178 rows (2026-09-28) and AD-7 reasons in 172+5. One number gets pinned by Story 2.1's archive audit (`sprint-change-proposal-2026-09-29.md` §4.10) — until then no doc figure here is verified against the database.
 
 #### FR-20: Offseason pipeline mode  **[PLANNED]**
 The pipeline runs at the start and end of the NBA playoffs to initialize and finalize Season records.
@@ -272,6 +273,8 @@ The owner can read, for a chosen playoff window: unique visitors, prediction com
 ### 4.7 Betting-Adjacent Outputs
 
 **Description:** The monetization seam *if* it opens: using the same Game 1–6 inputs to project margins and totals (issue #6). Publishing projections is protected content — no gambling license is needed unless the site accepts wagers or acts as a market-maker (addendum research). Posture — "analytics entertainment" vs. "picks" — is Open Q-2; FRs below assume the entertainment posture, **working frame confirmed by owner 2026-09-22** until Q-2 decides otherwise.
+
+**Scope of this gate (owner question 2026-09-29, recorded so it doesn't return as a small addition):** player-projection phrasings — "will the star player exceed X points" on a pending Game 7 — are **in this family**, not a separate feature, and they additionally need player-level data the app does not have. Winner and margin projections off Game 1–6 scores are unconstrained by FR-26..29.
 
 #### FR-26: Over/under projection  **[PLANNED-GATED]**
 The user can obtain a projected game total (over/under) for a Series/Custom Matchup from the same inputs.
