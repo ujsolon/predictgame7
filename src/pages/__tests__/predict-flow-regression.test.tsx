@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
@@ -513,5 +513,242 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
       'Note: Game 1 scores (48-91) are outside the typical 50-200 range'
     );
     expect(db.toast.error).not.toHaveBeenCalled();
+  });
+});
+
+// Epic 1 retro finding A1: Story 1.3 put a sequence guard on the preload path
+// and the predict path kept none, so a slow response could land after a method
+// switch and show one method's probabilities under another's label. Nothing in
+// the 116-test suite or the Story 1.5 matrix covered it — Story 1.4 pins
+// method-switch *state preservation*, and the matrix drove two methods
+// sequentially. These are the cases that guard removes.
+describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
+  function deferred() {
+    let settle!: (value: { data: unknown; error: unknown }) => void;
+    let fail!: (reason: Error) => void;
+    const promise = new Promise<{ data: unknown; error: unknown }>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
+    });
+    return { promise, settle, reject: fail };
+  }
+
+  // A superseded response produces no observable state change by design, so an
+  // immediate assertion would pass on an unprocessed continuation. Flushing a
+  // macrotask runs the whole invoke → classifier → setState chain first.
+  async function flush() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  function preloadedSeriesRoute() {
+    renderPage('/predict?series=s-1');
+    return screen.findByText('BOS vs MIA');
+  }
+
+  // The pickers emit their own events, so only the generated-prediction count
+  // can show whether a superseded attempt leaked a success to analytics.
+  function generatedEvents() {
+    return db.capture.mock.calls.filter(([event]) => event === 'prediction_generated');
+  }
+
+  // The pickers toast their own confirmations too, so the success toast needs
+  // the same event-scoped count: a superseded attempt must leak neither the
+  // event nor the "generated successfully" message.
+  function generatedToastMessages() {
+    return db.toast.success.mock.calls.filter(([message]) => message === 'Prediction generated successfully');
+  }
+
+  // The shared `chooseMethod` targets the trigger by its "Click to choose
+  // method" copy, which only exists while no method is selected — so a switch
+  // goes through the trigger's current label, the way Story 1.4's switching
+  // test already drives it.
+  async function switchMethod(currentLabel: string, nextLabel: string) {
+    fireEvent.click(screen.getByText(currentLabel));
+    const option = await screen.findByRole('button', { name: new RegExp(nextLabel) });
+    fireEvent.click(option);
+    await waitFor(() => {
+      if (screen.queryByRole('dialog')) throw new Error('the method picker is still mounted');
+    });
+    expect(screen.getByText(nextLabel)).toBeInTheDocument();
+  }
+
+  it('keeps the newer response when a slower one lands after it', async () => {
+    await preloadedSeriesRoute();
+    await chooseMethod('Logistic Regression');
+
+    const slow = deferred();
+    const fast = deferred();
+    db.invoke.mockImplementationOnce(() => slow.promise).mockImplementationOnce(() => fast.promise);
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+
+    // The fan switches method and submits again while the first request is out.
+    await switchMethod('Logistic Regression', 'Elo Rating');
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(2));
+    expect(db.invoke.mock.calls[1][1].body.method).toBe('elo');
+
+    fast.settle({ data: conformingResult, error: null });
+    await waitFor(() => expect(screen.getByText('61.25%')).toBeInTheDocument());
+
+    slow.settle({
+      data: { ...conformingResult, win_probability_a: 71.5, win_probability_b: 28.5 },
+      error: null,
+    });
+    await flush();
+
+    // The stale probabilities never reach the card.
+    expect(screen.queryByText('71.5%')).toBeNull();
+    expect(screen.getByText('61.25%')).toBeInTheDocument();
+    expect(screen.getByText('Elo Rating')).toBeInTheDocument();
+    // And the fan never saw a second prediction: one event, for the live attempt.
+    expect(generatedEvents()).toHaveLength(1);
+    expect(generatedEvents()[0][1]).toMatchObject({ method: 'elo' });
+    expect(generatedToastMessages()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+  });
+
+  it('drops an in-flight result when a method switch ends the wait it was part of', async () => {
+    await preloadedSeriesRoute();
+    await chooseMethod();
+
+    const slow = deferred();
+    db.invoke.mockImplementationOnce(() => slow.promise);
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+
+    // No second submit this time: the switch alone retires the attempt, so the
+    // spinner must not be left waiting on a response that can no longer paint.
+    await switchMethod('Logistic Regression', 'Elo Rating');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled()
+    );
+
+    slow.settle({ data: conformingResult, error: null });
+    await flush();
+
+    expect(screen.queryByText('61.25%')).toBeNull();
+    expect(screen.getByText('Click anywhere to predict')).toBeInTheDocument();
+    expect(generatedEvents()).toHaveLength(0);
+    expect(generatedToastMessages()).toHaveLength(0);
+  });
+
+  it('lets a superseded failure pass without replacing the fresh result with the panel', async () => {
+    await preloadedSeriesRoute();
+    await chooseMethod();
+
+    const slow = deferred();
+    db.invoke
+      .mockImplementationOnce(() => slow.promise)
+      .mockImplementationOnce(() => Promise.resolve({ data: conformingResult, error: null }));
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+
+    await switchMethod('Logistic Regression', 'Elo Rating');
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText('61.25%')).toBeInTheDocument());
+
+    slow.settle({ data: null, error: fetchError() });
+    await flush();
+
+    // The panel would have erased a result the fan is looking at; the error
+    // itself is still reported, superseded or not.
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('61.25%')).toBeInTheDocument();
+    expect(db.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a superseded throw pass without replacing the fresh result with the panel', async () => {
+    await preloadedSeriesRoute();
+    await chooseMethod();
+
+    const slow = deferred();
+    db.invoke
+      .mockImplementationOnce(() => slow.promise)
+      .mockImplementationOnce(() => Promise.resolve({ data: conformingResult, error: null }));
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+
+    await switchMethod('Logistic Regression', 'Elo Rating');
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText('61.25%')).toBeInTheDocument());
+
+    // The last-resort catch, reached by a throw outside the classified invoke
+    // path — the panel it would have written is the same class of leak.
+    slow.reject(new Error('transport blew up outside the classifier'));
+    await flush();
+
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByText('61.25%')).toBeInTheDocument();
+    expect(db.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds Generate disabled when a superseded response lands while the live one is pending', async () => {
+    await preloadedSeriesRoute();
+    await chooseMethod();
+
+    const stale = deferred();
+    const live = deferred();
+    db.invoke.mockImplementationOnce(() => stale.promise).mockImplementationOnce(() => live.promise);
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+
+    await switchMethod('Logistic Regression', 'Elo Rating');
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(2));
+
+    stale.settle({ data: conformingResult, error: null });
+    await flush();
+
+    // The live request is still out there, so the control the fan must not
+    // double-fire stays disabled — and the retired attempt stays silent.
+    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+    expect(generatedEvents()).toHaveLength(0);
+    expect(generatedToastMessages()).toHaveLength(0);
+
+    live.settle({ data: { ...conformingResult, win_probability_a: 71.5, win_probability_b: 28.5 }, error: null });
+    await waitFor(() => expect(screen.getByText('71.5%')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+  });
+
+  it('drops an in-flight result when the fan edits the custom scores that produced it', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    await chooseMethod();
+    fillCustomForm();
+
+    const slow = deferred();
+    db.invoke.mockImplementationOnce(() => slow.promise);
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+
+    // A keystroke rebuilds `customInput`, the reset effect's third dependency.
+    // That edit already discards a visible result, so it discards the response
+    // that would have painted a result computed from the pre-edit scores.
+    fillField('game_1_score_a', '111');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled()
+    );
+
+    slow.settle({ data: conformingResult, error: null });
+    await flush();
+
+    expect(screen.queryByText('61.25%')).toBeNull();
+    expect(generatedEvents()).toHaveLength(0);
+    expect(generatedToastMessages()).toHaveLength(0);
+    // The corrected input survived the retired attempt, and is submittable.
+    expect((document.getElementById('game_1_score_a') as HTMLInputElement).value).toBe('111');
   });
 });

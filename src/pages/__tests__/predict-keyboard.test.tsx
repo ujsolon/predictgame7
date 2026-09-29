@@ -219,7 +219,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     expect(ring).toContain(screen.getByRole('button', { name: /Click to choose method/ }));
   });
 
-  it('activates Generate with Enter and Space for exactly one invoke each, and keeps the card click', async () => {
+  it('activates Generate with Enter and Space for exactly one invoke each, and ignores the card click once a result exists', async () => {
     renderPage();
     await chooseCustomMatchup();
     await chooseMethod();
@@ -271,6 +271,37 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     db.invoke.mockClear();
     fireEvent.click(screen.getByText('Losing Team'));
     expect(db.invoke).not.toHaveBeenCalled();
+  });
+
+  // Retro finding A3: Story 1.5 retargeted `submitPrediction()` in ./helpers to
+  // the Generate `<button>`, and Story 1.4's series-path describe moved onto it,
+  // so the card-body mouse surface was left asserted only on the custom route.
+  // The main fan route gets both halves of F1's rule pinned here.
+  it('keeps the card body clickable as the mouse path on the series route too', async () => {
+    renderPage('/predict?series=s-1');
+    await screen.findByText('BOS vs MIA');
+    await chooseMethod();
+
+    db.invoke.mockResolvedValue({ data: conformingResult, error: null });
+
+    fireEvent.click(screen.getByText('Predict'));
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    // A card click on this route submits the series attempt, not a custom one.
+    expect(db.invoke.mock.calls[0][1].body).toMatchObject({
+      series_id: 's-1',
+      method: 'logistic_regression',
+    });
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    // F1's other half on the series route: the result region is inert, and an
+    // explicit Generate still re-runs the same attempt.
+    db.invoke.mockClear();
+    fireEvent.click(screen.getByText('Predict'));
+    fireEvent.click(screen.getByText('Losing Team'));
+    expect(db.invoke).not.toHaveBeenCalled();
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
   });
 
   it('holds the in-flight Generate disabled so a second activation cannot double-fire', async () => {

@@ -67,6 +67,11 @@ export default function PredictPage() {
   // preload whose sequence no longer matches has been superseded, so its
   // late response (success or failure) must not touch on-screen state.
   const seriesLoadSeq = useRef(0);
+  // Same discipline for the predict request: bumped by the reset effect and by
+  // every new attempt, so a response that lands after a method switch, a new
+  // selection, or a newer submit cannot show one attempt's probabilities under
+  // another attempt's label.
+  const predictSeq = useRef(0);
   // Inline submit-time field errors for the custom matchup form, keyed by the
   // input ids below (Decision 1: controlled state + pure validator, no form lib).
   const [customFieldErrors, setCustomFieldErrors] = useState<Record<string, string>>({});
@@ -100,6 +105,10 @@ export default function PredictPage() {
     setResult(null);
     setShowDetails(false);
     setPredictFailure(null);
+    // The attempt this retires can now never paint, so nothing may still be
+    // waiting on it: without this the spinner would outlive the only response
+    // that could clear it.
+    setLoading(false);
     // A new selection supersedes the previous preload failure; leaving it set
     // would keep "Couldn't load this series." masking a result fetched by hand
     // afterwards.
@@ -108,6 +117,9 @@ export default function PredictPage() {
     // is what stops a late-arriving response from re-setting the flag over a
     // result the fan has already fetched, or overwriting the manual selection.
     seriesLoadSeq.current++;
+    // A new selection already threw away the visible result, so it throws away
+    // the in-flight prediction that would have produced it too.
+    predictSeq.current++;
   }, [selectedSeries, selectedMethod, customInput]);
 
   useEffect(() => {
@@ -312,6 +324,7 @@ export default function PredictPage() {
     inputData: PredictionInput,
     attempt: { method: MethodSlug; series: SelectedSeries }
   ) => {
+    const seq = ++predictSeq.current;
     setLoading(true);
     setPredictFailure(null);
     setResult(null);
@@ -326,10 +339,15 @@ export default function PredictPage() {
       // no raw JSON reaches the UI, and a non-conforming 200 (the
       // `win_probability_a: null` path) never renders `undefined%`.
       const failure = await classifyInvokeResult(error, data);
+      // Superseded while in flight by a newer attempt or a new selection. The
+      // error still gets reported; what the fan has on screen does not change.
+      const superseded = seq !== predictSeq.current;
       if (failure) {
         console.error('Prediction failure:', failure);
-        // Failure state only — series, method and scores survive the retry.
-        setPredictFailure(failure);
+        if (!superseded) {
+          // Failure state only — series, method and scores survive the retry.
+          setPredictFailure(failure);
+        }
         posthog?.captureException(
           error instanceof Error ? error : new Error(failure.message)
         );
@@ -339,16 +357,24 @@ export default function PredictPage() {
       // The classifier already proved this body conforms; `parseInvokeBody`
       // hands back the same decoded copy a `text/plain` `200` arrives as.
       prediction = parseInvokeBody(data) as PredictionResult;
+      // A result the fan has already switched away from is not a result; the
+      // live attempt will bring its own. Returning here also skips the success
+      // toast and the `prediction_generated` event below.
+      if (superseded) return;
       setResult(prediction);
     } catch (err) {
       // Last-resort guard for anything thrown outside the classified invoke
       // path; the panel replaces a bare toast, inputs untouched.
       console.error('Prediction error:', err);
-      setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
+      if (seq === predictSeq.current) {
+        setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
+      }
       posthog?.captureException(err);
       return;
     } finally {
-      setLoading(false);
+      // Only the newest attempt owns the spinner: a superseded response landing
+      // while a live request is pending must not re-enable Generate.
+      if (seq === predictSeq.current) setLoading(false);
     }
 
     // Success side-effects live outside the guarded region: a throwing toast
