@@ -242,11 +242,35 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(submit).toBeEnabled());
 
-    // Decision 2: the card keeps its own click as shipped (the accidental
-    // re-predict footgun is recorded in `deferred-work.md`, not removed here).
+    // F1 (owner, 2026-09-29): with a result on screen the card body is inert.
+    // A stray click used to re-issue the whole prediction — the Decision 2
+    // footgun matrix §7 filed as F1 — and re-running is now Generate's job.
     db.invoke.mockClear();
     fireEvent.click(screen.getByText('Predict'));
+    expect(db.invoke).not.toHaveBeenCalled();
+
+    db.invoke.mockClear();
+    activateByKeyboard(submit, 'Enter');
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the card body clickable as the mouse path until a result exists', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    await chooseMethod();
+    fillCustomForm();
+
+    db.invoke.mockResolvedValue({ data: conformingResult, error: null });
+
+    // Nothing rendered yet, so the card's own click still generates — this is
+    // the shipped mouse affordance F1 deliberately leaves alone.
+    fireEvent.click(screen.getByText('Predict'));
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    db.invoke.mockClear();
+    fireEvent.click(screen.getByText('Losing Team'));
+    expect(db.invoke).not.toHaveBeenCalled();
   });
 
   it('holds the in-flight Generate disabled so a second activation cannot double-fire', async () => {

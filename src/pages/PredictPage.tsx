@@ -1000,9 +1000,12 @@ export default function PredictPage() {
         </div>
 
         <Card 
-          className={`h-full flex flex-col ${!selectedSeries || !selectedMethod ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-muted/30 transition-colors'}`}
+          className={`h-full flex flex-col ${!selectedSeries || !selectedMethod ? 'opacity-50 cursor-not-allowed' : result ? 'cursor-default' : 'cursor-pointer hover:bg-muted/30 transition-colors'}`}
             onClick={() => {
-              if (selectedSeries && selectedMethod && !loading) {
+              // F1 (owner, 2026-09-29): once a result is on screen the card body
+              // stops answering clicks — the re-fire path is the Generate button,
+              // which is the affordance that says what it does.
+              if (selectedSeries && selectedMethod && !loading && !result) {
                 handlePredict();
               }
             }}
