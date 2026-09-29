@@ -232,7 +232,7 @@ so that the flow that regressed once (issue #3) can't silently regress again.
 **When** the suite lands
 **Then** tests cover: historical series selection + preload, custom team-name resolution (full/nickname/abbreviation + placeholder fallback) and score validation bounds, method switching mid-flow without state loss, and both error classes from 1.3
 **And** a documented catalog of issue #3's reproduced failure cases exists, each mapped to a regression test or an FR-8 error state
-**And** the suite runs in the CI gate and blocks merge on red
+**And** the suite runs in the CI gate on every push to `master`, and nightly — `.github/workflows/nightly-gate.yml` runs `npm run gate` and files an issue on red — while a red push is blocked locally by `.githooks/pre-push`. No required status check is claimed: work lands on `master` by direct push, not by merge
 
 ### Story 1.5: Manual QA matrix + epic verification pass
 
@@ -544,6 +544,7 @@ so that settling the debate takes one tap — and arrivals from my link are coun
 **And** the share action emits through the Story 3.1 analytics port, and arriving visits are attributable — the SM-3 query from Story 3.4 now returns real data
 **And** the Share button is AA-clean: keyboard-reachable, announced, contrast-compliant
 **And** shared-link round-trip verified: link from a completed prediction reproduces the same series+method state on open in a fresh browser profile
+**And** this story inherits deferred-work **D3**, the `PredictPage` request-path rebuild its Share button sits on top of (owner decision 2026-09-29, Epic 1 retro §F). Four things, one change: a derived `Partial<PredictionInput>` form type exported from the frontend door plus typed payload builders, retiring `seriesInput: any`, the two `as PredictionInput` casts and the twelve `undefined as any` custom-form fields; the method-card `switch (selectedMethod)` description moved into a `Record<MethodSlug, string>` in `src/lib/method-display.ts`; the dead `PredictionFailure['invalid-input']` arm deleted or wired, with the Story 1.3 Spec Change Log annotated to match; and the duplicated validation and advisory-string paths (`validateScores` in `PredictPage.tsx` vs `src/lib/custom-matchup.ts`) collapsed to one request path and one failure vocabulary
 
 ### Story 4.5: Series editorial content model (FR-13 pilot)
 
