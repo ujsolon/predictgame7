@@ -1,6 +1,6 @@
 /**
  * One prediction contract (AD-2) — the single source of truth for the
- * `predict-game-7` request and response shapes.
+ * `predict-game-7` request, response and failure shapes.
  *
  * Pure type declarations only: no runtime code and no platform APIs, so the
  * Deno Edge Function and the Vite frontend type graph can both import it.
@@ -62,4 +62,14 @@ export interface PredictionResult {
   contributing_factors: ContributingFactor[];
   computation_time_ms: number;
   method_used: MethodSlug;
+}
+
+/**
+ * The failure wire — the body beside every non-2xx from `predict-game-7`, both
+ * the 400 rejections from the request boundary and the 500 from the catch arm.
+ * The client surfaces `error` verbatim as the panel line, so these strings are
+ * user-facing copy, not diagnostics.
+ */
+export interface PredictionError {
+  error: string;
 }

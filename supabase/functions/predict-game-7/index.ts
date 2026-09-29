@@ -1,8 +1,13 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import {
+  ACCEPTED_METHOD_SLUGS,
+  validatePredictionRequest,
+} from '../_shared/predict-request.ts';
 import type {
   ConfidenceLevel,
   ContributingFactor,
   MethodSlug,
+  PredictionError,
   PredictionInput,
   PredictionResult,
 } from '../_shared/contract.ts';
@@ -11,6 +16,24 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+/**
+ * The one failure constructor, typed against the contract so the `{ error }`
+ * body the client renders cannot drift from the shape the contract documents.
+ */
+function errorResponse(status: 400 | 500, error: string): Response {
+  const body: PredictionError = { error };
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+// Ties the runtime slug list to the contract type: a slug that is not a
+// `MethodSlug` fails `deno check`. The opposite drift — a contract slug missing
+// from the list — fails `npm test`, where it is compared against `METHOD_LABELS`,
+// which is exhaustive over `MethodSlug` by construction.
+ACCEPTED_METHOD_SLUGS satisfies readonly MethodSlug[];
 
 const W = [0.03, 0.03, 0.01, 0, 0.03, -0.01];
 const B = 0;
@@ -294,14 +317,13 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    const input: PredictionInput = await req.json();
-    
-    if (!input.team_a || !input.team_b) {
-      return new Response(
-        JSON.stringify({ error: 'Team names are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // The boundary the compiler cannot see. `req.json()` is `any`, and the
+    // `PredictionInput` annotation this line used to carry is what let an
+    // off-contract slug run logistic regression and echo back as `method_used`.
+    const body: unknown = await req.json();
+    const rejection = validatePredictionRequest(body, ACCEPTED_METHOD_SLUGS);
+    if (rejection) return errorResponse(400, rejection);
+    const input = body as PredictionInput;
     
     const method: MethodSlug = input.method || 'logistic_regression';
     const features = calculateFeatures(input);
@@ -368,9 +390,12 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // `error` is `unknown` under a strict pass, and the bare `.message` here was
+    // the one type error standing between this file and `deno check`. The
+    // fallback string matches the sibling function's existing convention.
+    return errorResponse(
+      500,
+      error instanceof Error ? error.message : 'Unexpected server error.'
     );
   }
 });

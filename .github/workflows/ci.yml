@@ -26,9 +26,31 @@ jobs:
 
       # Blocking typecheck of the app graph (`src` + `vite.config.ts`), which
       # Story 1.2 made green — so this step can fail. It does not cover
-      # `supabase/functions/**`: no gate here type-checks the Edge Functions.
+      # `supabase/functions/**`; that graph is checked by the `deno check` step
+      # at the end of this job, not here.
       - run: npm run typecheck
 
       - run: npm test
 
       - run: npm run build
+
+      # Story 2.0: the producer side of the AD-2 contract. `npm run typecheck`
+      # above covers `src` + `vite.config.ts` only, so without this step nothing
+      # type-checks the Edge Functions or the `../_shared/` hop they import.
+      # CI-only by owner decision: Deno is not installed on the dev box, so a run
+      # here is the first evidence this step can produce — `npm run gate` does not
+      # cover it and is not claimed to.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Edge Function type-check (deno check)
+        run: |
+          # globstar, so a file added a directory deeper cannot slip past the
+          # pattern unchecked; the resolved list is printed so a short run is
+          # visible in the log rather than silently green.
+          shopt -s globstar
+          files=(supabase/functions/**/*.ts)
+          printf 'Checking %s files:\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          deno check "${files[@]}"

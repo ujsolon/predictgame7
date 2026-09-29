@@ -116,6 +116,20 @@ Legacy migration and backfill work is tracked in `supabase/migrations`, includin
 - `predict-game-7`: prediction engine used by the Predict page
 - `handle-contact`: contact form submission handler
 
+What checks them:
+
+- `npm run lint` (Biome) covers `supabase/functions/**/*.ts`, so those files are parsed and
+  linted locally with the rest of the repo.
+- `npm run typecheck` does not — `tsc -b` covers `src` and `vite.config.ts` only.
+- Their types are checked by a `deno check` step in CI (`.github/workflows/ci.yml`) and nowhere
+  else. This repo deliberately does not require a local Deno install, which means **a CI run on
+  `master` is the first evidence that step can produce**; nothing you run locally substitutes for
+  it.
+- Deploys are a separate, ungated mechanism (`supabase functions deploy`), so the live function
+  can be behind `master`. `node scripts/probe-predict-contract.mjs --expect=baseline|validated`
+  hits the deployed function and fails on a mismatch, which is how that difference is measured
+  rather than assumed.
+
 ## Analytics
 
 PostHog is wired into the frontend for:
