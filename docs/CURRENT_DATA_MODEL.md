@@ -16,7 +16,7 @@ This document summarizes the active Supabase data model used by Predict Game 7 a
 
 ### `series`
 - Canonical series records for historical and active Game 7 matchups
-- A series' phase is **derived, not stored**: `winner_team_id IS NULL` ⟺ Game 7 pending, `IS NOT NULL` ⟺ archived (AD-4, owner decision 2026-09-29). `status` still exists on the live table and is `'historical'` on every row; it is a vestige of the un-cascaded `series_historical`/`series_active` merge and no read path should branch on it. Its disposition (drop vs. document) is an open owner pick — see `sprint-change-proposal-2026-09-29.md` §4.2(a). This note describes intent, not a shipped migration: the schema below is unchanged as of this writing.
+- A series' phase is **derived, not stored**: `winner_team_id IS NULL` ⟺ Game 7 pending, `IS NOT NULL` ⟺ archived (AD-4, owner decision 2026-09-29). `status` still exists on the live table and is `'historical'` on every row; it is a vestige of the un-cascaded `series_historical`/`series_active` merge and no read path may branch on it. **Owner decision 2026-09-29: the column, its `chk_series_status` CHECK and its `DEFAULT 'historical'` are dropped** by the migration Story 2.2 opens (along with the `00007:42` five-column index over `(year, round, team_a_id, team_b_id, status)`), and the archive query becomes `.not('winner_team_id','is',null)`. That migration has **not been applied as of this writing** — the schema below is the live, unchanged shape, and this paragraph updates when the migration lands (AD-4 requires the same commit).
 - Stores:
   - `id`
   - `year`

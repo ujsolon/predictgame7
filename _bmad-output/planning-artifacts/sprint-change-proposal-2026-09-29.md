@@ -2,7 +2,8 @@
 
 Trigger: owner decision recorded in `_bmad-output/brainstorming/brainstorm-series-status-semantics-2026-09-29/brainstorm-intent.md` (commit `27580b6`), reached in a facilitator-mode brainstorm off Story 1.5's QA matrix §6.5 / F9.
 Scope of this document: **planning artifacts only.** No code, no migration, no deploy authorized here.
-**Status 2026-09-29: approved by the owner and the §4.1–§4.11 artifact edits are applied** (spine AD-4/AD-5/AD-7 + its tree comment, addendum §B and §E, `AGENTS.md`, `epics.md` AD summaries/Epic 2 list/Stories 2.1–2.3, 2.5, 2.7, 4.3, PRD FR-19 + the FR-26 block, `CURRENT_DATA_MODEL.md` note, `qa-matrix-1-5.md` §2.2/§6.5/F9, `deferred-work.md` F9 + the round-vocabulary entry, `sprint-status.yaml` Story 2.2 slug, and a supersession marker in the 2026-09-25 proposal). Still blocked on the owner: **§4.2(a)** column disposition, **§4.2(b)** integrity enforcement, **§4.9** Home-highlight placement, the `CurrentGame7sPage.tsx` deletion go-ahead, and **§4.10**'s measurement — so §5's "do not implement" bar still stands.
+**Status 2026-09-29: approved by the owner and the §4.1–§4.11 artifact edits are applied** (spine AD-4/AD-5/AD-7 + AD-9 + its tree comment, addendum §B and §E, `AGENTS.md`, `epics.md` AD summaries/Epic 2 list/Stories 2.1–2.3, 2.5, 2.7, 4.3, PRD FR-19 + the FR-26 block, `CURRENT_DATA_MODEL.md` note, `qa-matrix-1-5.md` §2.2/§6.5/F9, `deferred-work.md` F9 + the round-vocabulary entry, `sprint-status.yaml` Story 2.2 slug, and a supersession marker in the 2026-09-25 proposal).
+**Owner closed the four open calls the same day:** §4.2(a) **drop** `status` + `chk_series_status` + its default; §4.2(b) **pipeline assertion + defensive read, no trigger**; §4.9 **split as recommended** (data assertion in 2.7, visual treatment in 4.5); `CurrentGame7sPage.tsx` **deleted** (gate green). §4.10's archive audit is **deferred, not dropped** — it is an AC of Story 2.1. **Nothing in this proposal is blocked on the owner any more**, and §5's "do not implement" bar is lifted for implementation work; the one standing caveat is that the derivation's no-false-positive-on-history claim stays unmeasured until 2.1 runs.
 Supersedes: `sprint-change-proposal-2026-09-25.md` §"AD-4 / series.status" line only (see §2.4 — the spoiler-split decisions in that proposal stand).
 
 ---
@@ -100,11 +101,13 @@ The 2026-09-25 proposal ruled (line 27): *"AD-4 / `series.status`: untouched —
 >   - **Publication fitness is not data state.** The bare-page-then-populated release pattern (~24 h pre-game, ~72 h post-game) is a deploy/prerender concern. It reopens as a schema question **only if a row can ever be created before its content is ready** — which this AD forbids.
 >   - Ship any schema change and the read-path flip in the **same release**, **outside a playoff window**, with `docs/CURRENT_DATA_MODEL.md` in the same commit (inherited from the prior decision; the reason changed, the discipline did not).
 
-### 4.2 AD-4 open item — the owner picks one, in writing
+### 4.2 AD-4 open item — the owner picks one, in writing — **RESOLVED 2026-09-29: drop the column; pipeline assertion + defensive read**
 
 **The column:** (a) **drop `status` + `chk_series_status`** in the same migration as `UNIQUE (year, round)` — cleanest, forces the index fix, and removes a value that would otherwise keep defaulting new pending rows to `'historical'`; (b) **leave it as a documented vestige** — zero migration risk, but a lying column stays in the schema doc and in `types.ts`. *Recommendation: (a), folded into the migration 2.2 already has to open.* Do **not** pick "keep it as a cache mirroring the derivation" — that reintroduces the second writer that caused this.
+> **Owner verdict: (a) drop.** The column, `chk_series_status`, and the `DEFAULT 'historical'` all go in Story 2.2's migration, which also drops the `00007:42` index.
 
 **The invariant** (that a winner cannot exist without seven decided games, and that a null winner without a pending Game 7 is an anomaly): (i) **DB trigger** enforcing `winner_team_id IS NOT NULL ⟺ COUNT(score rows) = 7` — real enforcement, and note a plain CHECK **cannot** reference another table, so this is a trigger, not a constraint; (ii) **verified read path** — the app derives defensively and a series that doesn't reconcile is excluded from both sets and reported loudly; (iii) **pipeline convention only** — the writer asserts before commit and exits non-zero (SM-4 already requires a loud failure). *Recommendation: (iii) as the guarantee plus (ii) as the safety net; (i) only if a real drift is ever observed.* A promise about a script is not a property of the database, and this is the one hole the brainstorm left open.
+> **Owner verdict: the recommendation — (iii) + (ii), no trigger.** Story 2.3's runner asserts before commit and exits non-zero; Story 2.2's helper excludes and reports a non-reconciling series. **Named consequence of this pick:** the invariant is not a property of the database, so any future writer that bypasses the runner can break it silently — the read path is what keeps that from reaching a user. Reopens as a trigger only if a real drift is ever observed.
 
 ### 4.3 `ARCHITECTURE-SPINE.md` AD-5 — two edits
 
@@ -148,12 +151,14 @@ The 2026-09-25 proposal ruled (line 27): *"AD-4 / `series.status`: untouched —
 ### 4.9 `epics.md` Story 2.7 + the Home surface
 
 - **2.7** AC: "Active Series render distinctly from Historical (FR-2)" → verified **through the derivation**, and add the `qa-matrix-1-5.md §6.5` re-score: option **(c)** (CDP response override) now fakes **six score rows + null winner** rather than a flag — a shape the server would actually accept — and option (a)'s warning stands (the picker query is unfiltered, `PredictPage.tsx:133-136`, so a seeded row is live to every visitor the moment it exists).
-- **New AC to place, and it needs the owner's choice:** the pending-Game-7 **Home highlight** (card → the series' preview page → simulate deep-links) has **no owning story**. It is a div, not a route (owner ruling, `CurrentGame7sPage.tsx` deleted). Options: fold into 2.7 as a render target, or into Epic 4's active-series surface work (4.3/4.5, UX-DR-2). *Recommendation: data-side assertion in 2.7, visual treatment in 4.5.*
-- **Delete `CurrentGame7sPage.tsx`** — verified unrouted and unimported; it is the last `.eq('status','active')` in the repo. File deletion needs the owner's explicit go-ahead per AGENTS.md.
+- **New AC to place, and it needs the owner's choice — RESOLVED 2026-09-29: split as recommended.** The pending-Game-7 **Home highlight** (card → the series' preview page → simulate deep-links) has **no owning story**. It is a div, not a route (owner ruling, `CurrentGame7sPage.tsx` deleted). Options: fold into 2.7 as a render target, or into Epic 4's active-series surface work (4.3/4.5, UX-DR-2). *Recommendation: data-side assertion in 2.7, visual treatment in 4.5.* → **adopted**: 2.7 asserts the data reach, and an AC was added to **Story 4.5** owning the rendering, copy, NFR-A1 and NFR-U1 of the Home div.
+- **Delete `CurrentGame7sPage.tsx` — AUTHORIZED AND DONE 2026-09-29.** Verified unrouted and unimported (referenced only by its own definition); it was the last `.eq('status','active')` in the repo. `git rm` + `npm run gate` green (116 tests / 11 files, build keeps the `/predictgame7/` prefix). AD-9's dead-module note records it.
 
-### 4.10 Evidence that must exist before 2.2 is built
+### 4.10 Evidence that must exist before 2.2 is built — **DEFERRED by the owner 2026-09-29; still owned by Story 2.1**
 
 The whole archive half of this decision rests on a premise the owner **asserted but nobody measured**: that all 178 rows have seven score rows and a non-null winner. If any row is short a game, a derived "Game 7 pending" predicate promotes a decades-old series into the live highlight. Required: one read-only count — `series` left to `series_game_scores` grouped by series, plus rows with `winner_team_id IS NULL`. Lands in **Story 2.1** (the spike already reads both tables) and it also settles the 177/178/172+5 doc discrepancy. Until it runs, §4.2's recommendation to drop the column is safe, but "derivation cannot false-positive on history" is a hope.
+
+> **Owner call 2026-09-29: defer.** It is not dropped — it is now an acceptance criterion of **Story 2.1**, so it gets measured when that story runs, and Story 2.2's AC says plainly that if 2.2 is built first the derivation ships on an unmeasured history premise. Dropping the column is unaffected by the deferral (§4.2(a) stands on its own); what stays unproven is only the *no-false-positive-on-history* claim, and the three-way count discrepancy stays open. Where it lands if the audit finds a short series: Story 2.2's defensive read already excludes and reports a non-reconciling row, so the fix is a data correction in the pipeline, not a schema change.
 
 ### 4.11 Out of scope — surfaced by the brainstorm, filed with an owner
 
@@ -169,14 +174,14 @@ The whole archive half of this decision rests on a premise the owner **asserted 
 
 | Recipient | Responsibility |
 |---|---|
-| **Owner (ujsolon)** | Approve this proposal; make the two §4.2 picks (column disposition; integrity enforcement); place the Home highlight (§4.9); authorize the `CurrentGame7sPage.tsx` deletion |
+| **Owner (ujsolon)** | Done 2026-09-29: approved the proposal, picked **drop** for the column, **pipeline assertion + defensive read** for the invariant, the **2.7-data / 4.5-visual** split for the Home highlight, and the `CurrentGame7sPage.tsx` deletion; **deferred** §4.10 with the audit re-anchored to Story 2.1 |
 | **`bmad-architecture` / AD maintenance** | Apply §4.1–§4.6 to the spine and addendum §B — the AD-4 rewrite is the keystone; nothing else may be applied before it |
-| **PO/backlog** | Apply §4.7–§4.9 to `epics.md` Story 2.2/2.3/2.5/2.7 and reconcile the series count everywhere |
-| **Developer (Story 2.1)** | Run the §4.10 count, record it in the spike decision doc |
+| **PO/backlog** | Apply §4.7–§4.9 to `epics.md` Story 2.2/2.3/2.5/2.7/4.5; the series-count reconciliation travels with 2.1's deferred audit |
+| **Developer (Story 2.1)** | Run the §4.10 count as a story AC, record it in the spike decision doc — this is the last unmeasured premise the derivation rests on |
 | **Developer (Story 2.2)** | Implement derivation helper + query flips + migration as scoped, `npm run gate` green, same-commit `CURRENT_DATA_MODEL.md` |
 | **QA (Story 1.5 carry-over / 2.7)** | Re-score `qa-matrix-1-5.md §6.5` + F9 and `deferred-work.md` F9 against the derivation; §2.2's `[!]` closes only when 2.7's drill proves it |
 | **FR-25 (Epic 3)** | One PostHog query touch after `series_source` is re-derived; the ten §A.1 event names are untouched |
 
-**Success criteria:** no read path in `src/` branches on `series.status`; the picker's pending group and the archive are two halves of one derived predicate with no third definition anywhere; the count is measured, not asserted; nothing shipped during a playoff window that isn't read-path-only and additive; and addendum §B + AGENTS.md no longer tell an agent the enumeration is undefined.
+**Success criteria:** no read path in `src/` branches on `series.status`; the picker's pending group and the archive are two halves of one derived predicate with no third definition anywhere; the archive count is measured, not asserted — deferred to Story 2.1, so this criterion stays open until that story runs; nothing shipped during a playoff window that isn't read-path-only and additive; and addendum §B + AGENTS.md no longer tell an agent the enumeration is undefined.
 
-**Do not implement from this document until §4.2 and §4.10 are resolved** — they are the difference between a smaller Epic 2 and an unverified one.
+**§4.2 and §4.9 are resolved and §4.1–§4.9 are applied, so the implementation bar this document originally set is lifted.** Story 2.2 may be built. The one caveat it carries: Story 2.1's deferred count is still an AC of 2.1, not of this proposal — if 2.2 lands first, the derivation ships on an asserted history premise, and Story 2.2's AC says so out loud rather than pretending it settled.

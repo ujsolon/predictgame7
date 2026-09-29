@@ -86,7 +86,7 @@ This document provides the complete epic and story breakdown for predictgame7, d
 - AD-1: All `posthog-js`/`@posthog/react` imports confined to `src/lib/analytics/` (typed `EVENTS` registry with the 10 names verbatim; `track/identify/resetUser/captureError`; `provider.tsx` bootstrap; owner-local metric-query surface typed here, personal API key never bundled).
 - AD-2: Canonical prediction contract in `supabase/functions/_shared/contract.ts` incl. `MethodSlug` (5 canonical slugs) and `SharePayload` schema; frontend re-exports type-only; stale unions (`'bayesian' | 'ensemble_v1' | 'margin_model_v1'`) deleted; probabilities 0–100.
 - AD-3: Edge Function convention: `Deno.serve` + `jsr:` imports, `_shared` helpers (CORS, `jsonResponse`, contract, service-client); `handle-contact` migrates within FR-17; Resend server-side only; error envelope `{ "error": string }`.
-- AD-4 (amended 2026-09-29): a series' phase is **derived, not stored** — `winner_team_id IS NULL` means Game 7 pending, `IS NOT NULL` means archive; rows are born only at a certified 3–3. `series.status` and `chk_series_status` are vestigial remnants of the un-cascaded two-table merge; column disposition is an open §4.2(a) pick. **Sequencing rule unchanged**: one migration + the read-path flip to the derivation ship in the same release, scheduled outside the playoff window; `CURRENT_DATA_MODEL.md` updated same commit.
+- AD-4 (amended 2026-09-29): a series' phase is **derived, not stored** — `winner_team_id IS NULL` means Game 7 pending, `IS NOT NULL` means archive; rows are born only at a certified 3–3. `series.status` and `chk_series_status` are vestigial remnants of the un-cascaded two-table merge and are **dropped by Story 2.2's migration** (owner decision 2026-09-29); integrity is pipeline assertion + a defensive read path, not a DB trigger. **Sequencing rule unchanged**: one migration + the read-path flip to the derivation ship in the same release, scheduled outside the playoff window; `CURRENT_DATA_MODEL.md` updated same commit.
 - AD-5: Pipeline as GH Actions scheduled workflows + `supabase/scripts/pipeline/` scripts; `SeriesDataSource` port with `fantrax`/`nba_com`/`manual_csv` adapters (env-selected); prerequisite migration adds `UNIQUE (year, round)` + `round` CHECK domain before upserts (and drops the `00007` five-column `status` index); row creation and winner completion follow AD-4's derivation — no step writes `status`; pipeline owns `insights_cache` refresh; failed runs exit non-zero → GitHub notification (SM-4).
 - AD-6: Sharing: `share-og` Edge Function (anonymous, no JWT; `@vercel/og` card + per-link og:* meta; redirect humans to deep-link with `utm_source=share`); site deep-links `/series/<id>?method=<slug>` and `/predict?custom=<base64>`; **build chain emits `404.html` SPA fallback** (without it every deep-link 404s on GitHub Pages).
 - AD-7: Build-time prerender: one static HTML per `/series/<id>` (series facts + meta + Predict CTA, no baked predictions), route list from the DB **via AD-4's derived phase** at build time; hydration only, no app fork.
@@ -264,7 +264,7 @@ so that Story 2.4 builds on a confirmed source instead of the PRD's unverified a
 **When** each candidate source is probed for: current playoff bracket, series status, per-game scores (home/away), and historical consistency with the archive schema
 **Then** a decision record lands in `_bmad-output/implementation-artifacts/` naming the chosen source, its rate/auth constraints, and the exact fields mapped to `series` / `series_game_scores`
 **And** if BOTH sources fail: the decision record invokes the manual_csv floor (Story 2.3) as the inseason plan and flags the PRD phase-blocker note on FR-21 for the owner
-**And** the decision record also carries the read-only archive audit (proposal §4.10): `series` left-joined to `series_game_scores` grouped by series, plus every row with `winner_team_id IS NULL` — the derivation Story 2.2 builds on only holds if each archived series has seven score rows and a decided winner, and it settles the 177/178/172+5 documentation discrepancy with one measured number
+**And** the decision record also carries the read-only archive audit (proposal §4.10): `series` left-joined to `series_game_scores` grouped by series, plus every row with `winner_team_id IS NULL` — the derivation Story 2.2 builds on only holds if each archived series has seven score rows and a decided winner, and it settles the 177/178/172+5 documentation discrepancy with one measured number. **Deferred by the owner 2026-09-29** — it stays assigned to this story, so whoever runs 2.1 runs it, and 2.2 ships knowing the premise is unmeasured until then
 **And** no production code ships from this story
 
 ### Story 2.2: Schema prerequisites + derived phase on the read path
@@ -275,19 +275,21 @@ so that upserts are idempotent and no client branch still speaks the un-cascaded
 
 **Acceptance Criteria:**
 
-**Given** the migration is applied off-playoff, and §4.10's read-only archive count has run first (Story 2.1) so the derivation's history premise is measured, not assumed
+**Given** the migration is applied off-playoff. The §4.10 archive audit is **deferred** (owner 2026-09-29): it remains an acceptance criterion of Story 2.1, so if this story is built before 2.1 runs the derivation ships on a history premise that has been asserted, never measured — record that as an open risk in the spec rather than treating the count as settled
 **When** a duplicate (year, round) insert or an out-of-CHECK `round` value is attempted
 **Then** both are rejected by the database
 **And** the `00007` five-column index on `series` is dropped (its `ON CONFLICT` target is replaced by UNIQUE(year, round))
-**And** `status` and `chk_series_status` are dispositioned per AD-4 §4.2(a) — the owner's drop-vs-vestigial pick, recorded in the same commit
+**And** `status`, `chk_series_status` **and the column's `DEFAULT 'historical'` are dropped in this migration** — owner decision 2026-09-29 (§4.2(a)): no documented vestige, because a defaulting column would keep mis-tagging new pending rows and `types.ts` would keep carrying a field with no meaning
 **And** every client branch that read `status` now reads the derivation through **one shared helper**: `HistoricalPage.tsx:40` → `.not('winner_team_id','is',null)`; `PredictPage.tsx:167/:396/:408`, the `:712-717` guard and the `:778` label → derived from `series_game_scores` + `winner_team_id`, and `status` leaves the `SERIES_SELECT` field list at `PredictPage.tsx:37`; `types.ts:34` loses `'historical' | 'active' | 'completed'` and `'completed'` dies with it
+**And** the helper is **defensive** per AD-4 §4.2(b): a series that does not reconcile (a winner with fewer than seven score rows, or any other impossible shape) is excluded from both picker groups and reported, never guessed into one — enforcement itself stays with the pipeline's pre-commit assertion plus its non-zero exit, not a DB trigger
 **And** `HistoricalPage.tsx:310-311`'s user-visible "Series Status" readout is decided — derived label or removed
-**And** the helper is unit-tested against fixture rows covering six-and-null (pending), seven-and-set (archive), and six-and-set (the anomaly AD-4 §4.2(b) guards against)
+**And** the dead two-table remnant `src/pages/CurrentGame7sPage.tsx` is gone — **deleted 2026-09-29 under the owner's go-ahead** (§4.9), ahead of this story; it was unrouted, unimported, and held the repo's last `.eq('status','active')`. Gate green after the removal (116 tests / 11 files). If any `status` read path still exists, it is in scope here
+**And** the helper is unit-tested against fixture rows covering six-and-null (pending), seven-and-set (archive), and six-and-set (the anomaly that must be excluded and reported)
 **And** `docs/CURRENT_DATA_MODEL.md` is updated in the same commit as the migration
-**And** post-migration verification: the full historical archive still reconciles at the count measured in §4.10 (FR-19), and with nothing pending the Predict flow shows an empty non-breaking Active group (FR-2) with `EXPERIENCE.md:112`'s copy intact
+**And** post-migration verification: the archive still reconciles (FR-19) — against Story 2.1's measured count if that audit has run, otherwise against a fresh count taken in this story, since the 177/178/172+5 discrepancy is still unresolved (§4.10 deferred) — and with nothing pending the Predict flow shows an empty non-breaking Active group (FR-2) with `EXPERIENCE.md:112`'s copy intact
 **And** `npm run gate` passes
 
-**Deleted as work items:** the `('active','completed')` CHECK, the `'historical'→'completed'` backfill, and the status-domain frontend flip — this story no longer changes the stored value domain at all.
+**Deleted as work items:** the `('active','completed')` CHECK, the `'historical'→'completed'` backfill, and the status-domain frontend flip. This story **removes** the stored value domain rather than redefining it (`status`, its CHECK and its default all go), so the migration is subtractive plus the uniqueness guards — and the flip it ships is a predicate change, not a data change.
 
 ### Story 2.3: Pipeline runner + SeriesDataSource port + manual_csv floor
 
@@ -302,6 +304,7 @@ so that the pipeline works end-to-end on day one regardless of what Story 2.1 co
 **Then** upserts into `series` / `series_game_scores` are idempotent — re-running the same input changes nothing
 **And** the runner implements AD-4's atomic birth (`certified 3–3` → one `series` row + its six `series_game_scores` rows, `winner_team_id` NULL) and completion (Game 7 score appended and `winner_team_id` filled, in one transaction) — a row it would create with content not yet ready is a bug, not a state
 **And** no step ever writes `series.status` (AD-4: phase is derived)
+**And** the runner **asserts the derivation's invariant before committing** — a winner implies seven decided score rows, a null winner implies exactly six with a 3–3 split — and a violation exits non-zero rather than writing (AD-4 §4.2(b): this assertion, plus Story 2.2's defensive read, is the enforcement mechanism; no DB trigger)
 **And** the `service_role` key comes from environment only (never committed, never in client-visible `VITE_*` vars — NFR-S1)
 **And** any failure exits non-zero with a clear message (SM-4 hook for Story 2.6)
 **And** a dry-run mode previews changes in a transaction-wrapped session without committing (operator convention for playoff-week confidence)
@@ -364,7 +367,7 @@ so that the pipeline is proven before the real Apr–Jun 2027 window opens.
 **When** the drill runs (scheduled trigger fired manually, real or fixture source data through to the live UI)
 **Then** results matrix recorded in `_bmad-output/implementation-artifacts/`: Active Series render distinctly from Historical (FR-2) **through the derivation** — a pending series appears because it has six score rows and a NULL `winner_team_id`, not because a flag says so, and the same series leaves the Active group and enters the archive on the single write that fills the winner; scores update after a run; the archive still reconciles at the count measured in Story 2.1 (FR-19)
 **And** the matrix re-scores `qa-matrix-1-5.md §6.5` against the derivation: option **(c)** (CDP response override) fakes **six score rows + null winner** rather than a status flag — a shape the server would actually accept — and option (a)'s warning stands (the picker query is unfiltered, `PredictPage.tsx:133-136`, so a seeded row is live to every visitor the instant it exists)
-**And** the drill asserts the pending-Game-7 data reach on Home (the highlight's data half — a pending series is present and its card resolves to that series' preview page); its visual treatment is an open owner call (§4.9) placed with Epic 4's active-series surface work (4.3/4.5, UX-DR-2), not invented here
+**And** the drill asserts the pending-Game-7 data reach on Home (a pending series is present and its card resolves to that series' preview page); the visual treatment is owned by **Story 4.5** (owner call 2026-09-29, §4.9) — 2.7 proves the data arrives, not how it looks
 **And** a failure drill: pipeline forced to fail → notification received within one cron cycle
 **And** any failures found are fixed or filed as issues before the epic is marked done
 
@@ -530,6 +533,7 @@ so that flagship series can carry full additional content while every other seri
 **And** video is external-embed only (YouTube iframes with titles — Q-5 pilot resolution); no media hosting, no Supabase Storage usage
 **And** content rendering is AA-clean: iframe titles, text contrast, keyboard-navigable embeds, responsive on desktop and mobile (NFR-U1 — closes issue #5's responsiveness AC for the pilot)
 **And** `docs/CURRENT_DATA_MODEL.md` updated in the same commit as the schema change
+**And** this story also owns the pending-Game-7 **Home highlight's visual treatment** (owner call 2026-09-29, `sprint-change-proposal-2026-09-29.md` §4.9): a **div on Home, not a route** — `CurrentGame7sPage.tsx` is deleted — presenting the certified 3–3 series' context and the drama, with its card resolving to that series' preview page (`/series/<id>`, UX-DR-2) and a deep-link into the Predict flow. Story 2.7 asserts the *data* reach; the rendering, copy, AA floor (NFR-A1) and responsive behavior (NFR-U1) are decided here. It is a highlight of an already-derived pending series — no new data state, and nothing that reads `status`
 
 ### Story 4.6: Flagship five content load
 
