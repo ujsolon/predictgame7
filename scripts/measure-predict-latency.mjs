@@ -16,6 +16,14 @@
 //   npm run preview                                  # builds, serves on :4173
 //   node scripts/measure-predict-latency.mjs         # defaults to Slow 4G + 4x CPU
 //
+//   npm run perf:predict -- --server-only            # Edge Function alone, no browser
+//
+// --server-only hits predict-game-7 directly from Node over --per-method rounds of
+// every method slug, and reports wall time, the function's self-reported compute,
+// per-method p95, and a cold-first-round / warm split. That split is what tells
+// you the tail is Supabase edge cold boot rather than the maths. It needs
+// VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env and no preview server.
+//
 // The run reports two independent numbers per sample, because conflating them is
 // what made the earlier mobile reading look like a network problem:
 //   request_ms  send -> response complete for the predict-game-7 invoke (network)
@@ -55,6 +63,17 @@ const PROFILES = {
 
 const RESULT_MARKER = "Predicted Winner";
 
+// The four MethodSlugs the Edge Function branches on, mirrored from
+// supabase/functions/_shared/contract.ts. Deliberately not imported: that file is
+// TypeScript in a Deno tree that no tsconfig here covers, and a static list keeps
+// this script dependency-free. If a slug is ever added, --methods overrides it.
+const METHOD_SLUGS = [
+  "logistic_regression",
+  "bayes",
+  "elo",
+  "exponential_smoothing",
+];
+
 function parseArgs(argv) {
   const opts = {
     url: "http://localhost:4173/predictgame7/predict",
@@ -65,6 +84,9 @@ function parseArgs(argv) {
     viewport: "390x844",
     withAnalytics: false,
     timeout: 90000,
+    serverOnly: false,
+    perMethod: 6,
+    methods: METHOD_SLUGS,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -77,6 +99,9 @@ function parseArgs(argv) {
     else if (a === "--viewport") opts.viewport = next();
     else if (a === "--timeout") opts.timeout = Number(next());
     else if (a === "--with-analytics") opts.withAnalytics = true;
+    else if (a === "--server-only") opts.serverOnly = true;
+    else if (a === "--per-method") opts.perMethod = Number(next());
+    else if (a === "--methods") opts.methods = next().split(",").map((s) => s.trim()).filter(Boolean);
     else if (a === "--help" || a === "-h") {
       console.log(readFileSync(new URL(import.meta.url), "utf8").split("\n").filter((l) => l.startsWith("//")).join("\n"));
       process.exit(0);
@@ -85,11 +110,125 @@ function parseArgs(argv) {
       process.exit(2);
     }
   }
-  if (!PROFILES[opts.profile]) {
+  if (!opts.serverOnly && !PROFILES[opts.profile]) {
     console.error(`Unknown --profile. One of: ${Object.keys(PROFILES).join(", ")}`);
     process.exit(2);
   }
+  if (opts.serverOnly && (!opts.methods.length || !(opts.perMethod >= 1))) {
+    console.error("--server-only needs at least one --methods slug and --per-method >= 1");
+    process.exit(2);
+  }
   return opts;
+}
+
+// The anon key is client-visible by design (NFR-S1); it is read, never printed.
+function readViteEnv(file = ".env") {
+  const out = {};
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    if (!line.includes("=") || line.trimStart().startsWith("#")) continue;
+    const i = line.indexOf("=");
+    out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+  }
+  return out;
+}
+
+// --server-only: probe the Edge Function directly from Node, no browser. This is
+// the half of NFR-P1 that needs no throttling - the function's own round trip and
+// its self-reported compute - and it is what separates "the network is slow" from
+// "the maths is slow".
+async function runServerOnly(opts) {
+  const env = readViteEnv();
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) {
+    console.error(".env is missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+    process.exit(1);
+  }
+  const endpoint = `${env.VITE_SUPABASE_URL}/functions/v1/predict-game-7`;
+  // Twelve score pairs so repeated rounds do not hit an identical cached path.
+  const scores = [
+    [110, 102], [98, 105], [121, 114], [95, 99], [108, 101], [113, 107],
+    [104, 97], [116, 109], [99, 103], [107, 112], [118, 96], [102, 105],
+  ];
+
+  console.log(
+    [
+      "NFR-P1 server probe (no browser, unthrottled)",
+      `  endpoint   ${endpoint}`,
+      `  methods    ${opts.methods.join(", ")}`,
+      `  samples    ${opts.perMethod} per method = ${opts.perMethod * opts.methods.length}`,
+      "",
+    ].join("\n")
+  );
+
+  const rows = [];
+  for (let round = 0; round < opts.perMethod; round++) {
+    for (const method of opts.methods) {
+      const [sa, sb] = scores[round % scores.length];
+      const body = {
+        team_a: "Boston Celtics",
+        team_b: "Miami Heat",
+        home_team: "Boston Celtics",
+        method,
+        game_1_score_a: sa, game_1_score_b: sb,
+        game_2_score_a: sb, game_2_score_b: sa,
+        game_3_score_a: sa, game_3_score_b: sb,
+        game_4_score_a: sb, game_4_score_b: sa,
+        game_5_score_a: sa, game_5_score_b: sb,
+        game_6_score_a: sb, game_6_score_b: sa,
+      };
+      const t0 = performance.now();
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => null);
+      const wall = performance.now() - t0;
+      const row = {
+        method,
+        round,
+        status: res.status,
+        wall: Math.round(wall),
+        compute_ms: json?.computation_time_ms ?? null,
+        keys: json ? Object.keys(json).length : 0,
+        conforming: res.status === 200 && json?.method_used === method,
+      };
+      rows.push(row);
+      process.stdout.write(
+        `  ${method.padEnd(22)} ${String(round + 1).padStart(2)}  wall=${String(row.wall).padStart(5)}ms  compute=${row.compute_ms}ms  status=${row.status}\n`
+      );
+    }
+  }
+
+  const bad = rows.filter((r) => !r.conforming);
+  console.log(
+    `\nsamples=${rows.length}  non-conforming=${bad.length}  contract keys seen: ${[...new Set(rows.map((r) => r.keys))].join(", ")}`
+  );
+  if (bad.length) console.log(`  non-conforming detail: ${JSON.stringify(bad.slice(0, 3))}`);
+
+  console.log("");
+  console.log("  " + fmt("wall", stats(rows.map((r) => r.wall))));
+  const computes = rows.map((r) => r.compute_ms).filter((n) => n != null);
+  if (computes.length) console.log("  " + fmt("compute", stats(computes)));
+
+  console.log("\nper-method wall p95:");
+  for (const m of opts.methods) {
+    const a = rows.filter((r) => r.method === m).map((r) => r.wall);
+    console.log(`  ${m.padEnd(22)} ${a.join(" / ")}  -> p95 ${pct([...a].sort((x, y) => x - y), 95)}`);
+  }
+
+  // The first round pays the edge cold boot, so splitting it out is the
+  // difference between "the function is slow" and "the function was asleep".
+  const coldRows = rows.filter((r) => r.round === 0).map((r) => r.wall);
+  const warmRows = rows.filter((r) => r.round > 0).map((r) => r.wall);
+  console.log("\ncold (first round) vs warm:");
+  console.log("  " + fmt("cold", stats(coldRows)));
+  console.log("  " + fmt("warm", stats(warmRows)));
+  console.log(
+    "\nIf cold p95 is much higher than warm p95, the tail is Supabase edge\ncold-boot and the lever for a tighter NFR-P1 is keeping the function warm."
+  );
 }
 
 function findChrome() {
@@ -326,6 +465,8 @@ const RUN_SAMPLE = `
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.serverOnly) return runServerOnly(opts);
+
   const [vw, vh] = opts.viewport.split("x").map(Number);
   const profile = PROFILES[opts.profile];
 
