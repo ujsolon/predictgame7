@@ -1,6 +1,6 @@
 # Epic 2 Context: Playoff-Current Active Series
 
-<!-- Compiled from planning artifacts. Edit freely. Regenerate with compile-epic-context if planning docs change. -->
+<!-- Compiled once from planning artifacts. Hand-maintained from here: edit freely and re-check against the planning docs when they change. No regeneration script exists. -->
 
 ## Goal
 

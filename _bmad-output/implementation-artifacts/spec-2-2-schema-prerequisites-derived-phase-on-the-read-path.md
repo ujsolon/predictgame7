@@ -195,7 +195,7 @@ neither shape is excluded and reported instead of guessed into a group.
 
 **Two gaps found at review that this story does not own**, both written to `deferred-work.md` with a named home: the Story 2.1 spike audits still project `status` (`audit-archive.mjs:76`, `audit-unique-key.mjs:93`) and so go red the moment 00014 is applied — Story 2.7, which re-runs them; and nothing automated executes the rehearsal, which stays a human-typed command until Story 2.6 wires it.
 
-**Page suites now:** `predict-phase-groups.test.tsx` 9 tests, `historical-page-archive.test.tsx` 2 tests (both new since the first commit). `seriesFixture` stays the certified 3–3 pending shape, pinned by a test so an edit to `helpers.tsx` cannot silently move every suite off it.
+**Page suites now:** `predict-phase-groups.test.tsx` 10 tests, `historical-page-archive.test.tsx` 3 tests, `series-phase.test.ts` 11 tests (counts after the 2026-10-01 external pass; see its section in `## Review Triage Log`). `seriesFixture` stays the certified 3–3 pending shape, pinned by a test so an edit to `helpers.tsx` cannot silently move every suite off it.
 
 **Matrix coverage gap closed by a page suite.** The pure-function suite cannot show what the picker *does* with a non-reconciling row, so `src/pages/__tests__/predict-phase-groups.test.tsx` (jsdom) covers the matrix's page-level rows: empty Active group with `EXPERIENCE.md`'s established copy plus the `/historical` link; pending-only grouping with an archived row still reachable by year; derived `Current` / `View Series` card labels; exclusion with `console.error` and exactly one `posthog.captureException` whose message names the row id; a deep link to the anomaly still loading and predicting with `series_id: 's-anomaly'` and zero captures (exclusion is a picker concern, not a load-path failure); and the `helpers.tsx` fixture pin above. The review pass added the four the matrix implied but did not test: the empty state withheld until the list query answers, the projection contract, and the two `series_source` payloads.
 
@@ -254,10 +254,82 @@ Layers run on `s22-step4-diff.txt` (baseline `66be551`): blind-hunter, edge-case
 
 - [blind-hunter] Frozen Boundaries says the rehearsal container is "reachable only by its own published port" while it publishes none — the script is the safe side of that contradiction.
 - [blind-hunter] Frozen Intent's "seven client branches" undercounts the client reads by one (the eighth is `HistoricalPage.tsx:40`).
-- [blind-hunter] Decision 4's "16 fixture `game_sevens` rows" — measured 8.
+- [blind-hunter] Decision 4's "16 fixture `game_sevens` rows" — measured 8. *(Re-surfaced by the 2026-10-01 external pass as H3 — the rejection was right that only the owner can edit frozen text, but no owner had the edit. It now has a home: `deferred-work.md`, "Deferred from: external code review of Story 2.2".)*
 - [blind-hunter] Decision 5 / the helper docstring state exclusion-and-reporting where the I/O matrix's deep-link row asserts nothing reported; the docstring already scopes the rule to "the picker groups", so the contract as written holds.
 - [blind-hunter] The Tasks bullet says both pages "read only through" `series-phase.ts`; `HistoricalPage`'s membership is a DB predicate. Divergence is intentional and written up in `## Implementation Notes`.
 - [verification-gap] The I/O matrix names only the picker groups, so "a winner whose rows are not 1–7 still lists in the archive with its winner" is undocumented — same write-up, same reason.
+
+### External review pass (2026-10-01, four layers, diff `22cf9fa^..5ab8940`)
+
+Layers run on a fresh temp diff of the six Story 2.2 commits: blind-hunter, edge-case-hunter,
+verification-gap, acceptance-auditor. The edge-case layer verified all 17 commit-message claims
+against the code and filed **zero** findings. The verification-gap layer reported the diff file
+unreadable and returned its documented empty result, so its coverage claim is absent from this
+pass — the other three layers read the same file successfully. No blocking finding: the
+acceptance auditor found no AC violated by the code.
+
+**Independence caveat, same as Stories 1-2/1-3/1-4:** the four reviewers ran as subagents of this
+session, not as a separately-invoked different model. The story was flipped to `done` on the
+owner's instruction in the same session that made the patches; whether that satisfies the
+different-model bar stays the owner's call.
+
+**Patched — caused by this change, fixed in this pass (owner chose B/A/A/A/A/A).**
+
+- **high** [blind-hunter] `HistoricalPage.tsx:313` rendered the literal string `"undefined"` when the
+  `winner_team` embedding missed: the previous pass deleted the `'TBD'` fallback as unreachable, but
+  RLS/embedding can still return a row with `winner_team_id` set and no joined team, and the new
+  archive suite covered only the populated case. Fixed with an explicit `'Winner not available'`
+  fallback plus a third `historical-page-archive.test.tsx` test that renders the missing-join row and
+  asserts neither `undefined` nor a placeholder leak.
+- **high** [acceptance-auditor] **H2** — the AC "the pre-flight measurement reports the new key
+  duplicate-free over all 178 rows" was satisfiable only *before* the apply, because
+  `audit-unique-key.mjs` projected the dropped `status`. Owner took option B (ship now, not with 2.7):
+  the select names only surviving columns, and the script was re-run against the live table —
+  **178 rows, 0 duplicate groups for `(year, team pair)`, exit 0**, which is the post-apply shape
+  probe `deferred-work.md` asked for. `audit-archive.mjs` stays red on purpose (its subject is the
+  `status` domain); that half remains Story 2.7's.
+- **medium** [blind-hunter] **M1** — `rehearse-migration-00014.mjs` certified only `00001..COVERED_THROUGH`
+  while replaying every file, so a 00016+ would be applied and skipped silently. `COVERED_THROUGH` moved
+  to a header constant and `main()` now warns by name when a file sits above the ceiling. The
+  automation gap itself stays with Story 2.6.
+- **medium** [blind-hunter] **M2** — `epic-2-context.md:3` told readers to regenerate with a
+  `compile-epic-context` script that does not exist in `package.json` or `scripts/`. Reworded to
+  hand-maintained (option A: delete the aspirational instruction rather than write a script no story asked for).
+- **medium** [blind-hunter] **M4** — no test reached the `seriesListLoaded` gate through a failure→retry
+  cycle, so the flag could be deleted and eight of nine suite tests stayed green. New test drives fetch
+  failure → Retry → in-flight → success and asserts the empty-state claim stays withheld mid-retry.
+  Mutation-checked both ways: `seriesListLoaded || true` reddens it (and the original withholding test);
+  the reverted flag leaves it green.
+- **medium** [blind-hunter] **M5** — `deriveSeriesPhase` reads `!= null`, and the type allows
+  `winner_team_id: undefined`, but only an omitted key was exercised. New `series-phase.test.ts` case pins
+  explicit `undefined` on both the 1–6 and 1–7 shapes.
+- **medium** [blind-hunter] **M6** — the I/O matrix's deep-link row promises "the existing submit guards
+  toast as today", which no test asserted. Pinned as the negative (the winner + games 1–6 anomaly reaches
+  no `toast.error`/`toast.warning` on its way to a successful prediction) because the guards' own positive
+  toasts are already byte-pinned in `predict-flow-regression.test.tsx:436-465`; re-asserting them here
+  would duplicate, not cover.
+
+**Deferred — written to `deferred-work.md` with a named home.**
+
+- **high** [blind-hunter + acceptance-auditor] **H3** — frozen Decision 4's "16 `game_sevens` rows" vs.
+  the measured 8. Previously rejected as a spec edit; this pass filed it because the rejection left the
+  edit unowned. **Lands with the owner** (frozen blocks are not agent-editable).
+
+**Rejected — verified against the current tree.**
+
+- [blind-hunter] `docs/CURRENT_DATA_MODEL.md` documents a broken state without a forward pointer to its
+  resolution — it names Story 2.7 in the same paragraph, and that paragraph is now updated with the
+  green post-apply measurement.
+- [blind-hunter] `findCard` in `helpers.tsx` matches by `startsWith` and can pick the wrong button when two
+  cards share a prefix. Not reachable: `clickYearCard` hands off to `cardByText`, which throws unless the
+  prefix matches exactly one button, so a collision fails the test rather than mis-clicking. Prefix-only
+  matching is deliberate (F16 forbids asserting computed names in jsdom).
+- [blind-hunter] The withholding test's `queryByText(...).toBeNull()` before the promise resolves is fragile
+  under concurrent mode. It is mutation-sensitive — the `|| true` check above reddens it — which is the
+  evidence that the frame it observes is the pre-resolution one.
+- [blind-hunter] The acceptance auditor's notes on frozen text (published-port wording, "seven client
+  branches", the Tasks bullet's "read only through") duplicate the previous pass's rejections; `## Spec
+  Change Log` and `## Implementation Notes` already carry the accurate state.
 
 ## Design Notes
 

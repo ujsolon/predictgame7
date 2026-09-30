@@ -9,6 +9,11 @@
 // Read path: PostgREST with the anon key, GET only, paged with `Prefer: count=exact` and
 // the `Content-Range` echo checked, because PostgREST truncates silently at max-rows.
 //
+// Story 2.2 review (H2): the `status` column is gone from the live schema (00014), so
+// this audit projects only surviving columns and stays runnable as the post-apply
+// duplicate-free check. `audit-archive.mjs` still projects `status` because its own
+// subject is the `status` domain — it stays red until Story 2.7 retires that section.
+//
 // Usage: node scripts/spike-2-1/audit-unique-key.mjs
 // Exit: 0 = audit completed (it may report that no candidate is unique), 2 = could not run.
 
@@ -90,7 +95,7 @@ async function main() {
     process.exit(2);
   }
 
-  const rows = await getAll(base, key, "series", "id,year,round,team_a_id,team_b_id,winner_team_id,status", "year.asc,round.asc");
+  const rows = await getAll(base, key, "series", "id,year,round,team_a_id,team_b_id,winner_team_id", "year.asc,round.asc");
   console.log(`series rows fetched: ${rows.length}`);
 
   const nullTeams = rows.filter((r) => r.team_a_id == null || r.team_b_id == null);

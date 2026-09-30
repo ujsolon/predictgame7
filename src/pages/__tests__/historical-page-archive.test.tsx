@@ -98,4 +98,17 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
     expect(within(sheet).queryByText('Series Status')).toBeNull();
     expect(within(sheet).queryByText('TBD')).toBeNull();
   });
+
+  it('falls back when the winner_team join misses instead of rendering "undefined"', async () => {
+    const rowWithoutWinnerJoin: Series = { ...archivedRow, winner_team: undefined };
+    db.list = { data: [rowWithoutWinnerJoin], error: null };
+
+    render(<HistoricalPage />);
+    const row = await screen.findByText('1998');
+    fireEvent.click(row.closest('tr') as HTMLTableRowElement);
+
+    const sheet = screen.getByText('1998 Finals').closest('.rounded-xl') as HTMLElement;
+    expect(within(sheet).getByText('Winner not available')).toBeInTheDocument();
+    expect(within(sheet).queryByText('undefined')).toBeNull();
+  });
 });

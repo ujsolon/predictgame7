@@ -15,6 +15,7 @@ import {
   clickDecadeCard,
   clickYearCard,
   conformingResult,
+  pressRetry,
   renderPage,
   seriesFixture,
   submitPrediction,
@@ -200,6 +201,12 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     // not `current`, and no third bucket reaches the event.
     const generated = db.capture.mock.calls.find(([name]) => name === 'prediction_generated');
     expect(generated?.[1]).toMatchObject({ series_source: 'historical' });
+    // The matrix's "existing submit guards toast as today" half, pinned as the
+    // negative: this anomaly shape (winner + games 1-6) passes every series-path
+    // guard, so no guard toast fires on the way to the successful prediction.
+    // The guards' own toasts are pinned in predict-flow-regression.test.tsx.
+    expect(db.toast.error).not.toHaveBeenCalled();
+    expect(db.toast.warning).not.toHaveBeenCalled();
   });
 
   it('asks PostgREST for the derivation inputs and never for the dropped column', async () => {
@@ -249,6 +256,40 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
 
     resolveList({ data: [archivedSeries], error: null });
     expect(await screen.findByText('No active series right now — the next Game 7 is coming.')).toBeInTheDocument();
+  });
+
+  it('restores the withheld empty state after a failed list fetch is retried', async () => {
+    // The other half of the `seriesListLoaded` gate: a failed fetch leaves the
+    // flag false and shows the retry panel, and while the retry is in flight the
+    // empty-state claim must stay withheld — the pending set is unknown again.
+    // Deleting the gate passes every other test in this file; this one is the
+    // mutation check that the flag itself is load-bearing.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    db.list = { data: null, error: { message: 'list fetch failed' } };
+    renderPage();
+    await openPickerAtDecadeLevel();
+
+    expect(await screen.findByText("Couldn't load the series list.")).toBeInTheDocument();
+
+    let resolveRetry: (value: { data: unknown; error: null }) => void = () => {};
+    const retryPending = new Promise<{ data: unknown; error: null }>((resolve) => {
+      resolveRetry = resolve;
+    });
+    db.from.mockImplementation(() => ({
+      select: () => ({
+        order: () => retryPending,
+        eq: () => ({ maybeSingle: () => Promise.resolve(db.single) }),
+      }),
+    }));
+    pressRetry();
+
+    await waitFor(() => expect(screen.queryByText("Couldn't load the series list.")).toBeNull());
+    expect(screen.getByText('Current Game 7s')).toBeInTheDocument();
+    expect(screen.queryByText('No active series right now — the next Game 7 is coming.')).toBeNull();
+
+    resolveRetry({ data: [archivedSeries], error: null });
+    expect(await screen.findByText('No active series right now — the next Game 7 is coming.')).toBeInTheDocument();
+    consoleError.mockRestore();
   });
 });
 

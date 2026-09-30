@@ -63,6 +63,14 @@ describe('deriveSeriesPhase', () => {
     expect(deriveSeriesPhase({})).toBeNull();
   });
 
+  it('treats explicit undefined winner_team_id the same as an omitted key', () => {
+    // The type allows `number | null | undefined`; `undefined != null` is false,
+    // so explicit undefined must fall through to the pending/null branch just
+    // like a missing key. Pin it separately from the `{}` case above.
+    expect(deriveSeriesPhase({ winner_team_id: undefined, series_game_scores: scoreRows([1, 2, 3, 4, 5, 6]) })).toBe('pending');
+    expect(deriveSeriesPhase({ winner_team_id: undefined, series_game_scores: scoreRows([1, 2, 3, 4, 5, 6, 7]) })).toBeNull();
+  });
+
   it('treats a zero winner id as a winner (null/undefined are the only "pending" markers)', () => {
     // Defensive: the derivation reads `!= null`, never truthiness — an id of
     // 0 would be a data bug upstream, not a reason to call the row pending.

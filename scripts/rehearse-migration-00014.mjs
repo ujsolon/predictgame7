@@ -58,6 +58,14 @@ const container = `pg7-rehearse-00014-${process.pid}`;
 const dbUser = 'postgres';
 const dbName = 'rehearse';
 
+// The claim is "every migration through the newest one applied in order", so the
+// replay check is per-number coverage, not a file count: a renamed or deleted
+// migration in the middle of the range would otherwise leave the script green
+// while the replay it certifies never happened. COVERED_THROUGH is bumped when a
+// story commits a migration whose replay this must certify (main warns when a
+// file exists above it without the ceiling being raised).
+const COVERED_THROUGH = 15;
+
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
 // left its container behind exactly that way).
@@ -151,6 +159,14 @@ function main() {
   console.log(`rehearsal container: ${container} (postgres:16, throwaway, no published port)`);
   console.log(`migrations to replay: ${files.length}`);
 
+  // Review M1: every file IS replayed, but only 00001..COVERED_THROUGH is
+  // certified present-and-in-order. A migration above the ceiling would be
+  // applied silently and leave the claim weaker than it reads.
+  const beyondCoverage = files.filter((f) => Number(f.slice(0, 5)) > COVERED_THROUGH);
+  if (beyondCoverage.length) {
+    console.warn(`WARNING: ${beyondCoverage.join(', ')} replayed but is above COVERED_THROUGH=${COVERED_THROUGH}; bump the constant if its replay must be certified.`);
+  }
+
   try {
     // Started inside the try: a `docker run` that creates the container and
     // then fails (pull or start) would otherwise leak it past the teardown.
@@ -178,12 +194,8 @@ function main() {
       mustSucceed(`${file} did not apply cleanly`, res);
       console.log(`applied ${file}`);
     }
-    // The claim is "every migration through the newest one applied in order",
-    // so the check is per-number coverage, not a file count: a renamed or
-    // deleted migration in the middle of the range would otherwise leave this
-    // green while the replay it certifies never happened. COVERED_THROUGH is
-    // bumped when a story commits a migration whose replay this must certify.
-    const COVERED_THROUGH = 15;
+    // Per-number coverage against COVERED_THROUGH (defined with the header
+    // constants so the pre-flight warning and this assertion share it).
     const prefixes = new Set(files.map((f) => f.slice(0, 5)));
     const missing = [];
     for (let n = 1; n <= COVERED_THROUGH; n++) {
