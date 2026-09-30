@@ -290,6 +290,18 @@ Not run (owner-only, needs a real service-role key): the live `--dry-run` agains
   (00015 apply + rehearsal automation → Story 2.6; `epics.md:352` dry-run rewording; the
   slots-not-venues archive question → Story 2.4), and the `requirements.txt` deletion call above.
   `00015` remains unapplied — the story is done in code, not in the database.
+- 2026-10-01 (owner ran the handover): `master` pushed (`git push origin master`, pre-push gate hook
+  green) and `00015` applied to production (`npx supabase db push`). The line above is superseded on
+  that one point — the story is now done in the database too. `docs/CURRENT_DATA_MODEL.md` records the
+  apply date and the dashboard SQL that confirms both functions exist with `service_role`-only
+  `EXECUTE`. The apply itself is the owner's report, not an agent measurement: an anon RPC probe would
+  discriminate (42501 = applied, PGRST202 = not) and cannot write, but reading the key out of `.env` to
+  call production is blocked for agents by policy. No `gh-pages`
+  publish was needed: Story 2.3 touched no `src/**` file, and the live bundle
+  (`assets/index-BZ6IUhEs.js`, 834,008 bytes) is the current `master` build. The owner's follow-up
+  commit `37305fc` also closes the `requirements.txt` question above — deleted, with
+  `NBASeriesResults.xlsx` moved to `docs/` and now tracked, so `docs/CURRENT_DATA_MODEL.md`'s
+  retirement paragraph was corrected to match (it had said the spreadsheet was not in the repo).
 
 ## Review Triage Log
 
