@@ -137,7 +137,10 @@ What checks them:
 - Deploys are a separate, ungated mechanism (`supabase functions deploy`), so the live function
   can be behind `master`. `node scripts/probe-predict-contract.mjs --expect=baseline|validated`
   hits the deployed function and fails on a mismatch, which is how that difference is measured
-  rather than assumed.
+  rather than assumed. The two modes answer different questions: `validated` is the post-deploy
+  check and the one expected to pass now; `baseline` records what the pre-validation function
+  answered, so after the validator ships it goes red on the rejection rows by design — evidence the
+  probe can fail, not a regression.
 
 ## Analytics
 
