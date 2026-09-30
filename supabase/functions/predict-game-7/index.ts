@@ -1,4 +1,8 @@
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+// esm.sh rather than `jsr:`: JSR serves supabase-js as source, so `deno check` resolves its
+// `npm:` sub-dependencies against this repo's node_modules and fails when the floating `@2`
+// outruns the pinned client (the CI step's first run, 2026-09-30). handle-contact already
+// imports the same way.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   ACCEPTED_METHOD_SLUGS,
   validatePredictionRequest,

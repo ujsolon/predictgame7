@@ -120,11 +120,20 @@ What checks them:
 
 - `npm run lint` (Biome) covers `supabase/functions/**/*.ts`, so those files are parsed and
   linted locally with the rest of the repo.
-- `npm run typecheck` does not — `tsc -b` covers `src` and `vite.config.ts` only.
-- Their types are checked by a `deno check` step in CI (`.github/workflows/ci.yml`) and nowhere
-  else. This repo deliberately does not require a local Deno install, which means **a CI run on
+- `npm run typecheck` reaches two of them: `tsc -b`'s program is `src` + `vite.config.ts`, and the
+  `_shared/` modules those files import (`contract.ts`, `predict-request.ts`) are type-checked with
+  it. The `index.ts` entry points are not.
+- The two `index.ts` entry points are type-checked only by a `deno check` step in CI
+  (`.github/workflows/ci.yml`), which is the sole reason that step exists. This repo deliberately
+  does not require a local Deno install, which means **a CI run on
   `master` is the first evidence that step can produce**; nothing you run locally substitutes for
-  it.
+  it. The step is also **not hermetic**: `deno check` needs network egress and resolves every
+  remote specifier (jsr.io, esm.sh, deno.land) plus the npm packages in the runner's
+  `node_modules`, so registry availability and upstream type releases are gate dependencies — the
+  step can go red with no change in this repo. Its first run on 2026-09-30 did exactly that, when
+  a floating `jsr:@supabase/supabase-js@2` resolved to a version whose npm sub-dependencies were
+  newer than the pinned client in `node_modules`; both functions now import that client from
+  `https://esm.sh/…`, whose graph resolves entirely over HTTPS.
 - Deploys are a separate, ungated mechanism (`supabase functions deploy`), so the live function
   can be behind `master`. `node scripts/probe-predict-contract.mjs --expect=baseline|validated`
   hits the deployed function and fails on a mismatch, which is how that difference is measured

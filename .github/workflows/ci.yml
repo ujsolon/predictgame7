@@ -44,6 +44,16 @@ jobs:
         with:
           deno-version: v2.x
 
+      # Not hermetic, by nature rather than by oversight: `deno check` needs network
+      # egress and resolves every remote specifier (jsr.io / esm.sh / deno.land) plus the
+      # npm packages in the runner's node_modules. Registry availability and upstream type
+      # releases are therefore gate dependencies — a red here can mean "upstream changed",
+      # not "this push broke something", and it must be read that way before blaming the
+      # commit. Measured on this step's first run (2026-09-30): the floating
+      # `jsr:@supabase/supabase-js@2` resolved to 2.117.2, whose JSR source imports
+      # `npm:@supabase/realtime-js@2.117.2` — absent from node_modules, which holds the
+      # client's pinned 2.103.1. Both functions now import that client from esm.sh, whose
+      # graph resolves entirely over HTTPS and never consults node_modules.
       - name: Edge Function type-check (deno check)
         run: |
           # globstar, so a file added a directory deeper cannot slip past the

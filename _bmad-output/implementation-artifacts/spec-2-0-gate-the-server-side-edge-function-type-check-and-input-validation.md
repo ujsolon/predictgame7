@@ -133,7 +133,7 @@ is a choice, not an oversight.
 
 ## Spec Change Log
 
-Nothing in the frozen Intent or the Never boundaries changed. Four corrections the work itself
+Nothing in the frozen Intent or the Never boundaries changed. Five corrections the work itself
 forced, all outside the frozen block:
 
 1. **`docs/CHANGELOG.md` dropped from the Code Map.** The plan promised an `Unreleased` entry; the
@@ -153,6 +153,16 @@ forced, all outside the frozen block:
    `61.77 / 38.23` for `team_a === team_b`, because `home_advantage` compares `home_team` against
    `team_a` first and a self-matchup still scores the full `+1`. The closure text in
    `deferred-work.md` now carries the measured values instead of the inherited claim.
+5. **`predict-game-7`'s Supabase client import moved from `jsr:@supabase/supabase-js@2` to
+   `https://esm.sh/@supabase/supabase-js@2`** — not planned here, and not this story's code failing:
+   the CI step it added resolved the floating `jsr:` specifier to 2.117.2, whose JSR source needs
+   `npm:@supabase/realtime-js@2.117.2`, which the repo's `node_modules` does not contain (client
+   pinned at 2.103.1). The owner chose this over pinning the JSR version or adding a `deno.json`
+   with `nodeModulesDir: "auto"`, because `handle-contact` already imports the same way, that graph
+   provably downloads clean, and no `node_modules` coupling stays behind. Same library, same
+   `createClient(url, key)` call, no change to the validator, the 400 vocabulary, the success shape
+   or the frozen panel behaviour — but the deployed function now lags `master` on the import as well
+   as on the validation, which the pending deploy covers.
 
 ## Verification
 
@@ -168,6 +178,15 @@ forced, all outside the frozen block:
    reported as passing. Its first evidence is the CI run on `master` after the owner pushes. The
    locally-checkable substitute for the same files: Biome parses and lints all three, which is
    run here.
+   **First evidence, measured 2026-09-30: the step ran and went red** — `Checking 4 files` printed
+   the whole intended list, so the glob and the visibility both worked, and the failure was
+   dependency resolution rather than this story's code: `jsr:@supabase/supabase-js@2` floated to
+   2.117.2, whose JSR *source* imports `npm:@supabase/realtime-js@2.117.2`, a version absent from
+   the runner's `node_modules` (the client is pinned at 2.103.1). `handle-contact`'s `esm.sh` chain
+   downloaded fine, which is the evidence that fixed the story: `predict-game-7` now imports the
+   client from `https://esm.sh/@supabase/supabase-js@2` too. The second run is the outstanding
+   evidence, and this is precisely the third-party-availability dependency the review deferred as
+   AC-blocking — it arrived as a red `master`, not as a hypothetical.
 3. Wire proof — `scripts/probe-predict-contract.mjs`, run twice, before and after the owner
    redeploys. Nothing here depends on timing: each probe is one request against a fixed body.
 
@@ -239,6 +258,11 @@ produces evidence no agent can generate locally:
    is the first evidence that step exists. Watch the step's own file list in the log: it must print
    `Checking 4 files`. If the step is red, the story is not done — a red `deno check` is exactly the
    failure class it was added to catch, and this one ships unrun.
+   **Partly discharged 2026-09-30, and the boundary held:** the owner pushed, the step ran, printed
+   `Checking 4 files`, and went red on a third-party dependency mismatch rather than on this
+   story's source (Verification item 2 above). The fix was one import specifier in
+   `predict-game-7/index.ts`, so the step's green evidence still needs a second push — and a red
+   `deno check` on that second push would still keep the story out of `done`.
 
 Then the independent review pass (different model, fresh session) that every story here gets before
 `done`.
@@ -252,14 +276,20 @@ Deferred by name, each with its home recorded in `deferred-work.md`:
   owner ever wants the dev toolchain linted, that is a `biome.json` call, not a story.
 - `supabase/scripts/**` has no checker → Story 2.3, so 2.3 cannot inherit a closed-looking D1.
 
-**Third owner-gated item, added by the review pass and AC-blocking:** the docs must state that
-`deno check` needs network egress and inherits third-party availability (epics.md line 287 asked
-for this verbatim). It is the owner's to write — AGENTS.md reserves agent-context edits — and it
-belongs at this story's acceptance, not in a later story; `deferred-work.md` carries it with that
-deadline. Until it lands and the two actions above have run, the status stays `review` rather than
-advancing to `done`: the review's two `decision-needed` findings are resolved and all five `patch`
-findings are applied and re-verified, but a story whose AC has an unmet clause cannot be marked
-complete on the strength of its code.
+**Third owner-gated item — landed 2026-09-30 on the owner's instruction.** The docs had to state
+that `deno check` needs network egress and inherits third-party availability (epics.md line 287
+asked for it verbatim). AGENTS.md reserves agent-context edits to the owner, who authorized the
+pass after the step's first run went red for exactly that reason, so it is now written: AGENTS.md's
+gate bullet says the step is not hermetic and names the incident, README says the same in the Edge
+functions section, and the `ci.yml` step carries the warning where a reader will hit it. The same
+pass corrected the coverage overclaim in the adjacent clauses ("and nowhere else" / "type-checked
+only in CI" → the two `index.ts` entry points are what nothing local type-checks, since `tsc -b`
+does reach both `_shared/` modules).
+
+What still keeps the story at `review` rather than `done`: the deploy and the second push — each
+produces evidence no agent can generate locally. The review's two `decision-needed` findings are
+resolved, all five `patch` findings are applied and re-verified, and the AC's documentation clause
+is met.
 
 ### Review Findings
 
@@ -284,9 +314,9 @@ claim that needed an experiment got one (see Defer 2).
 
 **Deferred:**
 
-- [x] [Review][Defer] `deno check` inherits third-party availability and the docs never say so, as AC line 287 required verbatim — the two functions pull deps three ways (`jsr:@supabase/supabase-js@2`, `https://esm.sh/…`, `https://deno.land/std@0.168.0/http/server.ts`) with no `deno.json` or lockfile, and the step floats `deno-version: v2.x`, so an upstream type release can redden `master` with no repo change and the step's "first evidence" run need not match later ones. Measured: zero occurrences of `network`/`egress`/`hermetic`/`third-party`/`jsr`/`esm.sh`/`deno.land` in README's new section, AGENTS.md's new bullet, or the ci.yml comments. [README.md:116-131, AGENTS.md verification gate, .github/workflows/ci.yml:36-56] — deferred: the fix edits AGENTS.md, which AGENTS.md reserves to the owner. **AC-blocking for `done`**, not optional polish.
-- [x] [Review][Defer] README and AGENTS.md overstate the local blindness — "Their types are checked by a `deno check` step in CI … and nowhere else" and "type-checked only in CI" are inaccurate for 2 of the 4 files: `tsc -b` does check `_shared/predict-request.ts`, pulled in transitively by the new test's relative import at `predict-request.test.ts:8` (`tsconfig.app.json` includes `src`, which covers `src/**/__tests__`). Demonstrated, not reasoned: appending `const M: number = 'not a number'` to that file made `npm run typecheck` exit 2 with `supabase/functions/_shared/predict-request.ts(84,7): error TS2322`; the file was restored and the tree is clean. `_shared/contract.ts` was already in the program through `src/types/prediction.ts` — this spec's own mutation table says so. Honest scope: the two `index.ts` files are the ones no local step type-checks. [README.md:120-124, AGENTS.md:26] — deferred: agent-context/doc edit, owner's to make.
-- [x] [Review][Defer] AGENTS.md presents both probe modes as interchangeable when one is a point-in-time snapshot — "it fails non-zero, so a stale deployment cannot pass it" is true only of `--expect=validated`; `--expect=baseline` encodes the pre-deploy answers, so it goes permanently red the moment the owner redeploys (the same five rows flip). Nothing in the new README section or the AGENTS.md clause says which mode a future agent should expect to pass, so a post-deploy baseline run reads as a regression. [AGENTS.md:30, README.md:126-130] — deferred: agent-context/doc edit; settles with the same pass as Defer 1.
+- [x] [Review][Defer] `deno check` inherits third-party availability and the docs never say so, as AC line 287 required verbatim — the two functions pull deps three ways (`jsr:@supabase/supabase-js@2`, `https://esm.sh/…`, `https://deno.land/std@0.168.0/http/server.ts`) with no `deno.json` or lockfile, and the step floats `deno-version: v2.x`, so an upstream type release can redden `master` with no repo change and the step's "first evidence" run need not match later ones. Measured: zero occurrences of `network`/`egress`/`hermetic`/`third-party`/`jsr`/`esm.sh`/`deno.land` in README's new section, AGENTS.md's new bullet, or the ci.yml comments. [README.md:116-131, AGENTS.md verification gate, .github/workflows/ci.yml:36-56] — **landed 2026-09-30 on the owner's instruction**, in the pass the step's first red run triggered: AGENTS.md's gate bullet now says the step is not hermetic and names the dependency class, README's Edge functions section says the same, and the `ci.yml` step carries it as a comment where a reader hits it. `deferred-work.md` records the closure.
+- [x] [Review][Defer] README and AGENTS.md overstate the local blindness — "Their types are checked by a `deno check` step in CI … and nowhere else" and "type-checked only in CI" are inaccurate for 2 of the 4 files: `tsc -b` does check `_shared/predict-request.ts`, pulled in transitively by the new test's relative import at `predict-request.test.ts:8` (`tsconfig.app.json` includes `src`, which covers `src/**/__tests__`). Demonstrated, not reasoned: appending `const M: number = 'not a number'` to that file made `npm run typecheck` exit 2 with `supabase/functions/_shared/predict-request.ts(84,7): error TS2322`; the file was restored and the tree is clean. `_shared/contract.ts` was already in the program through `src/types/prediction.ts` — this spec's own mutation table says so. Honest scope: the two `index.ts` files are the ones no local step type-checks. [README.md:120-124, AGENTS.md:26] — **landed 2026-09-30** in the same owner-authorized pass: AGENTS.md now says `tsc -b`'s program reaches the `_shared/` modules through `src`'s imports and that the two `index.ts` entry points are what nothing local type-checks; README's matching bullet says the same instead of "does not … only".
+- [x] [Review][Defer] AGENTS.md presents both probe modes as interchangeable when one is a point-in-time snapshot — "it fails non-zero, so a stale deployment cannot pass it" is true only of `--expect=validated`; `--expect=baseline` encodes the pre-deploy answers, so it goes permanently red the moment the owner redeploys (the same five rows flip). Nothing in the new README section or the AGENTS.md clause says which mode a future agent should expect to pass, so a post-deploy baseline run reads as a regression. [AGENTS.md:30, README.md:126-130] — deferred: agent-context/doc edit. The owner's 2026-09-30 AGENTS.md/README pass covered the egress and coverage clauses and **not** this one, so the sentence still reads as written; one clause in the same bullet closes it.
 - [x] [Review][Defer] No automated check anywhere observes `index.ts`'s wiring of the validator — verification-gap layer, filed pre-verified: delete `index.ts:325` (`if (rejection) return errorResponse(400, rejection);`) and every gate stays green — Biome (only `noUndeclaredDependencies`/`noRedeclare`/`noCommonJs` are enabled), `tsc -b` (file outside the program), `npm test` (132 tests, none import `index.ts`), and CI `deno check` (type-only; the `satisfies` tie at `index.ts:36` constrains the standalone list, while `validatePredictionRequest`'s parameter is `readonly string[]`, so the call-site argument is unconstrained). The pre-validator behavior returns with a green gate, and the only detector is a human running the probe against a deployment. [supabase/functions/predict-game-7/index.ts:322-326] — deferred: the story's frozen boundary forbids a Deno test harness and the owner declined local Deno; belongs to the already-tracked thread in `deferred-work.md` ("nothing in CI re-probes the live shape").
 
 **Rejected:**
