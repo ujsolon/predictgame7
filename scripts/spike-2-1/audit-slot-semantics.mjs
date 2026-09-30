@@ -55,16 +55,19 @@ for (const s of series) {
   if (g1.home_team_id === s.team_a_id) firstGameHomeIsA += 1;
   else if (g1.home_team_id === s.team_b_id) firstGameHomeIsB += 1;
   // Is team_a ever the winner? If a slot were "winner first" it always would be.
-  counters[`winner_is_${s.winner_team_id === s.team_a_id ? "A" : "B"}`] = (counters[`winner_is_${s.winner_team_id === s.team_a_id ? "A" : "B"}`] ?? 0) + 1;
+  // A NULL winner (pending series) or one matching neither slot is not a B win —
+  // tally it separately so it cannot silently corrupt the convention measurement.
+  const wslot =
+    s.winner_team_id == null ? "none" : s.winner_team_id === s.team_a_id ? "A" : s.winner_team_id === s.team_b_id ? "B" : "neither";
+  counters[`winner_is_${wslot}`] = (counters[`winner_is_${wslot}`] ?? 0) + 1;
 }
 
 console.log(`series=${series.length} score rows=${scores.length} series with no game_number=1 row: ${noGame1}`);
 console.log(`game 1 home team === team_a_id : ${firstGameHomeIsA} (${((firstGameHomeIsA / series.length) * 100).toFixed(1)}%)`);
 console.log(`game 1 home team === team_b_id : ${firstGameHomeIsB}`);
 console.log(`winner slot tally: ${JSON.stringify(counters)}`);
-console.log(`\nReading: the slots are NOT arbitrary. team_a_id is the game-1 home team in every`);
-console.log(`one of the ${series.length} rows, and the series winner in ${counters.winner_is_A ?? 0} of them —`);
-console.log(`so the 'team_a' slot carries a convention (home-court side, or winner-first in the`);
+console.log(`\nReading: ${firstGameHomeIsA === series.length ? "the slots are NOT arbitrary." : `the slot convention is NOT universal — it holds in ${firstGameHomeIsA}/${series.length} rows only.`} team_a_id is the game-1 home team in ${firstGameHomeIsA} of ${series.length} rows (team_b in ${firstGameHomeIsB}, no game-1 row in ${noGame1}), and the series winner in ${counters.winner_is_A ?? 0} of them${counters.winner_is_none ? ` (${counters.winner_is_none} row(s) have no winner yet; ${counters.winner_is_neither ?? 0} name neither slot)` : ""} —`);
+console.log(`so the 'team_a' slot ${firstGameHomeIsA === series.length ? "carries a convention (home-court side, or winner-first in the" : "only tends to carry a convention (home-court side, or winner-first in the"}`);
 console.log(`backfill), not a canonical id ordering. A key over (team_a_id, team_b_id) therefore`);
 console.log(`depends on every future writer honouring that convention; the constraint itself cannot`);
 console.log(`enforce it, and a slot-swapped re-insert of the same matchup would slip past as a new row.`);

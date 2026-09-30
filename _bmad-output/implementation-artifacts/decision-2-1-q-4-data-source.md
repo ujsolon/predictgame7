@@ -3,7 +3,7 @@ title: 'Q-4 data-source feasibility spike — decision record'
 type: 'spike-decision'
 story: '2-1-q-4-data-source-feasibility-spike'
 created: '2026-09-30'
-status: 'review'
+status: 'done'
 baseline_commit: '679201a'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/epics.md (Story 2.1 ACs, owner call 2026-09-30)'
@@ -21,8 +21,31 @@ round-vocabulary derivation step and Story 2.3 (`manual_csv`) stays the floor ra
 the plan. Both candidates did not fail, so the AC's FR-21 phase-blocker escalation is
 **not** invoked.
 
-Every number below is observed output from `scripts/spike-2-1/*.mjs` run on 2026-09-30,
-not inferred from library docs.
+Every number below was observed on the live wire on 2026-09-30, not inferred from library
+docs. Two evidence classes, kept distinct because they are **not** equally reproducible from
+this repo:
+
+- **Committed-script output** — a re-run of a `scripts/spike-2-1/*.mjs` probe/audit reproduces
+  it (modulo live-endpoint drift, and modulo the `series.status` projection that migration
+  00014 dropped, which now reddens `audit-archive.mjs` until Story 2.7 fixes it): the archive
+  counts (178 series / 1,246 score rows / seven-each / the zero anomalies), the identity-key
+  and slot-semantics measurements, the `leaguegamelog` row/game counts and series
+  reconstruction, the `resultSets` header dump, the CDN blob's `seasonYear`/field shape, and
+  the *feed-side* seven-game-series counts (`probe-series-rebuild.mjs`).
+- **Ad-hoc observations** — seen on the wire that day but **not** encoded in a committed
+  script, so a re-run will not reprint them and they are stated here on the strength of that
+  day's session alone: the `playoffinline` "same 4,652-byte HTML as a deliberately-bad path,
+  for both param sets" comparison (the control fetch was never scripted, so the "gone, not
+  mis-parameterised" inference that keeps FR-21 un-escalated rests on an uncommitted
+  observation); the 403s on the guessed CDN paths (`playoffBracket/playoffBracket.json`,
+  `standings/divisionStandings.json` — no script requests them); the header-requirement claim
+  (no headerless A/B was run, so "required … plain requests refused" is reasoned, not
+  ablated); the "no `x-ratelimit-*` header on any call" claim (only the three provider calls
+  print rate headers; the stats.nba.com calls capture but never print them); the *DB-side*
+  leg of the cross-check — "the audit's own count for those years is 5 each" (no script
+  prints a per-year series count; the feed-side leg *is* script output); and "distinct home
+  and away scores" in the scores-pass row (`probe-series-rebuild.mjs` checks team-side
+  presence/distinctness, not `home.pts != away.pts`, so a tie feed would print the same line).
 
 ## Probe results against the four AC requirements
 
