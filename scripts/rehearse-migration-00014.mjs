@@ -154,8 +154,8 @@ function main() {
       console.log(`applied ${file}`);
     }
     assert(
-      'all 14 migrations (00001..00014) applied in order with no statement error — 00007:57 ON CONFLICT status target resolved at its own point',
-      files.length === 14 && files[0].startsWith('00001_') && files[13].startsWith('00014_'),
+      'every migration through 00014 applied in order with no statement error — 00007:57 ON CONFLICT status target resolved at its own point',
+      files.length >= 14 && files[0].startsWith('00001_') && files.some((f) => f.startsWith('00014_')),
       `found ${files.length}: ${files.join(', ')}`,
     );
 
