@@ -310,7 +310,7 @@ export default function HistoricalPage() {
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Series Winner</p>
-                    <p className="text-base font-medium">{selectedSeries.winner_team?.full_name || 'TBD'}</p>
+                    <p className="text-base font-medium">{selectedSeries.winner_team?.full_name}</p>
                   </div>
                 </div>
               </div>

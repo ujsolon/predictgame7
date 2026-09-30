@@ -63,6 +63,10 @@ export default function PredictPage() {
   // Mount-time series list and `?series=` preload query failures (retryable).
   const [seriesListFailed, setSeriesListFailed] = useState(false);
   const [seriesLoadFailed, setSeriesLoadFailed] = useState(false);
+  // The Active group's empty state is a claim about the whole archive, so it
+  // may only render once the archive has actually answered — before that the
+  // honest state is "unknown", not "nothing is pending".
+  const [seriesListLoaded, setSeriesListLoaded] = useState(false);
   // Bumped by every `?series=` load and every new fan input; an in-flight
   // preload whose sequence no longer matches has been superseded, so its
   // late response (success or failure) must not touch on-screen state.
@@ -163,6 +167,7 @@ export default function PredictPage() {
         }
       }
       setGames(reconciled);
+      setSeriesListLoaded(true);
       setSeriesListFailed(false);
     } catch (err) {
       // Story 1.3: the picker explains itself instead of failing silently to
@@ -762,8 +767,10 @@ export default function PredictPage() {
                           stored, and the group is always present at the decade
                           level — with nothing pending it renders empty with
                           EXPERIENCE.md:112's copy and the onward archive link,
-                          not hidden, not an error. `games` already excludes
-                          the non-reconciling rows (reported at fetch). */}
+                          not hidden, not an error. The empty copy waits for the
+                          list to answer, because "nothing is pending" is a claim
+                          about the whole archive. `games` already excludes the
+                          non-reconciling rows (reported at fetch). */}
                       {selectionLevel === 'decades' && (
                         <div className="space-y-4">
                           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Game 7s</p>
@@ -771,14 +778,14 @@ export default function PredictPage() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               {pendingGames.map((game) => renderSeriesOption(game))}
                             </div>
-                          ) : (
+                          ) : seriesListLoaded ? (
                             <div className="space-y-1 px-1">
                               <p className="text-xs text-muted-foreground">No active series right now — the next Game 7 is coming.</p>
                               <Link to="/historical" className="inline-block text-xs font-medium text-primary hover:underline">
                                 Every Game 7 has a history.
                               </Link>
                             </div>
-                          )}
+                          ) : null}
                         </div>
                       )}
 

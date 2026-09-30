@@ -7,6 +7,8 @@ import type { MethodSlug } from '@/types/prediction';
 import {
   chooseCustomMatchup,
   chooseMethod,
+  clickDecadeCard,
+  clickYearCard,
   conformingResult,
   fetchError,
   fillCustomForm,
@@ -64,11 +66,11 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     renderPage();
     fireEvent.click(screen.getByText('Click to choose series'));
 
-    fireEvent.click(await screen.findByRole('button', { name: /2020s/ }));
+    clickDecadeCard(2020);
     expect(screen.getByText('Select Year from 2020s')).toBeInTheDocument();
     // The fixture reconciles to the pending shape (six rows, no winner), so
     // the derived decade-card label reads `Current` (Story 2.2).
-    fireEvent.click(await screen.findByRole('button', { name: /2022 Current/ }));
+    await clickYearCard(2022);
     expect(screen.getByText('Select Series from 2022')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /BOS vs MIA/ }));
 
@@ -80,7 +82,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
 
     // Back-navigation inside the picker never touches the prior choice.
     fireEvent.click(screen.getByText('BOS vs MIA'));
-    fireEvent.click(await screen.findByRole('button', { name: /2020s/ }));
+    clickDecadeCard(2020);
     fireEvent.click(await screen.findByRole('button', { name: /Go Back/ }));
     expect(await screen.findByText('Select Decade')).toBeInTheDocument();
     expect(screen.getByText('101 — 91')).toBeInTheDocument();

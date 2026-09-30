@@ -144,8 +144,13 @@ async function main() {
   for (const [fam, names] of [...families].sort((a, b) => b[1].length - a[1].length)) {
     console.log(`  ${fam}: ${names.length} spellings -> ${names.join(" | ")}`);
   }
-
-  process.exit(0);
+  // No `process.exit(0)` here — this is a read-only script meant to be run as the
+  // pre-flight before applying 00014, so an exit code that disagrees with the
+  // printed report is a hazard. On Windows the explicit exit races the undici
+  // socket pool and aborts inside libuv ("Assertion failed:
+  // !(handle->flags & UV_HANDLE_CLOSING)"), which had it print all 178 rows
+  // duplicate-free and still return non-zero; letting the event loop drain
+  // naturally exits 0 (measured 2026-09-30).
 }
 
 main().catch((err) => {

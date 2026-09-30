@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   chooseCustomMatchup,
   chooseMethod,
+  clickDecadeCard,
+  clickYearCard,
   conformingResult,
   fetchError,
   fillCustomForm,
@@ -226,10 +228,10 @@ describe('PredictPage error states (Story 1.3)', () => {
     await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('Click to choose series'));
-    fireEvent.click(await screen.findByRole('button', { name: /2020s/ }));
+    clickDecadeCard(2020);
     // Derived label: the fixture reads pending, so the year card says
     // `Current`, not `View Series` (Story 2.2).
-    fireEvent.click(await screen.findByRole('button', { name: /2022 Current/ }));
+    await clickYearCard(2022);
     fireEvent.click(await screen.findByRole('button', { name: /Finals/ }));
 
     await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());

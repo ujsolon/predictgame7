@@ -13,12 +13,13 @@
 //      runner assertion owns that half, per Decision 1).
 //
 // What it does NOT prove (stated so nobody over-reads a green run): the
-// archive total. These migrations seed only the 16 fixture `game_sevens`
-// rows from 00001:102; the 178-row archive is loaded out of band, so
-// "satisfiable by all 178 existing rows" is carried by the live pre-flight
-// (node scripts/spike-2-1/audit-unique-key.mjs), not by replay. Expect ~16
-// series rows here; a row-count assertion would measure the fixture, not the
-// archive.
+// archive total. The migrations seed only the eight fixture `game_sevens`
+// rows at 00001:102-110, which 00007 turns into series rows — a replayed
+// table therefore holds 8 series rows (measured 2026-09-30, printed below as
+// a note). The 178-row archive is loaded out of band, so "satisfiable by all
+// 178 existing rows" is carried by the live pre-flight
+// (node scripts/spike-2-1/audit-unique-key.mjs), not by replay. A row-count
+// assertion here would measure the fixture, not the archive.
 //
 // Why not `supabase db reset`: supabase/.temp/project-ref points at
 // PRODUCTION and there is no supabase/config.toml in this checkout, so no
@@ -53,11 +54,19 @@ const dbName = 'rehearse';
 // left its container behind exactly that way).
 class RehearsalFailure extends Error {}
 
+// Every docker/psql call gets a ceiling: spawnSync blocks, so a hung daemon or
+// a psql session that never returns would otherwise strand the script mid-run
+// with its container still up. 10 minutes is far above any single call here
+// (the slowest measured is the postgres:16 pull), so a timeout is a hang, not
+// slow-but-working.
+const DOCKER_TIMEOUT_MS = 10 * 60 * 1000;
+
 function docker(args, { input, allowFail } = {}) {
   const res = spawnSync('docker', args, {
     encoding: 'utf8',
     input,
     maxBuffer: 64 * 1024 * 1024,
+    timeout: DOCKER_TIMEOUT_MS,
   });
   if (res.error) {
     throw new Error(`docker ${args[0]} failed to run: ${res.error.message}. Is the Docker daemon up? (docker version)`);
@@ -114,11 +123,15 @@ function countWhere(where) {
 function waitForReady(maxSeconds = 120) {
   const deadline = Date.now() + maxSeconds * 1000;
   while (Date.now() < deadline) {
-    const res = docker(['exec', container, 'pg_isready', '-U', dbUser], { allowFail: true });
-    if (res.status === 0) return;
+    // Not `pg_isready`: the official image runs initdb against a temporary
+    // server that accepts connections on the container's unix socket, and the
+    // `rehearse` database does not exist yet while it is up. Connecting to
+    // `rehearse` is the gate that cannot open early.
+    const res = docker(['exec', container, 'psql', '-U', dbUser, '-d', dbName, '-tA', '-c', 'SELECT 1'], { allowFail: true });
+    if (res.status === 0 && res.stdout.trim() === '1') return;
     sleepSync(2000);
   }
-  throw new Error(`postgres did not become ready within ${maxSeconds}s`);
+  throw new Error(`postgres did not accept a connection to ${dbName} within ${maxSeconds}s`);
 }
 
 function main() {
@@ -129,8 +142,10 @@ function main() {
   console.log(`rehearsal container: ${container} (postgres:16, throwaway, no published port)`);
   console.log(`migrations to replay: ${files.length}`);
 
-  docker(['run', '-d', '--name', container, '-e', `POSTGRES_PASSWORD=${container}`, '-e', `POSTGRES_DB=${dbName}`, 'postgres:16']);
   try {
+    // Started inside the try: a `docker run` that creates the container and
+    // then fails (pull or start) would otherwise leak it past the teardown.
+    docker(['run', '-d', '--name', container, '-e', `POSTGRES_PASSWORD=${container}`, '-e', `POSTGRES_DB=${dbName}`, 'postgres:16']);
     waitForReady();
 
     // Environment scaffolding (see header) — never a rewrite of the migrations.
@@ -153,10 +168,20 @@ function main() {
       mustSucceed(`${file} did not apply cleanly`, res);
       console.log(`applied ${file}`);
     }
+    // The claim is "every migration through 00014 applied in order", so the
+    // check is per-number coverage, not a file count: a renamed or deleted
+    // migration in the middle of the range would otherwise leave this green
+    // while the replay it certifies never happened.
+    const prefixes = new Set(files.map((f) => f.slice(0, 5)));
+    const missing = [];
+    for (let n = 1; n <= 14; n++) {
+      const prefix = String(n).padStart(5, '0');
+      if (!prefixes.has(prefix)) missing.push(prefix);
+    }
     assert(
-      'every migration through 00014 applied in order with no statement error — 00007:57 ON CONFLICT status target resolved at its own point',
-      files.length >= 14 && files[0].startsWith('00001_') && files.some((f) => f.startsWith('00014_')),
-      `found ${files.length}: ${files.join(', ')}`,
+      'migrations 00001..00014 all present and applied in filename order with no statement error — 00007:57 ON CONFLICT status target resolved at its own point',
+      missing.length === 0,
+      missing.length ? `missing: ${missing.join(', ')} (found ${files.join(', ')})` : '',
     );
 
     // 2) Schema shape: \d printed for the report, plus assertions.

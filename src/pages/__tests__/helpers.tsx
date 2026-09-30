@@ -134,6 +134,38 @@ export function panel() {
   return screen.getByRole('status');
 }
 
+// The picker's decade and year cards are `<button>`s whose text is split across
+// stacked `<span>`s, so their accessible name is precisely the jsdom-vs-Chrome
+// accname divergence AGENTS.md · Evidence discipline forbids asserting (F16).
+// These helpers locate a card by the raw textContent concatenation instead, and
+// hand the same string back for assertions.
+function findCard(prefix: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll('button')).find((button) => (button.textContent ?? '').startsWith(prefix));
+}
+
+function cardByText(prefix: string): HTMLButtonElement {
+  const matches = Array.from(document.querySelectorAll('button')).filter((button) => (button.textContent ?? '').startsWith(prefix));
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one card starting with "${prefix}", found ${matches.length}`);
+  }
+  return matches[0];
+}
+
+export function clickDecadeCard(decade: number) {
+  fireEvent.click(cardByText(`${decade}s`));
+}
+
+export function yearCardText(year: number): string {
+  return cardByText(`${year}`).textContent ?? '';
+}
+
+export async function clickYearCard(year: number) {
+  await waitFor(() => {
+    if (!findCard(`${year}`)) throw new Error(`no ${year} card yet`);
+  });
+  fireEvent.click(cardByText(`${year}`));
+}
+
 export function pressRetry() {
   fireEvent.click(within(panel()).getByRole('button', { name: 'Retry' }));
 }

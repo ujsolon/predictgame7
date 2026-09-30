@@ -12,17 +12,24 @@ import type { Series } from '@/types/types';
 
 import {
   chooseMethod,
+  clickDecadeCard,
+  clickYearCard,
   conformingResult,
   renderPage,
   seriesFixture,
   submitPrediction,
   teamA,
   teamB,
+  yearCardText,
 } from './helpers';
 
 const db = vi.hoisted(() => ({
   list: { data: [] as unknown, error: null as unknown },
   single: { data: null as unknown, error: null as null },
+  // Every projection string the page asks PostgREST for, so the migration's
+  // client contract (no `status`, score rows present) is observed rather than
+  // assumed — the mocks otherwise ignore `select`'s argument.
+  projections: [] as string[],
   from: vi.fn(),
   invoke: vi.fn(),
   capture: vi.fn(),
@@ -82,10 +89,13 @@ const nonReconcilingSeries: Series = {
 
 function stubQueries() {
   db.from.mockImplementation(() => ({
-    select: () => ({
-      order: () => Promise.resolve(db.list),
-      eq: () => ({ maybeSingle: () => Promise.resolve(db.single) }),
-    }),
+    select: (projection: string) => {
+      db.projections.push(projection);
+      return {
+        order: () => Promise.resolve(db.list),
+        eq: () => ({ maybeSingle: () => Promise.resolve(db.single) }),
+      };
+    },
   }));
 }
 
@@ -94,13 +104,14 @@ async function openPickerAtDecadeLevel() {
   await screen.findByText('Select Decade');
 }
 
-async function openYear(decade: string, yearCard: RegExp) {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(decade) }));
-  fireEvent.click(await screen.findByRole('button', { name: yearCard }));
+async function openYear(decade: number, year: number) {
+  clickDecadeCard(decade);
+  await clickYearCard(year);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  db.projections.length = 0;
   db.list = { data: [seriesFixture], error: null };
   db.single = { data: seriesFixture, error: null };
   db.invoke.mockResolvedValue({ data: null, error: null });
@@ -129,7 +140,7 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     expect(screen.getByText('BOS vs MIA')).toBeInTheDocument();
     expect(screen.queryByText('LAL vs GSW')).toBeNull();
 
-    await openYear('1990s', /1998 View Series/);
+    await openYear(1990, 1998);
     expect(await screen.findByText('Select Series from 1998')).toBeInTheDocument();
     expect(screen.getByText('LAL vs GSW')).toBeInTheDocument();
   });
@@ -139,13 +150,12 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     renderPage();
     await openPickerAtDecadeLevel();
 
-    fireEvent.click(screen.getByRole('button', { name: /2020s/ }));
-    expect(await screen.findByRole('button', { name: /2022 Current/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /2022 View Series/ })).toBeNull();
+    clickDecadeCard(2020);
+    await waitFor(() => expect(yearCardText(2022)).toBe('2022Current'));
 
     fireEvent.click(screen.getByRole('button', { name: /Go Back/ }));
-    fireEvent.click(screen.getByRole('button', { name: /1990s/ }));
-    expect(await screen.findByRole('button', { name: /1998 View Series/ })).toBeInTheDocument();
+    clickDecadeCard(1990);
+    await waitFor(() => expect(yearCardText(1998)).toBe('1998View Series'));
   });
 
   it('excludes a non-reconciling row from both groups and reports it on the exception channel (matrix: impossible shape)', async () => {
@@ -164,8 +174,8 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     expect(reported.message).toContain('s-anomaly');
 
     // And it stays out of the year's own series list.
-    fireEvent.click(screen.getByRole('button', { name: /2020s/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /2022 Current/ }));
+    clickDecadeCard(2020);
+    await clickYearCard(2022);
     expect(await screen.findByText('Select Series from 2022')).toBeInTheDocument();
     expect(screen.getByText('BOS vs MIA')).toBeInTheDocument();
     expect(screen.queryByText('LAL vs GSW')).toBeNull();
@@ -186,6 +196,59 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     // Exclusion is a picker concern; a deep-linked row loads and predicts, and
     // the load path itself reports nothing.
     expect(db.captureException).not.toHaveBeenCalled();
+    // And its source stays inside the frozen two-value registry: an anomaly is
+    // not `current`, and no third bucket reaches the event.
+    const generated = db.capture.mock.calls.find(([name]) => name === 'prediction_generated');
+    expect(generated?.[1]).toMatchObject({ series_source: 'historical' });
+  });
+
+  it('asks PostgREST for the derivation inputs and never for the dropped column', async () => {
+    renderPage();
+    await openPickerAtDecadeLevel();
+
+    // The projection is the client half of migration 00014's contract: it must
+    // carry both derivation inputs and must not name `status`, which the
+    // migration removes. Re-adding either breaks production while every mock
+    // that ignores this argument stays green.
+    const projection = db.projections[0];
+    expect(projection).toContain('winner_team_id');
+    expect(projection).toContain('series_game_scores(*)');
+    expect(projection).not.toMatch(/\bstatus\b/);
+  });
+
+  it('reports a pending series as `current` on the selection event', async () => {
+    db.list = { data: [seriesFixture, archivedSeries], error: null };
+    renderPage();
+    await openPickerAtDecadeLevel();
+
+    fireEvent.click(screen.getByText('BOS vs MIA').closest('button') as HTMLButtonElement);
+
+    const selected = db.capture.mock.calls.find(([name]) => name === 'series_selected');
+    expect(selected?.[1]).toMatchObject({ series_source: 'current', series_id: 's-1' });
+  });
+
+  it('withholds the Active empty-state claim until the archive has answered', async () => {
+    // The group renders as soon as the picker opens, but "No active series
+    // right now" is a statement about the whole table; a fan who opens the
+    // picker mid-fetch must not be told the pending set is empty.
+    let resolveList: (value: { data: unknown; error: null }) => void = () => {};
+    const pending = new Promise<{ data: unknown; error: null }>((resolve) => {
+      resolveList = resolve;
+    });
+    db.from.mockImplementation(() => ({
+      select: () => ({
+        order: () => pending,
+        eq: () => ({ maybeSingle: () => Promise.resolve(db.single) }),
+      }),
+    }));
+    renderPage();
+    await openPickerAtDecadeLevel();
+
+    expect(screen.getByText('Current Game 7s')).toBeInTheDocument();
+    expect(screen.queryByText('No active series right now — the next Game 7 is coming.')).toBeNull();
+
+    resolveList({ data: [archivedSeries], error: null });
+    expect(await screen.findByText('No active series right now — the next Game 7 is coming.')).toBeInTheDocument();
   });
 });
 
