@@ -282,10 +282,19 @@ Not run (owner-only, needs a real service-role key): the live `--dry-run` agains
   `in-review`, and `story` corrected to `2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor`
   to match the `sprint-status.yaml:50` id (the file name keeps its hyphens; nothing references it).
   `supabase/scripts/load-games/requirements.txt` is still the owner's call (see the open question above).
+- 2026-09-30 (owner decision, closing the story): the owner declined an independent review of the diff
+  for bandwidth reasons, so the same-model in-session review above is the only review this build has
+  had — recorded plainly rather than presented as a completed review gate. Status set to `done` at
+  the owner's instruction, with `2-3-...manual_csv-floor` moved to `done` in `sprint-status.yaml`.
+  Still open on the owner, none of them blocking this story: the three `deferred-work.md` entries
+  (00015 apply + rehearsal automation → Story 2.6; `epics.md:352` dry-run rewording; the
+  slots-not-venues archive question → Story 2.4), and the `requirements.txt` deletion call above.
+  `00015` remains unapplied — the story is done in code, not in the database.
 
 ## Review Triage Log
 
-Layers run on `%TEMP%\story-2-3-review.diff` (baseline `7fcd847`, 23 sections): blind-hunter,
+Layers run on `%TEMP%\story-2-3-review.diff` (baseline `7fcd847`, 23 sections as the layers read it;
+the file was rewritten after patching to the 25-section final tree): blind-hunter,
 edge-case-hunter, verification-gap. Verdicts rendered after verifying each claim in the files or by
 measurement — not from the reports. Every patch below re-verified: `npm run gate` exit 0 (201 tests,
 18 files), `node scripts/rehearse-migration-00014.mjs` exit 0 (28 `ok` lines).
