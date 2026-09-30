@@ -19,10 +19,11 @@ export const seriesFixture: Series = {
   round: 'Finals',
   team_a_id: 11,
   team_b_id: 22,
-  status: 'historical',
   created_at: 'c',
   team_a: teamA,
   team_b: teamB,
+  // Six rows, games 1–6, no winner: under the Story 2.2 derivation this
+  // fixture is a certified 3–3 — pending, not stored-status anything.
   series_game_scores: [1, 2, 3, 4, 5, 6].map((game) => ({
     id: `g${game}`,
     series_id: 's-1',

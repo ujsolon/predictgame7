@@ -31,7 +31,6 @@ export interface Series {
   team_a_id: number;
   team_b_id: number;
   winner_team_id?: number | null;
-  status: 'historical' | 'active' | 'completed';
   created_at: string;
   updated_at?: string | null;
   team_a?: Team;

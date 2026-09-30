@@ -66,7 +66,9 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /2020s/ }));
     expect(screen.getByText('Select Year from 2020s')).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: /2022 View Series/ }));
+    // The fixture reconciles to the pending shape (six rows, no winner), so
+    // the derived decade-card label reads `Current` (Story 2.2).
+    fireEvent.click(await screen.findByRole('button', { name: /2022 Current/ }));
     expect(screen.getByText('Select Series from 2022')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /BOS vs MIA/ }));
 

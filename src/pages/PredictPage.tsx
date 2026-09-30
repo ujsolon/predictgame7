@@ -12,6 +12,7 @@ import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
 import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
+import { deriveSeriesPhase, isSeriesPending, seriesSourceForPhase } from '@/lib/series-phase';
 import { cn } from '@/lib/utils';
 import type { Series } from '@/types/types';
 import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
@@ -34,7 +35,6 @@ const SERIES_SELECT = `
   team_a_id,
   team_b_id,
   winner_team_id,
-  status,
   created_at,
   updated_at,
   team_a:team_a_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
@@ -148,7 +148,21 @@ export default function PredictPage() {
         .order('year', { ascending: false });
 
       if (error) throw error;
-      setGames(asSeries(data));
+      // Story 2.2 Decision 5: a row that reconciles to neither derived shape
+      // is excluded from both picker groups and reported through the same
+      // exception channel a fetch failure uses — never guessed into a group.
+      const rows = asSeries(data);
+      const reconciled: Series[] = [];
+      for (const row of rows) {
+        if (deriveSeriesPhase(row) === null) {
+          const anomaly = new Error(`Series ${row.id} does not reconcile to a derived phase`);
+          console.error('Non-reconciling series:', anomaly);
+          posthog?.captureException(anomaly);
+        } else {
+          reconciled.push(row);
+        }
+      }
+      setGames(reconciled);
       setSeriesListFailed(false);
     } catch (err) {
       // Story 1.3: the picker explains itself instead of failing silently to
@@ -176,7 +190,7 @@ export default function PredictPage() {
       if (data) {
         const series = asSeriesRow(data);
         setSeriesLoadFailed(false);
-        setSelectedSeries({ source: series.status === 'active' ? 'current' : 'historical', data: series });
+        setSelectedSeries({ source: seriesSourceForPhase(deriveSeriesPhase(series)), data: series });
       } else {
         // A genuinely absent row is not retryable — stays a toast (the 404
         // treatment belongs to Story 4.1).
@@ -418,8 +432,12 @@ export default function PredictPage() {
   };
 
   const selectSeries = (game: Series) => {
+    // Phase is derived (Story 2.2 / AD-4); a non-reconciling row deep-linked
+    // here falls back to `historical` — no third value reaches the state or
+    // the frozen `series_source` registry.
+    const source = seriesSourceForPhase(deriveSeriesPhase(game));
     setSelectedSeries({
-      source: game.status === 'active' ? 'current' : 'historical',
+      source,
       data: game
     });
     setIsSeriesDialogOpen(false);
@@ -431,11 +449,16 @@ export default function PredictPage() {
       series_id: game.id,
       series_year: game.year,
       series_round: game.round,
-      series_source: game.status === 'active' ? 'current' : 'historical',
+      series_source: source,
       team_a: game.team_a?.full_name,
       team_b: game.team_b?.full_name,
     });
   };
+
+  // The picker's Active group is the derived pending set, newest first
+  // (Story 2.2 / AD-4); `games` holds only rows that reconcile, so the
+  // decade-card label and the group read the same derivation.
+  const pendingGames = games.filter((game) => isSeriesPending(game)).sort((a, b) => b.year - a.year);
 
   const renderSeriesOption = (game: Series) => {
     const teamAName = game.team_a?.full_name || 'Team A';
@@ -735,15 +758,27 @@ export default function PredictPage() {
                       />
                     ) : (
                     <div className="space-y-4">
-                      {selectionLevel === 'decades' && games.some((game) => game.status === 'active') && (
+                      {/* Story 2.2: Active-group membership is derived, never
+                          stored, and the group is always present at the decade
+                          level — with nothing pending it renders empty with
+                          EXPERIENCE.md:112's copy and the onward archive link,
+                          not hidden, not an error. `games` already excludes
+                          the non-reconciling rows (reported at fetch). */}
+                      {selectionLevel === 'decades' && (
                         <div className="space-y-4">
                           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current Game 7s</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {games
-                              .filter((game) => game.status === 'active')
-                              .sort((a, b) => b.year - a.year)
-                              .map((game) => renderSeriesOption(game))}
-                          </div>
+                          {pendingGames.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {pendingGames.map((game) => renderSeriesOption(game))}
+                            </div>
+                          ) : (
+                            <div className="space-y-1 px-1">
+                              <p className="text-xs text-muted-foreground">No active series right now — the next Game 7 is coming.</p>
+                              <Link to="/historical" className="inline-block text-xs font-medium text-primary hover:underline">
+                                Every Game 7 has a history.
+                              </Link>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -801,7 +836,7 @@ export default function PredictPage() {
                                 >
                                   <span className="text-xl font-bold">{year}</span>
                                   <span className="text-[10px] uppercase opacity-60">
-                                    {games.some(g => g.year === year && g.status === 'active') ? 'Current' : 'View Series'}
+                                    {pendingGames.some(g => g.year === year) ? 'Current' : 'View Series'}
                                   </span>
                                 </Button>
                               ));

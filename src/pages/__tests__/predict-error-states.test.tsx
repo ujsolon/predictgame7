@@ -163,8 +163,11 @@ describe('PredictPage error states (Story 1.3)', () => {
 
     await waitFor(() => expect(screen.getByText('Select Decade')).toBeInTheDocument());
     expect(screen.queryByText("Couldn't load the series list.")).toBeNull();
-    // The preloaded selection survived the failure and the retry.
-    expect(screen.getByText('BOS vs MIA')).toBeInTheDocument();
+    // The preloaded selection survived the failure and the retry — proven
+    // through its own game rows under the trigger, because with the picker
+    // open at decade level the derived Active group now also lists the same
+    // matchup (Story 2.2: the group is always present).
+    expect(screen.getByText('101 — 91')).toBeInTheDocument();
     expect(db.from).toHaveBeenCalledWith('series');
   });
 
@@ -224,7 +227,9 @@ describe('PredictPage error states (Story 1.3)', () => {
 
     fireEvent.click(screen.getByText('Click to choose series'));
     fireEvent.click(await screen.findByRole('button', { name: /2020s/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /2022 View Series/ }));
+    // Derived label: the fixture reads pending, so the year card says
+    // `Current`, not `View Series` (Story 2.2).
+    fireEvent.click(await screen.findByRole('button', { name: /2022 Current/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Finals/ }));
 
     await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());

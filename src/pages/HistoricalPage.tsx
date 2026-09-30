@@ -37,7 +37,9 @@ export default function HistoricalPage() {
       const { data, error } = await supabase
         .from('series')
         .select('*, team_a:team_a_id(*), team_b:team_b_id(*), winner_team:winner_team_id(*), series_game_scores(*)')
-        .eq('status', 'historical');
+        // Story 2.2 / AD-4: the archive is the derived shape — a set winner —
+        // not the dropped `status` column.
+        .not('winner_team_id', 'is', null);
 
       if (error) throw error;
 
@@ -296,7 +298,12 @@ export default function HistoricalPage() {
                 })}
               </div>
 
-              <div className="flex items-center justify-between px-4 py-3 bg-muted/40 rounded-xl">
+              {/* Story 2.2 (owner decision 2026-09-30): the "Series Status"
+                  readout is deleted, not replaced — under derivation this
+                  sheet only ever opens rows the page's own predicate already
+                  decided, so any truthful value there is the same word on
+                  every series. The winner block spans the row. */}
+              <div className="flex items-center px-4 py-3 bg-muted/40 rounded-xl">
                 <div className="flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                     <Check className="h-4 w-4 text-primary" />
@@ -305,10 +312,6 @@ export default function HistoricalPage() {
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Series Winner</p>
                     <p className="text-base font-medium">{selectedSeries.winner_team?.full_name || 'TBD'}</p>
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Series Status</p>
-                  <p className="text-sm capitalize">{selectedSeries.status}</p>
                 </div>
               </div>
             </CardContent>
