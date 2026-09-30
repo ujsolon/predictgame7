@@ -36,8 +36,10 @@ describe('predict-game-7 request boundary (Story 2.0 / D2)', () => {
   it('accepts the slug list the frontend labels exhaustively, in both directions', () => {
     // METHOD_LABELS is Record<MethodSlug, string>, so this is the local half of
     // the tie `index.ts` completes under `deno check`: a contract slug added or
-    // renamed without the server list reddens here.
-    expect([...ACCEPTED_METHOD_SLUGS]).toEqual(Object.keys(METHOD_LABELS));
+    // renamed without the server list reddens here. Sorted on both sides so the
+    // check fires on membership drift only — the display map's key order is a copy
+    // decision, and a reorder of it must not read as a broken contract.
+    expect([...ACCEPTED_METHOD_SLUGS].sort()).toEqual(Object.keys(METHOD_LABELS).sort());
   });
 
   it('carries the twelve score fields the contract declares, in grid order', () => {
@@ -90,6 +92,11 @@ describe('predict-game-7 request boundary (Story 2.0 / D2)', () => {
     );
     expect(reject(request({ method: 42 }))).toBe(
       'Unknown prediction method 42. Accepted methods: logistic_regression, bayes, elo, exponential_smoothing'
+    );
+    // A non-string value reaches the panel verbatim, so it must not arrive as
+    // `[object Object]` — the same reason the function's 500 arm carries copy.
+    expect(reject(request({ method: { slug: 'bayesian' } }))).toBe(
+      'Unknown prediction method {"slug":"bayesian"}. Accepted methods: logistic_regression, bayes, elo, exponential_smoothing'
     );
   });
 

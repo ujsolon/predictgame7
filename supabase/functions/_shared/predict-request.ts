@@ -74,7 +74,9 @@ export function validatePredictionRequest(
 
   const method = request.method;
   if (method !== undefined && !acceptedMethodSlugs.includes(method as string)) {
-    const shown = typeof method === 'string' ? `"${method}"` : String(method);
+    // The client renders this string verbatim in the retry panel, so a non-string
+    // still has to read as copy — `String({a:1})` would say `[object Object]`.
+    const shown = typeof method === 'string' ? `"${method}"` : JSON.stringify(method);
     return `Unknown prediction method ${shown}. Accepted methods: ${acceptedMethodSlugs.join(', ')}`;
   }
 
