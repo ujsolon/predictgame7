@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.pipeline.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Not decorative: plan.ts imports src/lib/series-phase.ts, which is outside
+       this project's "include" and therefore joins its program, and that file
+       writes "@/*" imports. Without the mapping `tsc -b` fails on it. */
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+
+    /* Node entry: the runner ships as type-stripped ESM (Decision 1), so only erasable syntax is allowed */
+    "erasableSyntaxOnly": true,
+    "types": ["node"],
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["supabase/scripts/pipeline", "tests"]
+}

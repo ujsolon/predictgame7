@@ -26,10 +26,12 @@ This document summarizes the active Supabase data model used by Predict Game 7 a
   - `team_b_id`
   - `winner_team_id`
 - Identity: `UNIQUE (year, team_a_id, team_b_id)` (`series_year_team_pair_key`) — the upsert conflict target the Epic 2 pipeline upserts against. The archive read is `.not('winner_team_id','is',null)`; nothing may branch on a stored status.
+- Write path (Story 2.3, migration `00015_pipeline_series_functions.sql`): rows are created and completed only through the two `SECURITY DEFINER` RPCs below, called by `supabase/scripts/pipeline/` with the service-role key. No writer sets `id` (server-generated `gen_random_uuid()`), and no writer can address `status` — the column is gone.
 
 ### `series_game_scores`
 - One row per game within a series
 - Stores:
+  - `id` (UUID, server-generated)
   - `series_id`
   - `game_number`
   - `home_team_id`
@@ -37,6 +39,17 @@ This document summarizes the active Supabase data model used by Predict Game 7 a
   - `home_score`
   - `away_score`
   - `winner_team_id`
+  - `created_at` (pipeline write timestamp — not a game date; nothing user-facing may derive from it, AD-4)
+- Conflict target: `UNIQUE (series_id, game_number)` (`unique_series_game`, `00005:55`) — the pipeline's scores key. `series_id` cascades on delete.
+
+## Pipeline write functions (`00015`, Story 2.3)
+
+Two `SECURITY DEFINER` functions with `search_path` pinned; `EXECUTE` granted to `service_role` only, revoked from `public`/`anon`/`authenticated`:
+
+- `pipeline_birth_series(year, round, team_a_id, team_b_id, scores jsonb) → uuid` — AD-4 atomic birth: asserts in SQL that the pair is absent **in either slot order** (AD-5's identity rule, which the UNIQUE cannot enforce), that `scores` is exactly the six decided games `{1..6}` split 3–3, then writes the `series` row (`winner_team_id NULL`) plus its six `series_game_scores` rows in one call. `ON CONFLICT` on both keys lives inside the function, so a racing identical run lands nothing new and returns the existing id.
+- `pipeline_complete_series(series_id, game jsonb, winner_team_id) → uuid` — AD-4 atomic completion: asserts the pending row is a certified 3–3 and game 7 is a decided game between the slots whose winner matches the claim, then appends (or repairs) the game-7 row and fills `winner_team_id` in one call — both statements land, or neither does. A stored row that already disagrees with the request is rejected: an archived outcome is never rewritten.
+
+Rehearsal runs off-production: `node scripts/rehearse-migration-00014.mjs` replays 00001–00015 in a throwaway Docker Postgres and exercises both functions with `psql`. The owner holds the production apply command (`npx supabase db push`), as with 00014.
 
 ### `prediction_methods`
 - Catalog of supported prediction methods
@@ -77,6 +90,14 @@ The following legacy tables are no longer part of the active `public` schema and
 - `archive.current_game_sevens`
 - `archive.model_parameters`
 - `archive.team_logos`
+
+## Legacy loader retired (Story 2.3, Decision 4)
+
+`supabase/scripts/load-games/main.py` — the old spreadsheet loader — was deleted, not repaired: it blind-inserted into `game_sevens`, a table `00013` moved to `archive` and nothing reads, and its winner-oriented row shape (no home/away) is the wrong one for the current schema. Its `venv/` was never tracked (`.gitignore` has excluded `venv` and `data` all along), so the deletion is of the one tracked script; `data/NBASeriesResults.xlsx` stays in the owner's working tree for provenance but is likewise **not in the repo** — a fresh clone does not carry it, and nothing reads it. Its successor is the pipeline runner under `supabase/scripts/pipeline/`, whose `manual_csv` adapter reads the committed operator file `data/series_manual.csv` (long format, one row per game; header-only — and therefore a zero-write plan — outside a playoff window), with `data/series_manual.example.csv` beside it showing the row shape. That adapter is the spreadsheet floor of the `SeriesDataSource` port — see `_bmad-output/implementation-artifacts/seriesdatasource-port.md`.
+
+### The archive carries slots, not venues
+
+Measured on the live table 2026-09-30: in 177 of the 178 archived series, **every one of the seven score rows names the same team as `home_team_id`** — the series' `team_a_id`. The backfill came from that winner-oriented spreadsheet, so historical rows hold no real home/away information. Consequences the pipeline must respect: an adapter that supplies genuine venue data (Story 2.4's) cannot reconcile a historical series, and the runner's "never rewrites archived games" guard will refuse the attempt by design. `team_a` = game 1's home team is therefore true of the archive only because the archive wrote it that way.
 
 ## Current app usage
 

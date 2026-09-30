@@ -1,0 +1,22 @@
+# series_manual.csv — the manual_csv floor for the Story 2.3 pipeline runner
+# (supabase/scripts/pipeline/). Long format: one row per game, every game final.
+#
+# Columns (in this exact order):
+#   year        — calendar year of the series (NOT an NBA season id)
+#   round       — free-text display label; round is outside the identity key and has no CHECK
+#   game_number — 1..7; game_number 1 fixes the team slots (team_a = game 1's home team, AD-5)
+#   home_team   — teams.abbreviation of this game's home team (resolved to teams.id at runtime)
+#   away_team   — teams.abbreviation of this game's away team
+#   home_score  — non-negative integer
+#   away_score  — non-negative integer (a tie is rejected; the per-game winner is implied by the scores)
+#
+# A series is born when its rows 1..6 are present and split 3-3 with no game-7 row.
+# To complete a live series, append its game 7 row — one line — and run the pipeline.
+# Lines starting with # and blank lines are ignored.
+#
+# This file is the operator's live data, not an example: an apply run writes
+# exactly these rows to production, and a fabricated row becomes a real Active
+# Series the moment it exists. It is intentionally empty (header only) outside a
+# playoff window — an empty plan writes zero rows and exits 0.
+# See series_manual.example.csv beside it for the row shape and cadence.
+year,round,game_number,home_team,away_team,home_score,away_score

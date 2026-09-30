@@ -8,6 +8,8 @@
     "includes": [
       "src/**/*.{js,jsx,ts,tsx,css,scss}",
       "supabase/functions/**/*.ts",
+      "supabase/scripts/**/*.ts",
+      "tests/**/*.{js,jsx,ts,tsx}",
       "tailwind.config.js"
     ]
   },

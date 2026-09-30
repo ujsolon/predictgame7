@@ -4,6 +4,9 @@
 /venv
 venv
 data
+# Story 2.3 Decision 3: the manual_csv floor is a committed file — the blanket
+# `data` pattern above would otherwise hide it from the repo and from CI.
+!supabase/scripts/pipeline/data/
 
 # compiled output
 /dist

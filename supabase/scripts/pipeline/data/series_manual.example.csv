@@ -1,0 +1,37 @@
+# series_manual.example.csv — the worked example of the manual_csv floor.
+# Copy these rows into series_manual.csv (the live operator file) shape-wise;
+# never run the pipeline against THIS file, because an apply run would birth
+# the 2027 series below as real production data.
+#
+# Columns, in this exact order:
+#   year, round, game_number, home_team, away_team, home_score, away_score
+#
+# One completed seven-game series and one live 3-3:
+#   * 2016 NBA Finals — games 1-7, home teams as they were actually played.
+#     A series that finished before the pipeline existed is planned as a birth
+#     (the certified 3-3 of games 1-6) immediately followed by the completion
+#     (game 7 plus the winner) — two atomic RPCs.
+#   * 2027 Western Conference First Round — games 1-6, split 3-3, no game-7
+#     row, so the derived phase is `pending` and the series shows in Active.
+#     Appending its game 7 line is the whole operator cadence (Story 2.6).
+#
+# Why the 2016 rows here will not match the live archive: the archived score
+# rows were backfilled from a winner-oriented spreadsheet, so in 177 of the 178
+# archived series every game names the SAME team as home (the series' team_a).
+# The archive carries no venue data. Real home/away rows for a historical
+# series therefore trip the runner's "never rewrites archived games" guard —
+# measure it, do not assume it (deferred-work.md, Story 2.4's inherit list).
+year,round,game_number,home_team,away_team,home_score,away_score
+2016,NBA Finals,1,GSW,CLE,108,89
+2016,NBA Finals,2,GSW,CLE,118,98
+2016,NBA Finals,3,CLE,GSW,120,108
+2016,NBA Finals,4,CLE,GSW,137,116
+2016,NBA Finals,5,GSW,CLE,104,87
+2016,NBA Finals,6,CLE,GSW,115,103
+2016,NBA Finals,7,GSW,CLE,89,96
+2027,Western Conference First Round,1,OKC,DEN,110,102
+2027,Western Conference First Round,2,OKC,DEN,104,115
+2027,Western Conference First Round,3,DEN,OKC,108,99
+2027,Western Conference First Round,4,DEN,OKC,101,112
+2027,Western Conference First Round,5,OKC,DEN,120,110
+2027,Western Conference First Round,6,DEN,OKC,98,95
