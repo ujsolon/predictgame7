@@ -357,7 +357,7 @@ Deno.serve(async (req) => {
     
     let confidence_level: ConfidenceLevel = 'Low';
     if (max_prob > 0.7) {
-      confidence_level = 'High';
+      confidence_level = 'Very High';
     } else if (max_prob > 0.6) {
       confidence_level = 'Medium';
     }
