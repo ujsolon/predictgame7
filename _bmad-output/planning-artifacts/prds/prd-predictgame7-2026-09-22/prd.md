@@ -69,7 +69,7 @@ The product is an indie, opinionated analytics destination *and a sports storyte
 - **Game 7** — a winner-take-all, series-deciding NBA playoff game. The product's sole sports domain.
 - **Series** — a best-of-seven playoff matchup; identified by year, round, and two Teams. Carries one row per game in its **Series Game Scores** (Game 1 through Game 7).
 - **Series Game Scores** — the per-game records attached to a Series; prediction inputs are Games 1–6.
-- **Historical Archive** — the browsable collection of 177 completed series-deciding games from past NBA playoffs.
+- **Historical Archive** — the browsable collection of completed series-deciding games from past NBA playoffs (178 rows in the live table as measured 2026-09-30; FR-19's count caveat).
 - **Active Series** — a currently-played, in-progress playoff matchup requiring up-to-date scores. Fed by the **Data Pipeline** (FR-20/21).
 - **Data Pipeline** — the automated process (FR-20/21) that keeps Series data — especially Active Series scores and statuses — current.
 - **Custom Matchup** — a user-invented Series: two free-typed teams plus user-entered Game 1–6 scores; never stored as a Historical record.
@@ -221,10 +221,10 @@ Home hero, Insights labels, contact copy, and empty/error states read as intenti
 **Description:** How Series data — especially Active Series — stays correct without manual heroics during the playoffs. Current state (owner-confirmed 2026-09-22): historically loaded via a Python script from a spreadsheet; **active-series updates are manual today**; no committed automation exists yet.
 
 #### FR-19: Canonical archive data  **[LIVE]**
-The normalized schema (`teams`, `series`, `series_game_scores`) holds 177 migrated Historical series with logos; legacy flat tables archived (addendum).
+The normalized schema (`teams`, `series`, `series_game_scores`) holds the migrated Historical series with logos — **178 series rows live**, measured 2026-09-30 (177 in the source spreadsheet; see the count caveat below); legacy flat tables archived (addendum).
 **Consequences (testable):**
-- Archive counts reconcile with source spreadsheet totals; legacy tables retained in `archive` schema for audit only.
-- `[Count caveat 2026-09-29]` 177 is the source-spreadsheet figure; the live table measured 178 rows (2026-09-28) and AD-7 reasons in 172+5. One number gets pinned by Story 2.1's archive audit (`sprint-change-proposal-2026-09-29.md` §4.10) — until then no doc figure here is verified against the database.
+- Archive counts reconcile with source spreadsheet totals; legacy tables retained in `archive` schema for audit only. `[As written this does not hold — 2026-09-30]` the live table carries one row more than the spreadsheet's 177; the caveat below is the pin and the delta is the open half of it.
+- `[Count caveat 2026-09-29; pinned by Story 2.1 on 2026-09-30]` **The live table holds 178 `series` rows and 1,246 `series_game_scores` rows, every series exactly seven** — measured by `scripts/spike-2-1/audit-archive.mjs` (exit 0) and independently by the identity-key pre-flight over the same 178 rows; recorded in `_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md`. **177 remains the source-spreadsheet figure** (`NBASeriesResults.xlsx`, addendum §B/§C) and **172 + 5 is AD-7's prerender route split**, not a table count. Forward-looking documents use **178**. Two things this pin does *not* claim: that the one-row delta between the spreadsheet and the table is explained (it isn't, anywhere — settle it in the dashboard with `SELECT count(*) FROM archive.game_sevens` against `SELECT count(*) FROM public.series`), and that every archived row still has seven score rows tomorrow (that holds as of the audit date, and Story 2.3's runner is the first thing that can change it).
 
 #### FR-20: Offseason pipeline mode  **[PLANNED]**
 The pipeline runs at the start and end of the NBA playoffs to initialize and finalize Season records.
