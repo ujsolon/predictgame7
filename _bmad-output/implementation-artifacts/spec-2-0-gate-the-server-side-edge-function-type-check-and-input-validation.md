@@ -2,7 +2,7 @@
 title: 'Gate the server side — Edge Function type-check and input validation'
 type: 'story'
 created: '2026-09-30'
-status: 'review'
+status: 'done'
 route: 'story'
 story: '2-0-gate-the-server-side-edge-function-type-check-and-input-validation'
 baseline_commit: '403dd66'
@@ -248,28 +248,37 @@ forced, all outside the frozen block:
    as `measure-predict-latency.mjs`); it is checked here by `node --check` and by running
    both modes. Widening Biome over `scripts/**` is out of this story's scope.
 
-4. Two deliberate mutation checks, **run and reported, not assumed**, each reverted and the tree
-   re-verified afterward:
+4. Deliberate mutation checks, **run and reported, not assumed** — the two local ones reverted and
+   the tree re-verified afterward; the third lives only in a branch object and never entered the
+   working tree:
 
    | Mutation | `npm run lint` | `npm run typecheck` | `npm test` | CI `deno check` |
    |---|---|---|---|---|
-   | `PredictionResult.method_used` renamed in `contract.ts` | exit 0 — blind | **exit 2, 8 errors** (`PredictPage.tsx:1206,1213` TS2339/TS7053; `prediction-contract.test.ts:87,91` TS2353/TS2339) | exit 0 — 8 files / 78 tests still pass (`src/lib` + `src/types` run under the mutation) | would redden on the function's result literal, which enters the Deno program and not the `tsc` one |
-   | `predict-game-7/index.ts:382` emitting `confidence_level: 'Very High'` | exit 0 — blind | exit 0 — the file is not in the program | exit 0 — 8 files / 78 tests pass | **the only step that can see it** (TS2322 against `ConfidenceLevel`) |
+   | `PredictionResult.method_used` renamed in `contract.ts` | exit 0 — blind | **exit 2, 8 errors** (`PredictPage.tsx:1206,1213` TS2339/TS7053; `prediction-contract.test.ts:87,91` TS2353/TS2339) | exit 0 — 8 files / 78 tests still pass (`src/lib` + `src/types` run under the mutation) | *reasoned, never pushed* — would redden on the function's result literal, which enters the Deno program and not the `tsc` one |
+   | `predict-game-7/index.ts:360` assigning `confidence_level = 'Very High'` | exit 0 — blind | exit 0 — the file is not in the program | exit 0 — 8 files / 78 tests pass | **measured red 2026-09-30** — `TS2322 [ERROR]: Type '"Very High"' is not assignable to type 'ConfidenceLevel'`, `at …/predict-game-7/index.ts:360:7`, then `error: Type checking failed.` |
+
+   Row 2 was measured on the route the owner chose: commit `4b0a533` on a throwaway branch
+   (`probe/deno-check-red-capability`, built with git plumbing so the working tree was never touched),
+   PR #7, CI run `36663754245` — job **failed**, step conclusion `failure`, and in the same run
+   `npm run lint` / `typecheck` / `test` / `build` all `success`. The step's own log printed
+   `Checking 4 files` and then a `Check` line for each of the four, so the failure is attributable to
+   the mutated entry point and not to a short file list.
 
    So the honest scope of the new step is the second row plus the producer half of the first:
    `contract.ts` was *already* locally type-checked transitively through `src/types/prediction.ts`
-   (Story 1.2), which is why row 1 is not the story's win — row 2 is. Both `deno check` cells are
-   **what the step claims, not a measurement**: Deno is not installed here by owner decision, so
-   the column is reasoned from `tsc` semantics on the same source and its first real evidence is
-   the CI run after the owner pushes. Verification of the revert:
+   (Story 1.2), which is why row 1 is not the story's win — row 2 is. Row 2 is also the measurement of
+   the AC's "including a break across the `../_shared/contract.ts` hop" clause: the type Deno rejected
+   against is `ConfidenceLevel`, imported from `contract.ts` by that entry point, so the hop resolves
+   under `deno check` and constrains the producer. What still stays reasoned rather than measured is
+   row 1's `deno check` cell — the `method_used` rename has never run under Deno, and its local half is
+   the measured part. Verification of the revert:
    `grep -c "Very High"` = 0, `method_used: MethodSlug` present, `npm run typecheck` green.
-   Refined after the step went green on run `36654782932`: what is measured is that the step exists,
-   resolves all four files and finds no type error in the source as shipped. The two mutation rows
-   stay reasoned — neither mutation was ever pushed, so no CI run has observed them redden.
+   Both `master` runs are measured too: the step exists, resolves all four files and reports no type
+   error in the source as shipped (run `36654782932`, green in 44s).
 
 ## Handoff — what this story cannot close from here
 
-Two owner-gated actions were outstanding, and **both ran on 2026-09-30**, each producing the
+Three owner-gated actions were outstanding, and **all ran on 2026-09-30**, each producing the
 evidence no agent could generate locally:
 
 1. **`supabase functions deploy predict-game-7 --project-ref zfhtbamvmqztvztyokyf`** — **done.**
@@ -283,10 +292,21 @@ evidence no agent could generate locally:
    `predict-game-7/index.ts`. The second (run `36654782932`, commit `5ef750e`) is **green in 44s**
    with the same four-file list. So the story's own boundary — "if the step is red, the story is not
    done" — is satisfied by measurement rather than by claim.
+3. **Push a throwaway mutation branch and open a PR** — **done**, to close AC 267's last reasoned
+   clause. The commit was built locally with git plumbing so this repo's shared working tree was never
+   touched (a parallel Story 2.1 session was live in it); the owner pushed `probe/deno-check-red-capability`
+   and opened PR #7, and CI run `36663754245` failed on the `deno check` step alone while the four
+   client-side steps passed. What the step was added to catch is now observed catching it.
 
 The independent review pass (different model, fresh session) that every story here gets before
 `done` ran on 2026-09-30: its findings are in the section below, its two `decision-needed` items are
 resolved by the owner, and its five `patch` items are applied and re-verified.
+
+**Status: `done`.** Every AC group now has a measurement behind it, the AC 267 red-capability clause
+included, and `npm run gate` was re-run on the clean tree before the flip (exit 0; `grep -rn "Very High"`
+over `src`/`supabase`/`scripts` empty — the mutation lives only in the throwaway branch's object).
+Housekeeping left to the owner: close PR #7 and delete `probe/deno-check-red-capability` locally and on
+the remote, since `master`'s history never carries it but the branch does.
 
 Deferred by name, each with its home recorded in `deferred-work.md`:
 
@@ -297,7 +317,7 @@ Deferred by name, each with its home recorded in `deferred-work.md`:
   owner ever wants the dev toolchain linted, that is a `biome.json` call, not a story.
 - `supabase/scripts/**` has no checker → Story 2.3, so 2.3 cannot inherit a closed-looking D1.
 
-**Third owner-gated item — landed 2026-09-30 on the owner's instruction.** The docs had to state
+**Doc clauses the owner authorized — both landed 2026-09-30.** The docs had to state
 that `deno check` needs network egress and inherits third-party availability (epics.md line 287
 asked for it verbatim). AGENTS.md reserves agent-context edits to the owner, who authorized the
 pass after the step's first run went red for exactly that reason, so it is now written: AGENTS.md's
@@ -305,27 +325,31 @@ gate bullet says the step is not hermetic and names the incident, README says th
 functions section, and the `ci.yml` step carries the warning where a reader will hit it. The same
 pass corrected the coverage overclaim in the adjacent clauses ("and nowhere else" / "type-checked
 only in CI" → the two `index.ts` entry points are what nothing local type-checks, since `tsc -b`
-does reach both `_shared/` modules).
+does reach both `_shared/` modules). A second, separately authorized pass then closed the
+probe-mode clause: AGENTS.md:30 and README's deploy bullet now name `--expect=validated` as the
+post-deploy check expected green and `--expect=baseline` as a pre-deploy snapshot whose rejection-row
+red is the instrument working — a distinction the deploy itself made real.
 
-What kept the story at `review` was the deploy and the second push — each producing evidence no
-agent can generate locally. **Both have now run (2026-09-30): the function is deployed and
-`--expect=validated` exits 0 on all fourteen rows; CI run `36654782932` is green with
-`Checking 4 files`.** The review's two `decision-needed` findings are resolved, all five `patch`
-findings are applied and re-verified, and the AC's documentation clause is met.
+What kept the story at `review` was the deploy, the second push and the mutation PR — each producing
+evidence no agent could generate from a local tree. **All three have now run (2026-09-30): the function
+is deployed and `--expect=validated` exits 0 on all fourteen rows; CI run `36654782932` is green with
+`Checking 4 files`; CI run `36663754245` is red on the `deno check` step alone for a one-line
+off-contract `confidence_level`.** The review's two `decision-needed` findings are resolved, all five
+`patch` findings are applied and re-verified, and every AC clause is met by measurement.
 
-**One AC clause is still reasoned rather than measured, and it is the reason the status is not
-`done` yet.** AC line 267 promises that renaming a `PredictionResult` field, or emitting a
-`confidence_level` the contract does not list, *turns CI red* — including across the
-`../_shared/contract.ts` hop. The green run proves the step resolves all four files and reports no
-error in the source as shipped; it does not prove the step can go red on a contract break, because
-proving that needs a mutation pushed somewhere a `deno check` can see it, and neither mutation row of
-the Verification table has ever been run under Deno at all. `tsc -b` measures the local half (row 1:
-exit 2, 8 errors), and row 2's mutation is visible only to the Deno step. Three ways to close it are
-recorded in `deferred-work.md` under this review; the owner's call decides which.
+**The last reasoned AC clause is now measured, so nothing in the AC is left as a claim.** AC line 267
+promised that renaming a `PredictionResult` field, or emitting a `confidence_level` the contract does
+not list, *turns CI red* — including across the `../_shared/contract.ts` hop. The green `master` run
+proved only that the step passes on the source as shipped. The red-capability half ran on 2026-09-30
+on the route the owner chose: PR #7 / CI run `36663754245` carries a one-line mutation and the
+`deno check` step **fails** with `TS2322: Type '"Very High"' is not assignable to type
+'ConfidenceLevel'` while lint, typecheck, test and build pass in the same run. Verification item 4
+holds the detail, including that the step's own log listed all four files before the error.
 
-Two other items stay open outside the AC, both routed in `deferred-work.md`: AGENTS.md still does not
-say that `--expect=baseline` is expected to be red after this deploy (one clause, owner's to write,
-now live), and `deno-version` still floats `v2.x` with no lockfile.
+Two items stay open outside the AC, both routed in `deferred-work.md`: `deno-version` still floats
+`v2.x` with no lockfile (an owner call on CI reproducibility), and row 1's `deno check` cell — the
+`method_used` rename under Deno — is still reasoned rather than observed. The AGENTS.md probe-mode
+clause that was live here has since been written, on the owner's separate authorization.
 
 ### Review Findings
 
