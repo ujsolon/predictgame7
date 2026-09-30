@@ -187,6 +187,10 @@ forced, all outside the frozen block:
    client from `https://esm.sh/@supabase/supabase-js@2` too. The second run is the outstanding
    evidence, and this is precisely the third-party-availability dependency the review deferred as
    AC-blocking — it arrived as a red `master`, not as a hypothetical.
+   **GREEN on the second run, measured 2026-09-30.** Run `36654782932` on `5ef750e`: the job
+   succeeded in 44s and the step's own log prints `Checking 4 files` followed by all four paths,
+   then resolves `deno.land` and `esm.sh` without a resolution error. The column this story shipped
+   blind now has evidence.
 3. Wire proof — `scripts/probe-predict-contract.mjs`, run twice, before and after the owner
    redeploys. Nothing here depends on timing: each probe is one request against a fixed body.
 
@@ -225,6 +229,21 @@ forced, all outside the frozen block:
    going red on precisely the rows Story 2.0 changes, and the deployment gap is measured
    rather than assumed.
 
+   **Post-deploy, measured 2026-09-30 — both wire claims now hold on the deployed function: the
+   four new 400s, and the unchanged success path on both AC line 280 surfaces.** `supabase functions deploy predict-game-7` uploaded `index.ts` plus both `_shared/`
+   modules, and `--expect=validated` then exits **0 with all fourteen rows `ok`**: the six
+   rejections answer 400 with the byte-exact envelopes (`{"error":"Team names are required"}` for
+   both the absent and the blank name, the same-team sentence, the two key-listed score sentences,
+   and the unknown-method sentence quoting the caller's string and naming all four accepted slugs),
+   and all eight success bodies — four custom, four series — come back `unchanged`. The story's
+   central asymmetry is closed: the server enforces what the client only used to claim.
+   **`--expect=baseline` is red by design from this moment** and was measured so: exit **1 with
+   exactly the same five rows**, each now reading `expected 200, got 400`, with the successes still
+   `ok`. That is the instrument working, not drift — and it is why AGENTS.md's probe clause needs
+   the one-line fix still open in `deferred-work.md`: the file presents the two modes as one
+   instrument, so the next agent to run the mode that must now fail will file a correct deployment
+   as a regression.
+
    The probe lives in `scripts/`, which Biome's `includes` allowlist does not cover (same
    as `measure-predict-latency.mjs`); it is checked here by `node --check` and by running
    both modes. Widening Biome over `scripts/**` is out of this story's scope.
@@ -244,28 +263,30 @@ forced, all outside the frozen block:
    the column is reasoned from `tsc` semantics on the same source and its first real evidence is
    the CI run after the owner pushes. Verification of the revert:
    `grep -c "Very High"` = 0, `method_used: MethodSlug` present, `npm run typecheck` green.
+   Refined after the step went green on run `36654782932`: what is measured is that the step exists,
+   resolves all four files and finds no type error in the source as shipped. The two mutation rows
+   stay reasoned — neither mutation was ever pushed, so no CI run has observed them redden.
 
 ## Handoff — what this story cannot close from here
 
-Two owner-gated actions remain, and the story stays at `review` until both have run, because each
-produces evidence no agent can generate locally:
+Two owner-gated actions were outstanding, and **both ran on 2026-09-30**, each producing the
+evidence no agent could generate locally:
 
-1. **`supabase functions deploy predict-game-7 --project-ref zfhtbamvmqztvztyokyf`** — the four new
-   400 rows are source on `master` only. Immediately after, `node scripts/probe-predict-contract.mjs
-   --expect=validated` must exit 0; today it exits 1 with five FAIL rows, and that difference *is*
-   the deployment gap.
-2. **`git push origin master`** — runs the `pre-push` gate, then the CI job whose `deno check` step
-   is the first evidence that step exists. Watch the step's own file list in the log: it must print
-   `Checking 4 files`. If the step is red, the story is not done — a red `deno check` is exactly the
-   failure class it was added to catch, and this one ships unrun.
-   **Partly discharged 2026-09-30, and the boundary held:** the owner pushed, the step ran, printed
-   `Checking 4 files`, and went red on a third-party dependency mismatch rather than on this
-   story's source (Verification item 2 above). The fix was one import specifier in
-   `predict-game-7/index.ts`, so the step's green evidence still needs a second push — and a red
-   `deno check` on that second push would still keep the story out of `done`.
+1. **`supabase functions deploy predict-game-7 --project-ref zfhtbamvmqztvztyokyf`** — **done.**
+   The CLI uploaded `index.ts` plus both `_shared/` modules, and `--expect=validated` then exited
+   **0 with all fourteen rows `ok`** (Verification item 3 carries the measured bodies). The four new
+   400 rows are on the wire, and the eight success bodies are byte-identical to the recorded
+   baseline.
+2. **`git push origin master`** — **done, in two runs.** The first (run `36652916056`) printed
+   `Checking 4 files` and then went red on a third-party dependency mismatch rather than on this
+   story's source (Verification item 2 above); the fix was one import specifier in
+   `predict-game-7/index.ts`. The second (run `36654782932`, commit `5ef750e`) is **green in 44s**
+   with the same four-file list. So the story's own boundary — "if the step is red, the story is not
+   done" — is satisfied by measurement rather than by claim.
 
-Then the independent review pass (different model, fresh session) that every story here gets before
-`done`.
+The independent review pass (different model, fresh session) that every story here gets before
+`done` ran on 2026-09-30: its findings are in the section below, its two `decision-needed` items are
+resolved by the owner, and its five `patch` items are applied and re-verified.
 
 Deferred by name, each with its home recorded in `deferred-work.md`:
 
@@ -286,10 +307,25 @@ pass corrected the coverage overclaim in the adjacent clauses ("and nowhere else
 only in CI" → the two `index.ts` entry points are what nothing local type-checks, since `tsc -b`
 does reach both `_shared/` modules).
 
-What still keeps the story at `review` rather than `done`: the deploy and the second push — each
-produces evidence no agent can generate locally. The review's two `decision-needed` findings are
-resolved, all five `patch` findings are applied and re-verified, and the AC's documentation clause
-is met.
+What kept the story at `review` was the deploy and the second push — each producing evidence no
+agent can generate locally. **Both have now run (2026-09-30): the function is deployed and
+`--expect=validated` exits 0 on all fourteen rows; CI run `36654782932` is green with
+`Checking 4 files`.** The review's two `decision-needed` findings are resolved, all five `patch`
+findings are applied and re-verified, and the AC's documentation clause is met.
+
+**One AC clause is still reasoned rather than measured, and it is the reason the status is not
+`done` yet.** AC line 267 promises that renaming a `PredictionResult` field, or emitting a
+`confidence_level` the contract does not list, *turns CI red* — including across the
+`../_shared/contract.ts` hop. The green run proves the step resolves all four files and reports no
+error in the source as shipped; it does not prove the step can go red on a contract break, because
+proving that needs a mutation pushed somewhere a `deno check` can see it, and neither mutation row of
+the Verification table has ever been run under Deno at all. `tsc -b` measures the local half (row 1:
+exit 2, 8 errors), and row 2's mutation is visible only to the Deno step. Three ways to close it are
+recorded in `deferred-work.md` under this review; the owner's call decides which.
+
+Two other items stay open outside the AC, both routed in `deferred-work.md`: AGENTS.md still does not
+say that `--expect=baseline` is expected to be red after this deploy (one clause, owner's to write,
+now live), and `deno-version` still floats `v2.x` with no lockfile.
 
 ### Review Findings
 
