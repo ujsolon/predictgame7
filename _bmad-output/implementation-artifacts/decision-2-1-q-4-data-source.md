@@ -56,10 +56,20 @@ agree from opposite directions.
    precisely what this archive stores. AD-5's guard as written assumes one series per
    round per year and needs re-scoping (e.g. `UNIQUE(year, round, series_number)`) before
    2.2's migration runs, or the migration fails on production data.
+   **Resolved 2026-09-30, and not by the guess above:** `sprint-change-proposal-2026-09-30.md`
+   was approved with `UNIQUE (year, team_a_id, team_b_id)` and **no** `round` CHECK (owner
+   Calls A1/B1). `scripts/spike-2-1/audit-unique-key.mjs` measured that pair duplicate-free
+   on all 178 rows, and `audit-slot-semantics.mjs` measured `team_a_id` = game 1's home team
+   in 178/178 with `team_a_id > team_b_id` in 80 — the convention is real but not enforceable
+   by the constraint, which is why the slot-order check lands in Story 2.3's runner, not in
+   the schema.
 2. **`round` has no controlled vocabulary.** The live column holds **17 distinct values**
    across 178 rows, mixing granularities and naming eras ("Eastern Conf Semifinals" ×35
    alongside "Western Conference Finals" ×1, "Eastern Div Semifinals" ×1). Any pipeline
    that writes `round` must map into a fixed list, and the existing rows are not in one.
+   **Resolution 2026-09-30:** no CHECK ships (owner Call B1) — with `round` out of the
+   identity key the vocabulary is a display concern, so Story 2.4's adapter owns the
+   canonical mapping and never rewrites the archived spellings.
 
 ## Field mapping
 

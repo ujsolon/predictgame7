@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 09-30-2026 11:25
+last_updated: 09-30-2026 12:05
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -121,12 +121,12 @@ action_items:
       and predict-game-7 400 vocabulary (method slug, non-numeric game_N_score_*,
       self-vs-self) with the 400/500 shapes typed in contract.ts. Closes deferred-work
       D1 and D2."
-    owner: "agent - Epic 2 (implemented 2026-09-30, story at review; two owner actions
-      left and neither producible locally -- deploy predict-game-7 then
-      `node scripts/probe-predict-contract.mjs --expect=validated` must exit 0, and
-      the push whose CI run is the first evidence the new `deno check` step can give
-      -- spec Handoff)"
-    status: in-progress
+    owner: "agent - Epic 2 (implemented 2026-09-30, story done; both owner actions
+      complete -- predict-game-7 redeployed and
+      `node scripts/probe-predict-contract.mjs --expect=validated` exits 0, and the
+      push's CI run gave the new `deno check` step its first evidence, measured red
+      on the non-hermetic step then green after the esm.sh switch)"
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-6-route-the-remaining-deferrals-annotate-d"
     epic: 1
@@ -182,5 +182,19 @@ action_items:
       distinct uncontrolled values across 178 rows. Measured by
       scripts/spike-2-1/audit-archive.mjs on 2026-09-30."
     owner: "agent - Story 2.2"
+    status: done
+    ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md (approved
+      2026-09-30: identity key is UNIQUE(year, team_a_id, team_b_id), no round CHECK;
+      AD-5, epics AD-5 summary + Epic 2 narrative + Stories 2.2/2.3/2.4 amended)"
+  - id: "story-2-1-audit-pin-the-archive-total-in-the-docs-that-still-say-177"
+    epic: 4
+    action: "Story 2.1's audit pinned the live total at 178 series / 1,246 score rows,
+      every series exactly seven. The 177 figure still stands as a live-table claim in
+      prd.md FR-19 + :72/:224, epics.md :52/:542/:594 and EXPERIENCE.md :40, and AD-7's
+      172+5 split sums to 177. Re-derive the prerender route list from the measured 178
+      plus the owner's flagship list, then correct the wording in those five places --
+      distinguish the source-spreadsheet 177 from the live count rather than overwriting
+      one with the other. Consumed by Story 4.3."
+    owner: "agent - Story 4.3"
     status: open
-    ref: "_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md"
+    ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md 4.7(4)"
