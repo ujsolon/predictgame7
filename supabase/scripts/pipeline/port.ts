@@ -151,7 +151,7 @@ export function assertAdapterImplemented(name: string): void {
     );
   }
   if (!entry.implemented) {
-    const reason = entry.rejection ? ` — ${entry.rejection}` : ' (Story 2.4)';
+    const reason = entry.rejection ? ` — ${entry.rejection}` : ' — ADAPTER_REGISTRY lists no factory for it (an unimplemented entry should carry its rejection reason, the way `fantrax` carries the Story 2.1 spike verdict)';
     throw new AdapterSelectionError(
       `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented${reason}. ` +
         'The runner never falls back silently — unset SERIES_SOURCE (or pass --source=manual_csv) to use the manual_csv floor.',

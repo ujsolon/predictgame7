@@ -21,10 +21,18 @@
 //      `scripts/spike-2-1/probe-history-and-providers.mjs:92`).
 //
 // Unkeyed, read-only, ZERO Supabase: no sink, no env vars, no writes.
-// Exit 0 on a full pass; exit 2 with a reason if any leg cannot run.
+// Exit 0 ONLY on a full pass — every check below throws rather than printing a
+// failure it would then declare passed (review triage row 20); exit 2 with a
+// named reason if any leg cannot run or disagrees.
 //
-// Usage (the flag is required today — the run-date-derived season is an
-// offseason season with no completed playoff games):
+// Requires Node >= 22.18 (this repo runs on 24.x): the probe imports the
+// shipped TypeScript adapter and relies on Node's native type-stripping, so on
+// an older Node this crashes at import time instead of exiting 2 with a reason.
+//
+// Usage — pass `--season=` with a postseason whose later rounds have finished
+// (2026-10-01's run-date-derived season is an offseason one with no completed
+// Game 7, so unflagged today it reaches the boxscore leg and stops there; in
+// the Apr-Jun window the derivation is enough and the flag is not needed):
 //   node scripts/probe-nba-com-adapter.mjs --season=2025-26
 const exit2 = (reason) => {
   console.error(`\nPROBE COULD NOT RUN TO COMPLETION: ${reason}`);
@@ -53,9 +61,10 @@ async function runProbe(seasonOverrideRaw) {
   const now = new Date();
   const season = seasonOverrideRaw !== undefined ? validateSeasonOverride(seasonOverrideRaw) : deriveSeason(now);
   if (seasonOverrideRaw === undefined) {
-    // Decision 12's live leg needs a postseason with completed Game 7s; the
-    // derived season in the offseason has none, so require the flag's evidence.
-    console.error('note: no --season= given; deriving from the run date may fetch an empty offseason postseason.');
+    // Not a refusal: in the Apr-Jun window the derived season does carry
+    // completed Game 7s. Off-season it does not, so an unflagged run there
+    // stops at the boxscore leg with that named.
+    console.error('note: no --season= given — in the offseason the derived season has no completed Game 7 to cross-check.');
   }
   console.log(`story 2.4 live probe — shipped adapter against the real feed (read-only, zero Supabase)`);
   console.log(`run date (UTC): ${now.toISOString()} — season asked: ${season}`);
@@ -105,7 +114,18 @@ async function runProbe(seasonOverrideRaw) {
   console.log(report.countsLine);
   console.log(report.histogramLine);
   for (const note of report.notes) console.log(note);
-  console.log(`feed requests made by the adapter: ${feedUrls.length} (${feedUrls.length === 1 ? 'PASS — one request per run' : 'FAIL — Decision 1 violated'})`);
+  // Decision 1 is ONE request per run; Decision 6 is up to three attempts at
+  // the SAME URL. So the Decision-1 count that matters is distinct URLs, not
+  // calls — a legitimate retry must not read as a violation, and a violation
+  // must throw rather than print FAIL and still reach the PASSED line (triage row 20).
+  const distinctFeedUrls = new Set(feedUrls);
+  if (distinctFeedUrls.size > 1) {
+    throw new Error(`Decision 1 violated: ${distinctFeedUrls.size} distinct feed URLs in one run — ${[...distinctFeedUrls].join(' | ')}`);
+  }
+  console.log(
+    `feed requests made by the adapter: ${feedUrls.length} call(s), ${distinctFeedUrls.size} distinct URL — ` +
+      `${feedUrls.length > 1 ? 'PASS (Decision 6 retried the same URL)' : 'PASS (one request per run)'}`,
+  );
   console.log(`URL: ${feedUrls[0]}`);
 
   console.log('\n===== derived round + per-game scores (rows from the shipped adapter) =====');
@@ -162,7 +182,12 @@ async function runProbe(seasonOverrideRaw) {
   // Cross-check one Game 7 against boxscoretraditionalv2 (spike-probed route).
   console.log('\n===== Game 7 cross-check: boxscoretraditionalv2 =====');
   const decided = statuses.filter((s) => s.winner_team_id !== null);
-  if (decided.length === 0) throw new Error('this postseason has no completed Game 7 to cross-check — pass --season= with a finished one (e.g. 2025-26)');
+  if (decided.length === 0) {
+    throw new Error(
+      `season ${season}: the adapter parsed no completed Game 7 (${report.countsLine}) — pass --season= with a ` +
+        'postseason whose later rounds have finished; the run-date-derived season is an offseason one outside Apr-Jun',
+    );
+  }
   const target = decided[0];
   const pairKey = new Set([target.team_a_id, target.team_b_id]);
   const abbrOf = (id) => idToAbbr.get(id);
@@ -178,16 +203,23 @@ async function runProbe(seasonOverrideRaw) {
   const [game7Id, game7] = ordered[6];
   const feedRows = set.rowSet.filter((row) => row[idx.GAME_ID] === game7Id);
   if (feedRows.length !== 2) throw new Error(`game ${game7Id}: expected 2 feed rows, captured ${feedRows.length}`);
+  // Named failures, not a bare TypeError: this output is pasted as spec
+  // evidence, so every way the leg can fail has to say which way it failed.
   const homeRow = feedRows.find((row) => row[idx.MATCHUP].includes(' vs. '));
+  if (!homeRow) throw new Error(`game ${game7Id}: neither of its two rows has a " vs. " home MATCHUP — ${feedRows.map((row) => row[idx.MATCHUP]).join(' / ')}`);
   const feedHome = { abbr: homeRow[idx.TEAM_ABBREVIATION], id: homeRow[idx.TEAM_ID], pts: homeRow[idx.PTS] };
   const awayRow = feedRows.find((row) => !row[idx.MATCHUP].includes(' vs. '));
+  if (!awayRow) throw new Error(`game ${game7Id}: both of its two rows read as home (" vs. ") — ${feedRows.map((row) => row[idx.MATCHUP]).join(' / ')}`);
   const feedAway = { abbr: awayRow[idx.TEAM_ABBREVIATION], id: awayRow[idx.TEAM_ID], pts: awayRow[idx.PTS] };
   console.log(`game ${game7Id} (${game7.date}): feed says ${feedAway.abbr} ${feedAway.pts} @ ${feedHome.abbr} ${feedHome.pts}`);
 
   const boxParams = new URLSearchParams({ GameID: game7Id, EndPeriod: '10', EndRange: '28800', RangeType: '0', StartPeriod: '0', StartRange: '0' });
   const boxUrl = `https://stats.nba.com/stats/boxscoretraditionalv2?${boxParams}`;
+  // Deliberately one shot, unlike the adapter's Decision-6 retry: this is a
+  // second route the pipeline never calls, and a transient 403 here costs the
+  // owner a re-run, not a stale table. Re-run rather than add a retry path.
   const boxResponse = await fetch(boxUrl, { headers: NBA_COM_HEADERS, signal: AbortSignal.timeout(25000) });
-  if (!boxResponse.ok) throw new Error(`boxscoretraditionalv2 returned HTTP ${boxResponse.status} for game ${game7Id}`);
+  if (!boxResponse.ok) throw new Error(`boxscoretraditionalv2 returned HTTP ${boxResponse.status} for game ${game7Id} — re-run: unlike the adapter this leg does not retry`);
   const box = await boxResponse.json();
   const teamSet = (box.resultSets ?? []).find((s) => s.headers?.includes('PTS') && s.headers?.includes('TEAM_ID'));
   if (!teamSet) throw new Error(`no PTS/TEAM_ID result set in boxscoretraditionalv2 for game ${game7Id} — shape drifted; inspect: ${(box.resultSets ?? []).map((s) => s.name).join(', ')}`);
@@ -197,6 +229,7 @@ async function runProbe(seasonOverrideRaw) {
     ptsByTeamId.set(row[bIdx.TEAM_ID], (ptsByTeamId.get(row[bIdx.TEAM_ID]) ?? 0) + row[bIdx.PTS]);
   }
   let checked = 0;
+  const mismatched = [];
   for (const side of [feedHome, feedAway]) {
     const boxPts = ptsByTeamId.get(side.id);
     if (boxPts === undefined) {
@@ -205,8 +238,12 @@ async function runProbe(seasonOverrideRaw) {
     }
     checked += 1;
     console.log(`  ${side.abbr}: feed PTS=${side.pts} vs boxscore PTS=${boxPts} — ${boxPts === side.pts ? 'MATCH' : 'MISMATCH'}`);
+    if (boxPts !== side.pts) mismatched.push(`${side.abbr}: leaguegamelog PTS ${side.pts} vs boxscore PTS ${boxPts}`);
   }
   if (checked < 2) throw new Error('boxscoretraditionalv2 did not carry both sides of the game — the cross-check did not complete');
+  // A printed MISMATCH that still reaches "PROBE PASSED" would put a failed
+  // cross-check into the spec as its live evidence (triage row 20).
+  if (mismatched.length > 0) throw new Error(`Game 7 cross-check FAILED — ${mismatched.join('; ')}`);
   console.log('Game 7 cross-check complete: the leaguegamelog PTS values are the boxscore final scores.');
   console.log('\nPROBE PASSED — paste this whole output into spec-2-4 `## Implementation Notes` (Decision 12).');
 }

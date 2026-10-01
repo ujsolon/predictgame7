@@ -294,11 +294,17 @@ describe('nba_com — Decision 3 selection and the summary counts', () => {
     expect(report.countsLine).toContain('1 in flight');
   });
 
-  it('a pre-2003 best-of-5 shape (3-2 through five) is excluded as in flight — no era rule needed', async () => {
+  it('a pre-2003 best-of-5 shape (3-2 through five) is excluded with no era rule — and counted era-blindly as in flight', async () => {
     const specs: SeriesSpec[] = [{ home: 'HOU', away: 'PHX', startDate: '1994-05-01', results: ['home', 'away', 'home', 'away', 'home'] }];
     const { statuses, report } = await adapterOver(feedBody(specs), { seasonOverride: '1993-94' });
     expect(statuses).toEqual([]);
+    // The category is WRONG on purpose and this is the pin that it is wrong
+    // knowingly: 3-2 through five ended in a best-of-5, but the ended test is
+    // first-to-4 and the feed carries no format field, so the counts line
+    // reads "in flight". Excluding the shape needs no era rule; naming it
+    // does. Documented in `seriesdatasource-port.md` (triage row 25).
     expect(report.countsLine).toContain('1 in flight');
+    expect(report.countsLine).not.toContain('1 ended');
   });
 
   it('a game played on the run UTC date is withheld and counted; its null PTS is never consumed', async () => {
@@ -505,6 +511,27 @@ describe('nba_com — feed shape drift rejects naming GAME_ID', () => {
     await expect(adapter.fetch_series_statuses()).rejects.toThrow(/game 004270101 2027-05-02: only one team row arrived \(BOS\)/);
   });
 
+  it('a GAME_DATE that is not YYYY-MM-DD rejects naming the game', async () => {
+    const body = feedBody([{ ...DECIDED_GAME_7[0], mutate: (rows) => { rows[0][1] = 'May 2, 2027'; } }]);
+    const adapter = createNbaComAdapter(depsFor(stubFeed([{ status: 200, body }])));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/game 004270101: GAME_DATE "May 2, 2027" is not YYYY-MM-DD/);
+  });
+
+  it('a row with no GAME_ID rejects — an unnamed row cannot be diagnosed', async () => {
+    const body = feedBody([{ ...DECIDED_GAME_7[0], mutate: (rows) => { rows[0][0] = ''; } }]);
+    const adapter = createNbaComAdapter(depsFor(stubFeed([{ status: 200, body }])));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/feed row carries no GAME_ID/);
+  });
+
+  it('a rowSet entry that is not an array is retryable shape drift, not an escaping TypeError', async () => {
+    const body = feedBody(DECIDED_GAME_7);
+    body.resultSets[0].rowSet[3] = { GAME_ID: '004270101' } as unknown as unknown[];
+    const stub = stubFeed([{ status: 200, body }]);
+    const adapter = createNbaComAdapter(depsFor(stub));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/rowSet contains a row that is not an array/);
+    expect(stub.urls).toHaveLength(MAX_FEED_ATTEMPTS);
+  });
+
   it('WL is never read: a header set without WL still parses, and inverted WL values change nothing', async () => {
     const spec = DECIDED_GAME_7[0];
     const noWlHeaders = HEADERS.filter((header) => header !== 'WL');
@@ -611,6 +638,22 @@ describe('nba_com — Decision 1/6 request posture', () => {
     expect(stub.sleeps).toEqual([]);
   });
 
+  it('a fetch that throws (the 25 s timeout firing) is retried, then terminal with its reason', async () => {
+    const stub: Stubbed = {
+      urls: [],
+      inits: [],
+      sleeps: [],
+      fetch: async () => {
+        stub.urls.push('attempt');
+        throw new Error('The operation was aborted due to timeout');
+      },
+    };
+    const adapter = createNbaComAdapter(depsFor(stub));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/request threw: The operation was aborted due to timeout/);
+    expect(stub.urls).toHaveLength(MAX_FEED_ATTEMPTS);
+    expect(stub.sleeps).toEqual([1000, 4000]);
+  });
+
   it('non-JSON and missing-resultSets bodies are retryable drift, then terminal', async () => {
     const notJson = stubFeed([{ status: 200, brokenJson: true }, { status: 200, brokenJson: true }, { status: 200, brokenJson: true }]);
     await expect(createNbaComAdapter(depsFor(notJson)).fetch_series_statuses()).rejects.toThrow(/not JSON/);
@@ -689,13 +732,13 @@ class RecordingSink implements PipelineSink {
 
 const VALID_ENV = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'never-print-this' };
 
-function runnerHarness(body: unknown, sink: RecordingSink, argv: string[]) {
+function runnerHarness(body: unknown, sink: RecordingSink, argv: string[], opts: { sourceFlag?: boolean; env?: Record<string, string> } = {}) {
   const lines: string[] = [];
   const errors: string[] = [];
   const stub = stubFeed([{ status: 200, body }]);
   const promise = runPipeline({
-    env: VALID_ENV,
-    argv: ['--source=nba_com', ...argv],
+    env: opts.env ?? VALID_ENV,
+    argv: opts.sourceFlag === false ? [...argv] : ['--source=nba_com', ...argv],
     createSink: () => sink,
     fetch: stub.fetch,
     sleep: async (ms: number) => {
@@ -843,6 +886,48 @@ describe('nba_com through runPipeline', () => {
     });
     expect(code).toBe(2);
     expect(errors.join('\n')).toMatch(/--season= does not apply to adapter "manual_csv"/);
+  });
+
+  it('the --season= override reaches the WIRE through the runner, not just the adapter', async () => {
+    const sink = new RecordingSink();
+    const harness = runnerHarness(feedBody(PENDING_3_3), sink, ['--season=2015-16']);
+    expect(await harness.promise).toBe(0);
+    // The pinned clock derives 2026-27, so only a forwarded flag can put
+    // 2015-16 on the URL. The mutation this pins is `seasonOverride:
+    // undefined` at the runner seam — adapter-level coverage cannot see it.
+    expect(new URL(harness.stub.urls[0]).searchParams.get('Season')).toBe('2015-16');
+  });
+
+  it('a duplicate --season= refuses the run instead of silently taking the first value', async () => {
+    const sink = new RecordingSink();
+    const harness = runnerHarness(feedBody(PENDING_3_3), sink, ['--season=2015-16', '--season=2016-17']);
+    expect(await harness.promise).toBe(2);
+    expect(harness.errors.join('\n')).toMatch(/duplicate --season= flag \(2 given: 2015-16, 2016-17\)/);
+    expect(harness.stub.urls).toHaveLength(0);
+    expect(sink.births).toHaveLength(0);
+  });
+
+  it('SERIES_SOURCE=nba_com selects the adapter end to end, not just past the registry check', async () => {
+    const sink = new RecordingSink();
+    const harness = runnerHarness(feedBody(PENDING_3_3), sink, [], { sourceFlag: false, env: { ...VALID_ENV, SERIES_SOURCE: 'nba_com' } });
+    expect(await harness.promise).toBe(0);
+    expect(sink.births).toHaveLength(1);
+    const text = harness.lines.join('\n');
+    expect(text).toContain('nba_com: 1 series in feed');
+    expect(text).toMatch(/pipeline adapter=nba_com/);
+  });
+
+  it('--dry-run with nba_com prints the report and the asserted plan and writes nothing', async () => {
+    const sink = new RecordingSink();
+    const harness = runnerHarness(feedBody(DECIDED_GAME_7), sink, ['--dry-run']);
+    expect(await harness.promise).toBe(0);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+    const text = harness.lines.join('\n');
+    expect(text).toContain('nba_com: 1 series in feed');
+    expect(text).toContain('nba_com depth histogram');
+    expect(text).toMatch(/BIRTH\s+\(2027, team 2 vs 23\).*immediately followed by the completion/);
+    expect(text).toContain('dry-run: 0 rows written');
   });
 
   it('manual_csv still works, still defaults, and reports nothing extra', async () => {

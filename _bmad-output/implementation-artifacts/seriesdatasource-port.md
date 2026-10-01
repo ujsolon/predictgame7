@@ -98,9 +98,20 @@ spike's six headers copied verbatim.
   games are exactly `{1..6}` decided 3–3 (pending birth) or exactly `{1..7}`
   all decided (archive). 4-0/4-1/4-2 sweeps, in-flight series and pre-2003
   best-of-5 shapes are excluded and COUNTED in the run report — that is AD-4's
-  product rule, and it discharges the era caveat for free. A game whose date
-  equals the run's UTC date is withheld (the feed has no final/unfinal flag;
-  those games belong to tomorrow's run) and named in the counts line.
+  product rule. A game whose date equals the run's UTC date is withheld (the
+  feed has no final/unfinal flag; those games belong to tomorrow's run) and
+  named in the counts line. Two honest limits on that rule, both stated rather
+  than guarded. (1) The ended-vs-in-flight COUNT assumes the best-of-7 era: a
+  concluded pre-2003 best-of-5 (3-0/3-1/3-2) never reaches four wins, so a
+  pre-2003 drill counts every ended series as "in flight". Excluding it needs
+  no era rule; naming it correctly does, and the feed carries no format field.
+  (2) The same-UTC-day withholding is a proxy whose safety argument is the
+  cadence: FR-21's 09:00 UTC schedule puts every prior-night game past its
+  final buzzer before the run, so non-null PTS on both sides means a finished
+  game. An ad-hoc run at, say, 03:30 UTC can consume an in-progress game —
+  `finalScore` rejects only null, negative and non-finite PTS — so scheduled
+  runs are the supported mode. Neither limit changes which series enter the
+  plan; both change how the report's counts read.
 - **Round vocabulary: four canonical labels by chain depth.** No working unkeyed
   endpoint returns a round name, so `adapters/rounds.ts` walks the
   postseason in date order (`depth = 1 + max(deeper side's previous depth)`,
@@ -125,19 +136,29 @@ spike's six headers copied verbatim.
   was taken.
 - **The archive is frozen (owner decision 2026-10-01, spec Decision 11):**
   without `--season=` this adapter can only ever fetch the postseason derived
-  from the run date, so an archived year cannot enter the plan. Enforcement is
-  Story 2.3's own archive guard (`plan.ts:382-390`), untouched. With
-  `--season=` pointed at an archived year the guard decides: identical source →
-  skip, disagreeing source → non-zero abort naming the series, never a
-  rewrite. Note the two different messages a drill can meet: a year the table
-  holds as an unfinished **pending** series hits `plan.ts:377-379` ("the runner
-  never rewrites stored games") when the source's games 1–6 differ — that is
-  the stored-games guard, not the archived-outcome guard.
+  from the run date, so a year the table already holds cannot be re-fetched —
+  that is the whole guarantee, and it does not stop *new* archive rows
+  arriving: a series decided inside the fetched season enters the plan as
+  fresh archive data with no drill involved. Enforcement of both is Story 2.3's
+  own archive guard (`plan.ts:382-390`), untouched. With `--season=` pointed at
+  an archived year the guard decides: identical source → skip, disagreeing
+  source → non-zero abort naming the series, never a rewrite. Because the
+  archived rows sit on the far side of the venue/slot boundary
+  (`docs/CURRENT_DATA_MODEL.md`), a drill back through `manual_csv`-sourced
+  years is expected to meet that abort, not a reconciliation. Note too the two
+  different messages a drill can meet: a year the table holds as an unfinished
+  **pending** series hits `plan.ts:377-379` ("the runner never rewrites stored
+  games") when the source's games 1–6 differ — that is the stored-games guard,
+  not the archived-outcome guard.
 
 `scripts/probe-nba-com-adapter.mjs` is the committed live leg (owner-run per
 Decision 12): it runs the SHIPPED adapter through a capturing fetch, prints
 the TEAM_ID ↔ abbreviation ↔ resolved-id triples, and cross-checks one Game 7
-against `boxscoretraditionalv2`.
+against `boxscoretraditionalv2`. **Exit 0 means every check passed** — a
+disagreement or an unexpected request count throws and exits 2, so a "PROBE
+PASSED" line can never sit under a printed FAIL (review triage row 20). It
+needs Node ≥ 22.18, since it imports the shipped TypeScript adapter under
+native type-stripping.
 
 ## What the runner asserts before it writes (plan.ts)
 

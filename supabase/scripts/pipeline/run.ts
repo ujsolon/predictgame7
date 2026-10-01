@@ -68,9 +68,22 @@ export interface RunDeps {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/**
+ * The value of `--<name>=`, refusing a duplicate. `find` would take the first
+ * and `unknownFlag` accepts any well-formed repeat, so a second, different
+ * value would steer nothing while reading as if it had — the same
+ * operator-misdirection the misplaced-flag guard below refuses.
+ */
 function flagValue(argv: string[], name: string): string | undefined {
   const prefix = `--${name}=`;
-  const hit = argv.find((arg) => arg.startsWith(prefix));
+  const hits = argv.filter((arg) => arg.startsWith(prefix));
+  if (hits.length > 1) {
+    throw new PipelineRunError(
+      `duplicate --${name}= flag (${hits.length} given: ${hits.map((hit) => hit.slice(prefix.length)).join(', ')}) — ` +
+        'refusing instead of silently taking the first',
+    );
+  }
+  const hit = hits[0];
   return hit ? hit.slice(prefix.length) : undefined;
 }
 
@@ -188,12 +201,11 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const adapter = createAdapterSource(sourceName, adapterDeps);
     const statuses = await adapter.fetch_series_statuses();
     const gameScores = await adapter.fetch_game_scores();
-    const source = groupSourceRows(statuses, gameScores);
 
-    // The adapter's report prints BEFORE the table is read and the plan is
-    // computed, so an abort during planning still shows the parse that
-    // explains it (review triage row 3). `manual_csv` has no report — a run
-    // with it prints none of these lines and does not error for it.
+    // The adapter's report prints BEFORE its rows are assembled, so an abort
+    // in `groupSourceRows` — or in planning — still shows the parse that
+    // explains it (review triage rows 3 and 22). `manual_csv` has no report; a
+    // run with it prints none of these lines and does not error for it.
     if (adapter.describeRun) {
       const report = adapter.describeRun();
       log(report.countsLine);
@@ -203,6 +215,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       }
     }
 
+    const source = groupSourceRows(statuses, gameScores);
     const current: CurrentSeriesRow[] = await sink.readCurrent();
     const plan = planPipeline(source, current);
 

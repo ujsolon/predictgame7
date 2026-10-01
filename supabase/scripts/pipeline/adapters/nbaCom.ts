@@ -18,12 +18,25 @@
  *   first), numbered by DATE ORDER within the pair — never the GAME_ID
  *   suffix (hazard 1: 1994 HOU-PHX ids run 031..057 for games 1..7) — and a
  *   game whose date equals the run's UTC date is never consumed (the feed has
- *   no final/unfinal status; those games are in tomorrow's run).
+ *   no final/unfinal status; those games are in tomorrow's run). That
+ *   withholding is a proxy, and its safety argument is the cadence: FR-21's
+ *   09:00 UTC schedule puts every prior-night game past its final buzzer
+ *   before the run starts, so a non-null PTS on both sides means a finished
+ *   game. An AD-HOC run at, say, 03:30 UTC can consume an in-progress game
+ *   whose partial PTS is already non-null — `finalScore` only rejects null,
+ *   negative and non-finite. Nothing here can detect that from the feed, so
+ *   it is stated rather than guarded; scheduled runs are the supported mode.
  * - A series enters the output iff its games are exactly {1..6} decided 3-3
  *   (pending) or exactly {1..7} all decided (archive). Every other shape —
  *   4-0/4-1/4-2 sweeps, in-flight 2-1, pre-2003 best-of-5 — is excluded and
  *   counted; that is AD-4's product rule and it discharges the era caveat for
- *   free.
+ *   free. Note what "for free" covers: exclusion needs no era rule, but the
+ *   COUNTS do, and the ended-vs-in-flight split is first-to-4. A concluded
+ *   best-of-5 (3-0/3-1/3-2) therefore lands in "in flight" on a pre-2003
+ *   `--season=` drill, because 3-2 through five is genuinely in flight in a
+ *   best-of-7 and the feed carries no format field to tell them apart. The
+ *   categories are era-blind by design: read the counts line as a diagnostic
+ *   of this parse, not as an assertion about a historical series.
  * - Team identity is RESOLVED, not copied: each row's `TEAM_ABBREVIATION`
  *   goes through `deps.teamIdByAbbreviation` — the same resolver `manual_csv`
  *   uses — because the sink's FK columns carry `REFERENCES teams(id)` and the
@@ -38,10 +51,17 @@
  *   message names the URL and reason and states that no `manual_csv` fallback
  *   was taken.
  *
- * The archive is frozen (owner decision 2026-10-01, spec Decision 11): this
- * adapter fetches the one postseason derived from the run date, so a year
- * already in the archive cannot enter the plan; Story 2.3's archive guard is
- * the enforcement point and is untouched here.
+ * The archive is frozen (owner decision 2026-10-01, spec Decision 11) in the
+ * narrow sense the fetch scope can enforce: a year already in the table cannot
+ * be re-fetched without `--season=`, so this adapter never reaches back to
+ * rewrite one. It does NOT stop new archive rows from arriving — a series
+ * decided inside the derived season enters the plan as fresh archive data with
+ * no drill at all, which is the pipeline working as intended. Story 2.3's
+ * archive guard is the enforcement point for both cases and is untouched here;
+ * where a stored row and a feed row disagree on games 1-6 (the venue
+ * consequence of the same owner decision — `manual_csv` rows carry a slot
+ * convention the feed does not), the guard aborts the run non-zero rather than
+ * reconciling them.
  *
  * No Supabase, no sink, no writes — the runner owns all of that.
  */
@@ -172,6 +192,9 @@ function parseBodyShape(body: unknown): BodyParse {
   const headers = first.headers as unknown[];
   if (!headers.every((header) => typeof header === 'string')) {
     return { reason: 'resultSets[0].headers contains a non-string entry' };
+  }
+  if (!first.rowSet.every(Array.isArray)) {
+    return { reason: 'resultSets[0].rowSet contains a row that is not an array' };
   }
   return { headers: headers as string[], rows: first.rowSet as unknown[][] };
 }
@@ -483,7 +506,7 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
         excludedInProgress += 1;
       } else {
         excludedUnexplained += 1;
-        notes.push(`nba_com: series ${describe} has seven games without a 3-3 split through six — an impossible bracket shape; excluded from this run`);
+        notes.push(`nba_com: series ${describe} has ${total} games without a 3-3 split through six — an impossible bracket shape; excluded from this run`);
       }
       continue;
     }
@@ -519,7 +542,7 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
  */
 export function createNbaComAdapter(deps: AdapterDeps): SeriesDataSource {
   const runDate = (deps.now ?? (() => new Date()))();
-  const season = deps.seasonOverride !== undefined && deps.seasonOverride !== '' ? validateSeasonOverride(deps.seasonOverride) : deriveSeason(runDate);
+  const season = deps.seasonOverride !== undefined ? validateSeasonOverride(deps.seasonOverride) : deriveSeason(runDate);
   const url = gameLogUrl(season);
 
   let feedPromise: Promise<NbaComFeedResult> | null = null;

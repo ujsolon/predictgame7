@@ -17,8 +17,10 @@
  * wrong label; the walk needs the sweeps to place the survivors correctly.
  *
  * `getRoundImportance` (`src/lib/nba-utils.ts`) stays untouched and
- * substring-tolerant: these four labels land in its 2/3/4/1 branches
- * respectively (pinned by `tests/pipeline/nba-com.test.ts`), and the 17 era
+ * substring-tolerant: these four labels score 1/2/3/4 in it (pinned by
+ * `tests/pipeline/nba-com.test.ts`) — careful reading that function, since
+ * its *branch* order is 2/3/4/1, with the semifinal test first because
+ * "Semifinals" contains "finals" (the Story 1.4 issue #3 fix). The 17 era
  * spellings already archived keep rendering from the same table.
  */
 
