@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 10-01-2026 15:10
+last_updated: 10-01-2026 18:22
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -53,6 +53,9 @@ development_status:
   # the 00016 generator (refuses to emit while the 160 NBA/BAA venues are blank), the probe
   # and the rehearsal self-test are committed; 00016 itself lands only with the owner's
   # curated venues, so 2-9 and 2-5 stay blocked behind that data commit.
+  # Two review passes closed 2026-10-01 (spec-2-8's Review Triage Log): what remains on 2-8 is curation,
+  # not code — 98 rows from the probe + 62 hand-entered from basketball-reference.com (D6), and if the
+  # archive has grown by apply time, append the series and change the pinned counts in one commit (D5).
   2-8-archive-league-identity-and-game7-venue-backfill: review
   # 2-9 depends on 00016 being APPLIED, not committed (a client that selects `league`
   # against a table without the column gets HTTP 400 42703). Its first move is the read
