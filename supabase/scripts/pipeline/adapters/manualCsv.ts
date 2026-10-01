@@ -199,14 +199,8 @@ export function parseManualCsv(
 
 /** The registry factory: eager read + validate, so a bad CSV fails the run before any write. */
 export function createManualCsvAdapter(deps: AdapterDeps): SeriesDataSource {
-  // Story 2.4 (Decision 8) made `csvPath` CSV-only: the runner resolves it
-  // for this adapter and nothing else, so a missing path here is a wiring bug.
-  const csvPath = deps.csvPath;
-  if (csvPath === undefined) {
-    throw new ManualCsvError('the manual_csv adapter needs a CSV path, but none was resolved — pass --csv=<path>');
-  }
-  const text = deps.readFile(csvPath);
-  const parsed = parseManualCsv(text, csvPath, deps.teamIdByAbbreviation);
+  const text = deps.readFile(deps.csvPath);
+  const parsed = parseManualCsv(text, deps.csvPath, deps.teamIdByAbbreviation);
   return {
     async fetch_series_statuses() {
       return parsed.statuses;

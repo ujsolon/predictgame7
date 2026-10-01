@@ -1,17 +1,17 @@
-# `SeriesDataSource` port contract — Stories 2.3 + 2.4
+# `SeriesDataSource` port contract — Story 2.3
 
-Status: shipped in `supabase/scripts/pipeline/` (Story 2.3), with the first
-automated adapter (`nba_com`) registered behind the same seam (Story 2.4).
-This is the port documentation `epics.md` Story 2.3 AC (:353) asks for, with
-`manual_csv` as the reference implementation and `nba_com` documented beside
-it. Source of truth for the boundary is `ARCHITECTURE-SPINE.md` AD-5; the
-method names below are verbatim from AD-5 and must not drift.
+Status: shipped in `supabase/scripts/pipeline/` (Story 2.3). This is the port
+documentation `epics.md` Story 2.3 AC (:353) asks for, with `manual_csv` as
+the reference implementation. Source of truth for the boundary is
+`ARCHITECTURE-SPINE.md` AD-5; the method names below are verbatim from AD-5
+and must not drift.
 
 ## What the port is
 
 One interface, two operations. Every series-data source — the spreadsheet
-floor and the automated adapter shipped today — is reachable through it, and
-the runner knows nothing about which adapter produced its rows.
+floor shipped today and the automated adapters Story 2.4 swaps in — is
+reachable through it, and the runner knows nothing about which adapter
+produced its rows.
 
 ```ts
 interface SeriesDataSource {
@@ -21,13 +21,6 @@ interface SeriesDataSource {
 ```
 
 Definition: `supabase/scripts/pipeline/port.ts`.
-
-AD-5 freezes those two method names; nothing else is part of the contract.
-`SeriesDataSource` therefore has one **optional** member, `describeRun?():
-AdapterRunReport`, which the automated adapter implements to report how it
-picked its rows (selection counts, derived depth histogram, named
-exclusions). The runner prints it after the two fetches resolve; an adapter
-without it (`manual_csv`) simply reports nothing extra.
 
 ## Row shapes
 
@@ -62,95 +55,15 @@ exact pair; the runner groups, plans, and asserts before any write.
 - `SERIES_SOURCE` (env) selects the adapter; `--source=` (flag) overrides it.
   Default: `manual_csv`.
 - Registry: `ADAPTER_REGISTRY` in `port.ts`, keyed by the AD-5 adapter list —
-  `manual_csv | fantrax | nba_com`. `manual_csv` is the floor and the default
-  and Story 2.4 neither removed nor demoted it; `nba_com` is implemented;
-  `fantrax` stays in the registry as recognised-but-unimplemented.
-- A recognised-but-unimplemented name (`fantrax`) fails the start with a
-  message that names the Story 2.1 spike rejection — fantasy endpoints return
-  fantasy point totals and playoff configuration, never real home/away game
-  scores — and points at
-  `_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md`.
-  Never a silent fallback to `manual_csv`, because a silent fallback would
-  leave Active Series stale while looking healthy.
+  `manual_csv | fantrax | nba_com`.
+- A recognised-but-unimplemented name (`fantrax`, `nba_com` until Story 2.4)
+  fails the start with `... is not implemented (Story 2.4)` — never a silent
+  fallback to `manual_csv`, because a silent fallback would leave Active
+  Series stale while looking healthy.
 - An unrecognised name fails against the registry with the known list.
 
-## Automated adapter: `nba_com`
-
-`supabase/scripts/pipeline/adapters/nbaCom.ts` (+ `adapters/rounds.ts` for the
-round vocabulary). Source: the unkeyed `stats.nba.com/stats/leaguegamelog`
-team-side playoff feed Story 2.1 proved (`decision-2-1-q-4-data-source.md`).
-
-- **One HTTP request per run.** `fetch_series_statuses()` and
-  `fetch_game_scores()` are two views of a single cached parse of that one
-  `leaguegamelog` response (`Counter=1000`, `PlayerOrTeam=T`,
-  `SeasonType=Playoffs`, `SortColumn=DATE`). A run never fans out; the fetch
-  is memoised, so calling both methods issues exactly one request.
-- **Season is a fetch parameter derived from the run's UTC date**: Jan–Jun →
-  `${year-1}-${yy}`, Jul–Dec → `${year}-${yy+1}` — the postseason of season
-  `Y-1`–`Y` is played in calendar year `Y`. `--season=<YYYY-YY>` overrides it.
-  An offseason run therefore asks for a season with no playoff games, gets
-  zero rows, plans nothing and exits 0. It is a fetch scope only: no phase,
-  group or page derives from a date (AD-4).
-- **Game-7 selection.** A feed series enters the output iff its games are
-  exactly {1..6} decided with a 3–3 split (→ birth as pending) or exactly
-  {1..7} all decided (→ completion/archive). Every other shape — 4-0, 4-1,
-  4-2, an in-flight 2-1, a pre-2003 best-of-5 — is excluded and counted in the
-  run's summary line, so coverage cannot silently narrow. The best-of-5 era
-  needs no code that knows about 2003: such a series never reaches either
-  shape.
-- **No same-UTC-day game is ever consumed.** A game whose `GAME_DATE` equals
-  the run's UTC date is excluded and counted — `leaguegamelog` has no
-  final/unfinal flag, and a game is not over until it is over. FR-21's daily
-  09:00 UTC cadence makes those games tomorrow's input.
-- **Slots, year and game numbers** (the spike's inherit list): `team_a_id` is
-  game 1's home team (plan.ts re-asserts it), `year` is the **calendar** year
-  of `GAME_DATE` — never `SEASON_ID` — and `game_number` is date order within
-  the team pair — never the `GAME_ID` suffix. The `MATCHUP` home form is
-  `"X vs. Y"` with a load-bearing trailing period; the away form is `"Y @ X"`.
-  A game's two team rows merge on `(GAME_DATE, unordered pair)`; an unparseable
-  `MATCHUP`, a self-match, a null `PTS` on a past date or a tie is rejected
-  naming the `GAME_ID`.
-- **Rounds come from chain depth**, not from the feed (no working endpoint
-  returns a round name). Walking the postseason in date order, a series' depth
-  is one more than the deeper of its two teams' previous series this
-  postseason; depth 1..4 maps to exactly `First Round`, `Conference Semifinals`,
-  `Conference Finals`, `NBA Finals` — round-only labels, so no conference map
-  or 2.7 MB schedule blob is fetched, and all four land in the intended
-  `getRoundImportance` branch (1/2/3/4). A depth outside 1..4 excludes the
-  series and names it in the summary with the histogram; every run prints the
-  derived histogram (a postseason in flight legitimately shows a partial one —
-  information, not a gate).
-- **Failure posture**: `AbortSignal.timeout(25000)`, three attempts with
-  backoff `[1000, 4000]` ms on 403/429/5xx or a body that is not the expected
-  `resultSets` shape, then a non-zero exit naming the URL and the status. The
-  spike's header set is copied verbatim (`User-Agent`, `Accept`, `Referer`,
-  `Origin`, `x-nba-stats-origin`, `x-nba-stats-token`) — no key, so nothing
-  here becomes a Story 2.6 secret. A non-retryable HTTP status fails
-  immediately. `nba_com` failing never selects `manual_csv`.
-- **The archive is frozen** (owner decision (a), 2026-10-01; Story 2.4
-  Decision 11). Enforcement is the adapter's **fetch scope**, not a new guard:
-  `nba_com` fetches the one postseason derived from the run date, so a year
-  already archived cannot enter the plan. The protection that does exist is
-  Story 2.3's archive guard (`plan.ts`: an archived row whose source matches is
-  skipped, one that disagrees aborts naming the series) and this adapter leaves
-  it untouched. Consequence accepted rather than engineered away: a
-  `--season=2016-17` drill reaches that throw, which is why `--season=`'s help
-  text and this section say the rule in plain words, and a test pins the message.
-- **It never writes.** The adapter calls no sink, no RPC, no Supabase at all;
-  it returns the port's two row shapes and the runner keeps planning, asserting
-  and writing.
-- **Deps** (Decision 8 — `AdapterDeps` generalized instead of accreting CSV
-  fields): `season?` and `runDate?` are the date seam, `fetch?` is the network
-  injection (`tests/pipeline` stubs it; no test reaches the network), `sleep?`
-  stubs the retry backoff, and `csvPath?` is `manual_csv`-only — `run.ts` no
-  longer resolves a CSV path for an adapter that cannot use it.
-
-`scripts/probe-nba-com-adapter.mjs` is the committed **owner-run** live leg for
-AC:369 (unkeyed, read-only, zero Supabase calls): it re-runs this parse against
-one real postseason and cross-checks one completed Game 7 against
-`boxscoretraditionalv2`. The story's live evidence is that script's pasted
-output; nothing is claimed about the feed's current reachability until it
-exists.
+Story 2.4 registers its automated adapter by adding a `create` entry; no
+runner logic changes.
 
 ## What the runner asserts before it writes (plan.ts)
 
@@ -253,38 +166,26 @@ documents: edit the CSV before the daily run slot).
 because `team_a_id` is derived from it — but note what the archive holds:
 measured over 178 archived series / 1,246 game rows, in 177 of the 178 every
 game names the SAME team as home (the series' `team_a`). The archived rows
-carry slots, not venues, so no venue-correct adapter can reconcile them
-row-for-row. The owner's decision (2026-10-01, option (a)) is that those rows
-are **frozen**: `nba_com` never reconciles, re-labels or rewrites them, and it
-reaches them only through `--season=`, where the archive guard decides. See
-`docs/CURRENT_DATA_MODEL.md` § "The archive carries slots, not venues".
+carry slots, not venues, so a future venue-correct adapter cannot reconcile
+them row-for-row. See `docs/CURRENT_DATA_MODEL.md` § "The archive carries
+slots, not venues".
 
 ## Operator usage
 
 ```
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
-node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
 ```
 
 Requires **Node ≥ 22.18** (also 23.6+; the repo develops on 24) — `run.ts` is
 a plain `.ts` file executed by Node's native type-stripping, with no build
 step and no loader flag. Nothing in the repo enforces it: `package.json` has
 no `engines` field, so on an older Node the first command fails at parse time
-rather than with a readable message. `--csv=<path>` points the `manual_csv`
-adapter at a different file (it is CSV-only; an automated adapter is never
-handed a path it cannot use). `--season=<YYYY-YY>` overrides `nba_com`'s
-date-derived postseason — see the frozen-archive rule above before pointing it
-at an archived year.
-
-Flags are validated: `--dry-run`, `--source=`, `--csv=`, `--season=` are the
-set, and anything else (a `--dryrun` typo included) refuses the run with the
-help text instead of being ignored. `nba_com` prints its selection counts and
-the derived depth histogram on every run, before the plan.
+rather than with a readable message. `--csv=<path>` points the adapter at a
+different file.
 
 `.env` supplies `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (owner-only;
-never committed) — needed even for `--dry-run`, because the plan asserts
-against the current table. Drop `--dry-run` to apply. Exit 0 = plan applied (or
+never committed). Drop `--dry-run` to apply. Exit 0 = plan applied (or
 empty); exit 2 = refused or failed, message names the row. Checked by
 `npm run gate` end to end: Biome (`supabase/scripts/**/*.ts`),
 `tsc -b` via `tsconfig.pipeline.json`, and Vitest `tests/pipeline/*.test.ts`
-against the fake sink and an injected `fetch` (no test reaches the network).
+against the fake sink.

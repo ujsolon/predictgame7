@@ -305,13 +305,11 @@ describe('runPipeline — apply, idempotency, dry-run', () => {
 });
 
 describe('runPipeline — refusal rows of the matrix', () => {
-  it('SERIES_SOURCE naming the unimplemented adapter refuses the start and never falls back', async () => {
-    // Story 2.4 implemented nba_com; `fantrax` is the recognised-but-rejected
-    // name that keeps this refusal path honest (Decision 7).
+  it('SERIES_SOURCE naming an unimplemented adapter refuses the start and never falls back', async () => {
     let sinkBuilt = false;
     const errors = capture();
     const code = await runPipeline({
-      env: envWith({ SERIES_SOURCE: 'fantrax' }),
+      env: envWith({ SERIES_SOURCE: 'nba_com' }),
       argv: [],
       createSink: () => {
         sinkBuilt = true;
@@ -320,8 +318,7 @@ describe('runPipeline — refusal rows of the matrix', () => {
       logError: errors.log,
     });
     expect(code).toBe(2);
-    expect(errors.lines.join('\n')).toMatch(/fantrax.*not implemented.*rejected by the Story 2\.1 spike/s);
-    expect(errors.lines.join('\n')).toMatch(/never falls back silently/);
+    expect(errors.lines.join('\n')).toMatch(/nba_com.*not implemented \(Story 2\.4\)/s);
     expect(sinkBuilt).toBe(false);
   });
 
