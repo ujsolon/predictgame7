@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 10-02-2026 05:30
+last_updated: 10-02-2026 06:41
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -54,8 +54,10 @@ development_status:
   # clean push IS the measurement — all nine guards evaluated against the live 178-series table inside
   # one committed transaction — and the anon re-read afterwards printed 159 NBA + 1 BAA + 18 ABA,
   # NULL 0, game-7 population 160 with 117 home wins / 43 swaps, AD-4 consistency clean over 1,246
-  # rows, and five named venues matching the curated CSV. It stays at 'review' only because the owner
-  # owes the independent bmad-code-review of the story (as with 2-4), not because work remains.
+  # rows, and five named venues matching the curated CSV. The owed independent bmad-code-review ran
+  # on 2026-10-02 (pass 4): both owner-resolved decisions closed (one rejected, one deferred to 2-9),
+  # all six patch findings applied in f21a12d — 2-8 is done. Caveat carried in the spec: pass 4 was
+  # PARTIAL (two review layers failed on the credit limit; the group-B docs chunk never ran).
   # The history that got here: all 160 venues answered by the owner's probe across three runs that
   # agreed with 0 conflicts (no hand entry needed), 00016 emitted by the generator, the rehearsal
   # replaying 00001-00016 green with the census measured in-database, and CURRENT_DATA_MODEL.md
@@ -65,7 +67,7 @@ development_status:
   # in the same commit; never relax a guard.
   # What 2-8 releases: 2-5's home_team_stats card may compute (game 7 of NBA/BAA rows only) and 2-9
   # has a live column to read.
-  2-8-archive-league-identity-and-game7-venue-backfill: review
+  2-8-archive-league-identity-and-game7-venue-backfill: done
   # 2-9's ordering gate is SATISFIED since 2026-10-02: 00016 is applied, so `league` exists on the
   # live table and a client may select it (before the apply it got HTTP 400 42703 and the archive page
   # failed to load). Its first move is still the read path, not the chip: PredictPage's SERIES_SELECT
