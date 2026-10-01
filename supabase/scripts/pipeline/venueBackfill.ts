@@ -5,11 +5,12 @@
  * Single source: `data/game7_venues_curated.csv` (178 rows — one per archived
  * series). This file parses it, validates it, and emits the whole migration
  * text so there is exactly one copy of the VALUES lists and no hand-spliced
- * block to drift (`--check` regenerates and byte-compares, so drift fails in
- * either direction). Placement under `supabase/scripts/pipeline/` is
- * deliberate: `tsconfig.pipeline.json` includes this directory (so `tsc -b`
- * type-checks it) and Biome's `files.includes` lints it — unlike anything
- * under `scripts/`.
+ * block to drift (`--check` regenerates and compares — after line-ending
+ * normalization, so `core.autocrlf=true` checkouts cannot make it red at
+ * line 1 — and drift fails in either direction). Placement under
+ * `supabase/scripts/pipeline/` is deliberate: `tsconfig.pipeline.json`
+ * includes this directory (so `tsc -b` type-checks it) and Biome's
+ * `files.includes` lints it — unlike anything under `scripts/`.
  *
  * The refuse-to-emit gate (spec D2): while any NBA/BAA row carries a blank
  * `game7_home_team`, emitting is refused with a non-zero exit naming the
@@ -501,7 +502,6 @@ $guard$;
 --      curated list must never overwrite one silently.
 DO $guard$
 DECLARE
-  v_found boolean := false;
   v record;
 BEGIN
   SELECT s.year AS year, ta.abbreviation AS a, tb.abbreviation AS b, th.abbreviation AS stored_home, ch.abbreviation AS curated_home
@@ -552,7 +552,9 @@ UPDATE public.series_game_scores g
 
 -- Guard game7_home_win_census — the curated list's own checksum: nba.com's
 -- published 117-43 over exactly the NBA/BAA Game-7 population this backfill
--- covers. A list with a single wrong row does not land on 117; a compensating
+-- covers. It asserts BOTH numbers it names (review pass 1, E6): the ${EXPECTED_NBA_BAA}-series
+-- population first, then the 117 — the 117 is only meaningful over exactly
+-- that set. A list with a single wrong row does not land on 117; a compensating
 -- pair does, which is the residual risk the owner-run curation route (D1)
 -- accepts. If this lands 116 or 118, Story 2.8 resolves WHICH in writing
 -- (one mis-curated row vs. the published as-of date excluding the 2026
@@ -570,6 +572,11 @@ BEGIN
      AND s.league IN ('NBA', 'BAA')
      AND g.home_score > g.away_score;
   SELECT count(*) INTO v_population FROM public.series WHERE league IN ('NBA', 'BAA');
+  IF v_population <> ${EXPECTED_NBA_BAA} THEN
+    RAISE EXCEPTION '00016 guard game7_home_win_census: NBA/BAA Game-7 population is %, expected exactly ${EXPECTED_NBA_BAA} (the published 117-43 is taken over exactly this set) — resolve in writing before applying, do not relax this guard',
+      v_population
+      USING ERRCODE = '23514';
+  END IF;
   IF v_home_wins <> ${EXPECTED_GAME7_HOME_WINS} THEN
     RAISE EXCEPTION '00016 guard game7_home_win_census: Game-7 home wins over the NBA/BAA archive = % (population %), expected exactly ${EXPECTED_GAME7_HOME_WINS} — the published 117-43 covers the same 160 Game 7s; resolve the delta in writing before applying, do not relax this guard',
       v_home_wins, v_population
@@ -592,7 +599,7 @@ BEGIN
    WHERE g.winner_team_id IS DISTINCT FROM
      (CASE WHEN g.home_score > g.away_score THEN g.home_team_id ELSE g.away_team_id END);
   IF v_bad <> 0 THEN
-    RAISE EXCEPTION '00016 guard row_winner_consistency: % game row(s) whose winner_team_id is not the higher-scoring side — AD-4 derivation must survive the data change intact', v_bad
+    RAISE EXCEPTION '00016 guard row_winner_consistency: % game row(s) whose winner_team_id is not the higher-scoring side — AD-4 derivation must survive the data change intact. This drift predates 00016 (it scans games 1-6 and the ABA rows too): measure it against the live table before applying rather than assuming the backfill caused it', v_bad
       USING ERRCODE = '23514';
   END IF;
 END
@@ -612,7 +619,7 @@ BEGIN
      AND s.winner_team_id IS DISTINCT FROM
        (CASE WHEN g.home_score > g.away_score THEN g.home_team_id ELSE g.away_team_id END);
   IF v_bad <> 0 THEN
-    RAISE EXCEPTION '00016 guard series_winner_game7_consistency: % archived series whose winner_team_id is not their game-7 winner — AD-4 derivation must survive the data change intact', v_bad
+    RAISE EXCEPTION '00016 guard series_winner_game7_consistency: % archived series whose winner_team_id is not their game-7 winner — AD-4 derivation must survive the data change intact. 00016 never writes winner_team_id, so a failure here is pre-existing drift: measure it before applying', v_bad
       USING ERRCODE = '23514';
   END IF;
 END
@@ -672,11 +679,25 @@ SELECT s.id,
 `;
 }
 
-/** First 1-based line where two texts differ; null when byte-identical. */
+/**
+ * Normalize line endings to LF before any byte compare. `core.autocrlf=true`
+ * on this machine checks committed files out as CRLF (review pass 1, E2):
+ * without this, `--check` and the emit path's idempotence compare would go red
+ * at line 1 on every fresh checkout even when the texts agree. `.gitattributes`
+ * pins `eol=lf` for the migration and the curated CSV as the belt; this is
+ * the braces — the compare is what must not care about the checkout's EOL.
+ */
+export function normalizeEol(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
+/** First 1-based line where two texts differ; null when byte-identical (after EOL normalization). */
 export function firstDriftLine(committed: string, regenerated: string): number | null {
-  if (committed === regenerated) return null;
-  const a = committed.split('\n');
-  const b = regenerated.split('\n');
+  const c = normalizeEol(committed);
+  const r = normalizeEol(regenerated);
+  if (c === r) return null;
+  const a = c.split('\n');
+  const b = r.split('\n');
   const max = Math.max(a.length, b.length);
   for (let i = 0; i < max; i++) {
     if (a[i] !== b[i]) return i + 1;
@@ -705,8 +726,9 @@ function parseFlags(argv: readonly string[]): Map<string, string | true> {
 }
 
 function refusePathInsideMigrations(path: string): string | null {
-  const resolved = resolve(path);
-  if (resolved.startsWith(MIGRATIONS_DIR + '\\') || resolved.startsWith(MIGRATIONS_DIR + '/')) {
+  const resolved = resolve(path).toLowerCase();
+  const migrations = MIGRATIONS_DIR.toLowerCase();
+  if (resolved.startsWith(migrations + '\\') || resolved.startsWith(migrations + '/')) {
     return `self-test output must never land in ${MIGRATIONS_DIR} (spec-2-8 D2: 00016 enters supabase/migrations/ only from the curated emit path)`;
   }
   return null;
@@ -781,12 +803,12 @@ export function runVenueBackfillCli(argv: readonly string[], io: { readFile?: (p
           `--check FAILED: ${MIGRATION_FILENAME} and ${csvPath} disagree at line ${drift} of the committed migration — one is hand-edited; regenerate (owner decision 2026-10-01: the generator owns the single copy)`,
         );
       }
-      messages.push(`--check ok: ${MIGRATION_FILENAME} is byte-identical to this generator's output for ${csvPath}`);
+      messages.push(`--check ok: ${MIGRATION_FILENAME} matches this generator's output for ${csvPath} (EOL-normalized byte compare)`);
       return { exitCode: 0, messages };
     }
 
     const existing = tryRead(target);
-    if (existing === rendered) {
+    if (existing !== null && normalizeEol(existing) === rendered) {
       messages.push(`${MIGRATION_FILENAME} already matches the curated CSV — nothing written`);
       return { exitCode: 0, messages };
     }

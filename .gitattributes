@@ -2,3 +2,17 @@
 # machine's core.autocrlf=true a plain checkout would rewrite it and silently
 # stop the gate from firing.
 .githooks/pre-push text eol=lf
+
+# Story 2.8 (spec review pass 1 E2, corrected by pass 2 P2-8): the venue
+# generator's --check compares the committed 00016 against its own render, and
+# with core.autocrlf=true a CRLF worktree used to make that compare red at line
+# 1 on a fresh clone. The real mitigation is `normalizeEol` in
+# supabase/scripts/pipeline/venueBackfill.ts, applied on BOTH sides of both
+# compares, so this pin is hygiene rather than the fix — and note what it costs:
+# the pattern covers every file in supabase/migrations/, and attributes bind at
+# checkout, so `git ls-files --eol` still reports the pre-2.8 migrations as
+# w/crlf until someone renormalizes (that renormalize will show as whole-file
+# EOL churn in 14 migrations this story never touches). The curated CSV is
+# listed because it is the generator's source of truth.
+supabase/migrations/*.sql text eol=lf
+supabase/scripts/pipeline/data/game7_venues_curated.csv text eol=lf

@@ -22,9 +22,13 @@
 // IS now the real archive shape (178 / 1,246 / seven each, census guards
 // executing against it), while the fixture's venue values stay SYNTHETIC (the
 // deterministic 117/43 self-test assignment, spec-2-8 D2) until the curated
-// CSV lands. The live table's own totals are still carried by the pre-flight
-// (node scripts/spike-2-1/audit-unique-key.mjs), not by this container — the
-// agent never reads production.
+// CSV lands. Amended again by review pass 1 (E1): the fixture seed is applied
+// INSIDE the ordered loop, immediately before a committed 00016* file, so the
+// deferred AC ("00001–00016 apply in filename order → exit 0") is executable
+// in both states — its guards are census guards and cannot evaluate over the
+// 8 series 00001 leaves behind. The live table's own totals are still carried
+// by the pre-flight (node scripts/spike-2-1/audit-unique-key.mjs), not by
+// this container — the agent never reads production.
 //
 // Why not `supabase db reset`: supabase/.temp/project-ref points at
 // PRODUCTION and there is no supabase/config.toml in this checkout, so no
@@ -43,11 +47,16 @@
 // Since Story 2.3 the run also rehearses 00015's two RPCs (birth +
 // completion) with psql — see section 4 — because Decision 2 puts the
 // rehearsal of those functions here, off-production, before the owner ever
-// applies the migration. Since Story 2.8 (spec-2-8 D2/D3) section 5 seeds a
-// 178-series fixture archive and drives the generator's SELF-TEST rendering
-// of 00016 through the census guards and one demonstrable failure per guard —
-// 00016 itself is not emitted until the curated venues land, so COVERED_THROUGH
-// stays 15 and the ordered replay above does not see it.
+// applies the migration. Since Story 2.8 (spec-2-8 D2/D3, amended by review
+// pass 1 E1) section 5 drives the 00016 guard set over a 178-series fixture
+// archive with one demonstrable failure per guard, in whichever of the two
+// states the repo is in: 00016 unemitted → the generator's SELF-TEST
+// rendering from a temp path with the synthetic 117/43 assignment
+// (COVERED_THROUGH stays 15, nothing enters supabase/migrations/); 00016
+// committed by the curation commit → the ordered replay itself applies the
+// committed file over the seeded fixture, and section 5 tampers the committed
+// text, runs the generator's --check against the real CSV<->migration pair,
+// and re-applies the committed file for the census.
 //
 // Usage: node scripts/rehearse-migration-00014.mjs
 // Exit: 0 = every claim held; non-zero on the first miss (fail-fast, so a
@@ -75,15 +84,16 @@ const dbName = 'rehearse';
 // replay check is per-number coverage, not a file count: a renamed or deleted
 // migration in the middle of the range would otherwise leave the script green
 // while the replay it certifies never happened. COVERED_THROUGH is bumped when a
-// story commits a migration whose replay this must certify (main warns when a
-// file exists above it without the ceiling being raised).
+// story commits a migration whose replay this must certify. A 00016* file on
+// disk while the ceiling is still 15 is a RehearsalFailure, not a warning
+// (review pass 1, E1): emit and ceiling share a commit or neither is
+// certified.
 // Story 2.8 (spec D2) deliberately keeps this at 15 for the whole
 // machinery session: 00016 is GENERATOR-OWNED and the generator refuses to
 // emit while the curated venues are blank, so the file above it does not
-// exist yet and the pre-flight warning below cannot fire. It goes to 16 — in
-// the same commit that lands the curated venues and the emitted 00016 — and
-// section 5's self-test certifies the machinery off a temp-path rendering
-// until then.
+// exist yet. It goes to 16 — in the same commit that lands the curated
+// venues and the emitted 00016 — and section 5's self-test certifies the
+// machinery off a temp-path rendering until then.
 const COVERED_THROUGH = 15;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
@@ -179,10 +189,30 @@ function main() {
   console.log(`rehearsal container: ${container} (postgres:16, throwaway, no published port)`);
   console.log(`migrations to replay: ${files.length}`);
 
+  // Story 2.8 state detection (review pass 1, E1): whether the curation
+  // commit has emitted 00016 yet decides which half of this run applies it —
+  // the ordered replay (committed) or section 5's temp-path self-test
+  // rendering (unemitted). The fixture archive is built from the curated CSV
+  // by the generator — no committed derived file, so it cannot drift — and
+  // seeded inside the ordered loop right before a committed 00016.
+  const migration016File = files.find((f) => f.startsWith('00016'));
+  const curatedRows = venueBackfill.parseVenuesCsv(
+    readFileSync(venueBackfill.CURATED_CSV_PATH, 'utf8'),
+    'game7_venues_curated.csv',
+  );
+  const fixtureSeedText = venueBackfill.renderFixtureSeed(curatedRows);
+
   // Review M1: every file IS replayed, but only 00001..COVERED_THROUGH is
   // certified present-and-in-order. A migration above the ceiling would be
-  // applied silently and leave the claim weaker than it reads.
+  // applied silently and leave the claim weaker than it reads — except for
+  // 00016, where the ceiling and the file share a commit by D2, so an
+  // on-disk 00016 below the ceiling is a hard failure, not a warning.
   const beyondCoverage = files.filter((f) => Number(f.slice(0, 5)) > COVERED_THROUGH);
+  if (beyondCoverage.some((f) => f.startsWith('00016'))) {
+    throw new RehearsalFailure(
+      `${beyondCoverage.filter((f) => f.startsWith('00016')).join(', ')} exists in supabase/migrations/ while COVERED_THROUGH = ${COVERED_THROUGH} — the curation commit must bump the ceiling to 16 in the SAME commit that emits 00016 (spec-2-8 E1: emit and ceiling share a commit or neither is certified).`,
+    );
+  }
   if (beyondCoverage.length) {
     console.warn(`WARNING: ${beyondCoverage.join(', ')} replayed but is above COVERED_THROUGH=${COVERED_THROUGH}; bump the constant if its replay must be certified.`);
   }
@@ -209,7 +239,17 @@ function main() {
     );
 
     // 1) Ordered replay — one psql session per file, in filename order.
+    // Story 2.8 (E1): a committed 00016's guards are census guards, so the
+    // fixture archive is seeded INSIDE this loop, immediately before that
+    // file — this is what makes "00001–00016 apply in filename order → exit
+    // 0" executable once the curation commit emits the migration. While it
+    // is unemitted the loop never reaches a 00016 and the replay is exactly
+    // the 2.2–2.5 one it was.
     for (const file of files) {
+      if (file === migration016File) {
+        mustSucceed('fixture archive seeded inside the ordered replay (immediately before 00016)', psql({ file: fixtureSeedText }));
+        console.log('seeded 178-series x 7-row fixture archive from the curated CSV (pre-00016 state)');
+      }
       const res = psql({ file: readFileSync(join(migrationsDir, file), 'utf8') });
       mustSucceed(`${file} did not apply cleanly`, res);
       console.log(`applied ${file}`);
@@ -249,7 +289,19 @@ function main() {
       'chk_series_status is absent',
       psqlValue("SELECT count(*) FROM pg_constraint WHERE conname = 'chk_series_status'") === '0',
     );
-    console.log(`note   fixture series rows in the replayed schema: ${psqlValue('SELECT count(*) FROM public.series')} (fixture, not the 178-row archive — see header)`);
+    const replaySeriesRows = psqlValue('SELECT count(*) FROM public.series');
+    if (migration016File) {
+      // The deferred AC, made executable: the committed 00016 applied inside
+      // the ordered replay over the seeded fixture — census guards and all.
+      assert(
+        `ordered replay applied the committed ${migration016File} over the seeded fixture: 178 series rows and a live league column`,
+        replaySeriesRows === '178' &&
+          psqlValue("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'") === '1' &&
+          psqlValue('SELECT count(*) FROM public.series WHERE league IS NULL') === '0',
+      );
+    } else {
+      console.log(`note   fixture series rows in the replayed schema: ${replaySeriesRows} (fixture, not the 178-row archive — 00016 unemitted, see header)`);
+    }
 
     // 3) Enforcement. Pick a stored pair whose slot-swapped twin is absent,
     //    so the duplicate test and the swap test target a pair as stored.
@@ -471,72 +523,122 @@ function main() {
         psqlValue(`SELECT has_function_privilege('anon', 'public.pipeline_birth_series(integer, text, integer, integer, jsonb)', 'EXECUTE')`) === 'f' &&
         psqlValue(`SELECT has_function_privilege('authenticated', 'public.pipeline_complete_series(uuid, jsonb, integer)', 'EXECUTE')`) === 'f');
 
-    // 5) Story 2.8 SELF-TEST (spec-2-8 D2) — the archive-league-identity +
-    //    Game-7 venue backfill machinery, proven on a fixture archive of the
-    //    real shape before any real venue exists. The curated CSV has blank
-    //    venues on the 160 NBA/BAA rows, so the generator refuses to emit
-    //    00016 into supabase/migrations/; instead the SAME template is fed a
-    //    deterministic synthetic 117/43 assignment into a temp path, the
-    //    harness applies it to a 178-series x 7-row fixture archive (the
-    //    guards are census guards; over the 8-series 00001 fixture they
-    //    cannot apply at all), asserts the census, then tampers — data side
-    //    and curated side — so EVERY guard is observed failing. A guard that
-    //    cannot fail is not a guard. Banner discipline: every line of this
-    //    section says SELF-TEST, because none of its venue values are real.
-    console.log('\n-- 5) SELF-TEST: Story 2.8 fixture archive + synthetic 00016 --');
+    // 5) Story 2.8 (spec-2-8 D2, amended by review pass 1 E1/E2/E3) — the
+    //    league/venue migration exercised over a fixture archive of the real
+    //    shape, in whichever of the two states the repo is in:
+    //    - 00016 UNEMITTED (venues blank, COVERED_THROUGH 15): the generator's
+    //      SELF-TEST path renders the SAME template from the deterministic
+    //      synthetic 117/43 assignment into a temp path; nothing enters
+    //      supabase/migrations/. Banner discipline: every line says SELF-TEST.
+    //    - 00016 COMMITTED (curation landed, ceiling at 16): the ordered
+    //      replay already applied the committed file over the seeded fixture
+    //      (section 1); this section tampers the committed text so EVERY
+    //      guard is observed failing, runs the generator's --check against
+    //      the real CSV<->migration pair (the normally-executed drift check,
+    //      E2), and re-applies the committed file for the census.
+    // Either way: a guard that cannot fail is not a guard, and a rejected
+    // apply is measured on the post-reject state, not asserted (E3).
+    const committedMigration = migration016File !== undefined;
+    const tag = committedMigration ? '2.8' : 'SELF-TEST';
+    console.log(`\n-- 5) ${committedMigration ? 'Story 2.8 committed 00016: guard tampers, --check, census' : 'SELF-TEST: Story 2.8 fixture archive + synthetic 00016'} --`);
     const selfTestDir = mkdtempSync(join(tmpdir(), 'pg7-2-8-selftest-'));
     try {
-      const migrationPath = join(selfTestDir, '00016-selftest.sql');
-      const fixturePath = join(selfTestDir, 'fixture-seed.sql');
-      const gen = venueBackfill.runVenueBackfillCli(
-        [`--self-test-migration=${migrationPath}`, `--self-test-fixture=${fixturePath}`],
-        {},
-      );
-      for (const message of gen.messages) console.log(`SELF-TEST generator: ${message}`);
-      assert('SELF-TEST generator exited 0 on the self-test path', gen.exitCode === 0, `exit ${gen.exitCode}`);
+      // Which state this run is in, printed rather than asserted (pass 2,
+      // P2-9): the emit/ceiling pairing is enforced by the pre-flight above,
+      // which throws before the container starts — proven by deliberately
+      // leaving a committed 00016 under COVERED_THROUGH = 15. Asserting it again
+      // here could never fail, and "an assertion that cannot fail is not a
+      // rehearsal assertion" is this story's own rule (E3).
+      console.log(`${tag} mode: ${committedMigration ? 'committed 00016 (ceiling ' + COVERED_THROUGH + ')' : 'SELF-TEST rendering; 00016 unemitted while COVERED_THROUGH = ' + COVERED_THROUGH} — supabase/migrations/ left untouched by this branch`);
 
-      const migrationText = readFileSync(migrationPath, 'utf8');
-      const seedText = readFileSync(fixturePath, 'utf8');
-      // D2's hard line: the self-test path must never touch the migrations
-      // directory — 00016 enters supabase/migrations/ only from the curated
-      // emit path, in the commit that bumps COVERED_THROUGH to 16.
-      let migrationOnDisk = false;
-      try {
-        readFileSync(join(migrationsDir, '00016_archive_league_identity_and_game7_venues.sql'), 'utf8');
-        migrationOnDisk = true;
-      } catch {
-        migrationOnDisk = false;
+      let migrationText;
+      let venues;
+      if (committedMigration) {
+        migrationText = readFileSync(join(migrationsDir, migration016File), 'utf8');
+        assert(`${tag} curated CSV carries no blank NBA/BAA venue once 00016 is committed`, venueBackfill.blankVenueRows(curatedRows).length === 0);
+        venues = venueBackfill.curatedAssignments(curatedRows);
+        // E2: the committed-pair drift check runs from a normally-executed
+        // path — this harness, real IO through the CLI, no injection.
+        const check = venueBackfill.runVenueBackfillCli(['--check'], {});
+        for (const message of check.messages) console.log(`generator --check: ${message}`);
+        assert(`${tag} generator --check exits 0 on the committed CSV<->migration pair (real IO)`, check.exitCode === 0, `exit ${check.exitCode}`);
+      } else {
+        const migrationPath = join(selfTestDir, '00016-selftest.sql');
+        const fixturePath = join(selfTestDir, 'fixture-seed.sql');
+        const gen = venueBackfill.runVenueBackfillCli(
+          [`--self-test-migration=${migrationPath}`, `--self-test-fixture=${fixturePath}`],
+          {},
+        );
+        for (const message of gen.messages) console.log(`SELF-TEST generator: ${message}`);
+        assert('SELF-TEST generator exited 0 on the self-test path', gen.exitCode === 0, `exit ${gen.exitCode}`);
+        migrationText = readFileSync(migrationPath, 'utf8');
+        assert(
+          'SELF-TEST 00016 rendering was NOT written into supabase/migrations/ (COVERED_THROUGH stays 15 until curation lands)',
+          !migration016File,
+          '00016 exists on disk while COVERED_THROUGH is 15 — the self-test path leaked into the migrations directory',
+        );
+        assert('SELF-TEST CLI fixture seed matches the generator render the ordered replay would use', readFileSync(fixturePath, 'utf8') === fixtureSeedText);
+        venues = venueBackfill.syntheticAssignments(curatedRows);
       }
-      assert(
-        'SELF-TEST 00016 rendering was NOT written into supabase/migrations/ (COVERED_THROUGH stays 15 until curation lands)',
-        !migrationOnDisk,
-        '00016 exists on disk while COVERED_THROUGH is 15 — the self-test path leaked into the migrations directory',
-      );
 
-      const curatedRows = venueBackfill.parseVenuesCsv(
-        readFileSync(venueBackfill.CURATED_CSV_PATH, 'utf8'),
-        'game7_venues_curated.csv',
-      );
-      assert('SELF-TEST curated CSV holds 178 rows (the archive total, AD-7: 178 stands)', curatedRows.length === 178);
-      const venues = venueBackfill.syntheticAssignments(curatedRows);
-      assert('SELF-TEST synthetic assignment covers exactly 160 NBA/BAA rows', venues.length === 160);
+      assert(`${tag} curated CSV holds 178 rows (the archive total, AD-7: 178 stands)`, curatedRows.length === 178);
+      assert(`${tag} assignment covers exactly 160 NBA/BAA rows`, venues.length === 160);
       const keeps = venues.filter((v) => v.home === v.row.teamA);
       const swaps = venues.filter((v) => v.home !== v.row.teamA);
-      assert('SELF-TEST synthetic assignment splits 117 keep / 43 swap', keeps.length === 117 && swaps.length === 43);
+      if (committedMigration) {
+        // Review pass 2, P2-14: `keeps`/`swaps` are counted in the CURATED
+        // file's slot order, and that order is not the stored order for the one
+        // archived series the loader did not write winner-first. Asserting a
+        // slot-space 117/43 against real data would be a false red at the most
+        // pressure-loaded moment in the story, so in committed mode the split is
+        // reported here and measured against the database's own `winner_team_id`
+        // after the apply.
+        console.log(`${tag} curated split read from the CSV slot order: ${keeps.length} keep / ${swaps.length} swap — reported, not asserted (P2-14); the census below measures it in the database`);
+      } else {
+        assert(`${tag} assignment splits 117 keep / 43 swap (synthetic, by construction)`, keeps.length === 117 && swaps.length === 43);
+      }
       const abaRows = curatedRows.filter((r) => r.league === 'ABA');
-      assert('SELF-TEST curated CSV carries exactly 18 ABA rows', abaRows.length === 18);
+      assert(`${tag} curated CSV carries exactly 18 ABA rows`, abaRows.length === 18);
 
       // Helpers: re-seed the fixture archive (the seed file itself DELETEs
-      // first, so every tamper run starts from the identical pre-00016 state),
-      // and apply [seed + tamper + migration] as one psql -f stream so the
-      // migration's own BEGIN/COMMIT semantics match a real `db push`.
-      const seedFixture = () => mustSucceed('SELF-TEST fixture archive seeded (178 series x 7 rows)', psql({ file: seedText }));
+      // first, so every tamper run starts from the identical pre-00016
+      // state), and apply [seed + tamper + migration] so the migration's own
+      // BEGIN/COMMIT semantics match a real `db push`. In committed mode the
+      // ordered replay already applied 00016 — the harness-side reset drops
+      // the league column (its constraints and default go with it) so each
+      // re-apply starts exactly where `db push` would. The reset is DDL the
+      // rehearsal owns; the migration text is never edited here.
+      const fixtureResetSql = 'ALTER TABLE public.series DROP COLUMN IF EXISTS league;\n';
+      const seedFixture = () =>
+        mustSucceed(`${tag} fixture archive seeded (178 series x 7 rows, pre-00016 state)`, psql({ file: `${fixtureResetSql}${fixtureSeedText}` }));
+      // E3: "the transaction rolled back" is exactly what the owner is told
+      // to trust before running `npx supabase db push`, so a rejected apply
+      // MEASURES the post-reject state — league column absent,
+      // series_league_check absent, and the seeded+tampered rows (series
+      // count, score-row count, non-canonical-home count) byte-for-byte what
+      // they were the moment before the migration ran. A guard's rollback is
+      // never certified by an assertion that cannot fail.
+      const stateSnapshot = () => [
+        psqlValue("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'"),
+        psqlValue("SELECT count(*) FROM pg_constraint WHERE conname = 'series_league_check'"),
+        psqlValue('SELECT count(*) FROM public.series'),
+        psqlValue('SELECT count(*) FROM public.series_game_scores'),
+        psqlValue('SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id WHERE g.home_team_id <> s.team_a_id'),
+      ].join('|');
       const applyRejected = (label, pattern, extraSql, migration) => {
-        const res = psql({ file: `${seedText}\n${extraSql}\n${migration}\n` });
+        seedFixture();
+        if (extraSql !== '') mustSucceed(`${label}: tamper SQL applied`, psql({ sql: extraSql }));
+        const before = stateSnapshot();
+        const res = psql({ file: migration });
         const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
         if (res.status === 0) throw new RehearsalFailure(`${label}: the migration unexpectedly SUCCEEDED — the guard cannot fail, which is the one rehearsal outcome that must never be green:\n${out}`);
         if (!pattern.test(out)) throw new RehearsalFailure(`${label}: rejected for an unexpected reason:\n${out}`);
-        assert(`${label} — abort observed, whole transaction rolled back`, true);
+        const after = stateSnapshot();
+        assert(
+          `${label} — abort observed; post-reject state measured: league DDL rolled back (column and check absent), rows exactly as before (${after})`,
+          after === before && after.startsWith('0|0|'),
+          `before=${before} after=${after}`,
+        );
       };
       const seriesPairWhere = (row) =>
         `s.year = ${row.year} AND ((ta.abbreviation = '${row.teamA}' AND tb.abbreviation = '${row.teamB}')` +
@@ -570,24 +672,24 @@ function main() {
       // Fixture shape first: the census guards need it and the header
       // amendment claims it.
       seedFixture();
-      assert('SELF-TEST fixture archive holds 178 series rows', psqlValue('SELECT count(*) FROM public.series') === '178');
-      assert('SELF-TEST fixture archive holds 1,246 game rows', psqlValue('SELECT count(*) FROM public.series_game_scores') === '1246');
+      assert(`${tag} fixture archive holds 178 series rows`, psqlValue('SELECT count(*) FROM public.series') === '178');
+      assert(`${tag} fixture archive holds 1,246 game rows`, psqlValue('SELECT count(*) FROM public.series_game_scores') === '1246');
       assert(
-        'SELF-TEST every fixture series carries exactly 7 game rows',
+        `${tag} every fixture series carries exactly 7 game rows`,
         psqlValue('SELECT count(*) FROM (SELECT series_id FROM public.series_game_scores GROUP BY series_id HAVING count(*) <> 7) t') === '0',
       );
       assert(
-        'SELF-TEST pre-state is the canonical 00007 orientation: every game row names team_a as home',
+        `${tag} pre-state is the canonical 00007 orientation: every game row names team_a as home`,
         psqlValue(`SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id WHERE g.home_team_id <> s.team_a_id`) === '0',
       );
 
       // Each guard, with a tamper that makes it fire.
       const twinRow = venues[0].row;
       applyRejected(
-        'SELF-TEST guard league_row_match: a curated row matching TWO series aborts naming the row',
+        `${tag} guard league_row_match: a curated row matching TWO series aborts naming the row`,
         /00016 guard league_row_match: curated league row \(\d+, [A-Z]{3}, [A-Z]{3}\) matches 2 series/,
         `INSERT INTO public.series (year, round, team_a_id, team_b_id, winner_team_id)
-         SELECT s.year, 'SELF-TEST Slot Twin', s.team_b_id, s.team_a_id, s.winner_team_id
+         SELECT s.year, '${tag} Slot Twin', s.team_b_id, s.team_a_id, s.winner_team_id
            FROM public.series s JOIN public.teams ta ON ta.id = s.team_a_id JOIN public.teams tb ON tb.id = s.team_b_id
           WHERE ${seriesPairWhere(twinRow)};`,
         migrationText,
@@ -595,7 +697,7 @@ function main() {
 
       const missingRow = abaRows[0];
       applyRejected(
-        'SELF-TEST guard league_row_match: a curated row matching ZERO series aborts naming the row',
+        `${tag} guard league_row_match: a curated row matching ZERO series aborts naming the row`,
         /00016 guard league_row_match: curated league row/,
         `DELETE FROM public.series s
            WHERE s.year = ${missingRow.year}
@@ -607,10 +709,10 @@ function main() {
       );
 
       applyRejected(
-        'SELF-TEST guard league_backfill_complete: a series the CSV does not cover aborts the SET NOT NULL with the count named',
+        `${tag} guard league_backfill_complete: a series the CSV does not cover aborts the SET NOT NULL with the count named`,
         /00016 guard league_backfill_complete: 1 series row\(s\) left with NULL league/,
         `INSERT INTO public.series (year, round, team_a_id, team_b_id)
-         VALUES (1899, 'SELF-TEST Uncovered',
+         VALUES (1899, '${tag} Uncovered',
            (SELECT id FROM public.teams WHERE abbreviation = 'BOS'),
            (SELECT id FROM public.teams WHERE abbreviation = 'CHI'));`,
         migrationText,
@@ -618,7 +720,7 @@ function main() {
 
       const relabelRow = venues[10].row; // an NBA row, made ABA on the curated side
       applyRejected(
-        'SELF-TEST guard aba_row_census: a mis-keyed league list that resizes the ABA block aborts naming the count',
+        `${tag} guard aba_row_census: a mis-keyed league list that resizes the ABA block aborts naming the count`,
         /00016 guard aba_row_census: ABA series count is 19, expected exactly 18/,
         '',
         mutateTupleLine(migrationText, leagueTuple(relabelRow), `  (${relabelRow.year}, '${relabelRow.teamA}', '${relabelRow.teamB}', 'ABA')`, 'aba census resize'),
@@ -626,22 +728,30 @@ function main() {
 
       const wrongYearVenue = venues[20];
       applyRejected(
-        'SELF-TEST guard venue_row_match: a venue row mis-keyed to a year no series holds aborts naming the row',
+        `${tag} guard venue_row_match: a venue row mis-keyed to a year no series holds aborts naming the row`,
         /00016 guard venue_row_match: curated venue row \(1899, [A-Z]{3}, [A-Z]{3}\) matches 0 series/,
         '',
         mutateTupleLine(migrationText, venueTuple(wrongYearVenue), `  (1899, '${wrongYearVenue.row.teamA}', '${wrongYearVenue.row.teamB}', '${wrongYearVenue.home}')`, 'venue row mis-key'),
       );
 
       applyRejected(
-        'SELF-TEST guard venue_coverage: a blank NBA/BAA venue hand-bypassed into a missing row aborts naming the uncovered series',
+        `${tag} guard venue_coverage: a blank NBA/BAA venue hand-bypassed into a missing row aborts naming the uncovered series`,
         /00016 guard venue_coverage: 1 NBA\/BAA archived series have no curated Game-7 venue row/,
         '',
         mutateTupleLine(migrationText, venueTuple(venues[0]), null, 'drop one venue row'),
       );
 
-      const conflictRow = venues[5].row; // keep-assigned; arrive with a DIFFERENT real venue
+      // Chosen by property, never by index: the tamper has to mean the same
+      // thing against the synthetic assignment and the curated one alike.
+      // `venues[5]` was a keep row only by synthetic construction (review pass
+      // 2, P2-13) — against curated data an index pick can land a swap row, and
+      // then pre-swapping its game-7 row produces a legal case-1 keep, the
+      // migration applies cleanly, and the harness cries "the guard cannot
+      // fail" at a guard that works.
+      const keepVenues = venues.filter((v) => v.home === v.row.teamA);
+      const conflictRow = keepVenues[0].row; // keep-assigned; arrive with a DIFFERENT real venue
       applyRejected(
-        'SELF-TEST guard orientation_conflict: a game-7 row that is neither canonical nor curated aborts naming the series (the 178th-series protection)',
+        `${tag} guard orientation_conflict: a game-7 row that is neither canonical nor curated aborts naming the series (the 178th-series protection)`,
         /00016 guard orientation_conflict: game 7 of series/,
         `UPDATE public.series_game_scores g
             SET home_team_id = s.team_b_id, away_team_id = s.team_a_id,
@@ -651,9 +761,12 @@ function main() {
         migrationText,
       );
 
-      const flippedVenue = venues[30]; // keep row, curated side flipped -> one extra home loss -> 116
+      // Flip one KEEP row's curated home — lands 116, not 117. A different keep
+      // row than the orientation-conflict tamper's, so the two cases never
+      // describe the same series.
+      const flippedVenue = keepVenues[1];
       applyRejected(
-        'SELF-TEST guard game7_home_win_census: one flipped curated venue lands 116, not 117, and aborts — the curated list checksums itself',
+        `${tag} guard game7_home_win_census: one flipped curated venue lands 116, not 117, and aborts — the curated list checksums itself`,
         /00016 guard game7_home_win_census: Game-7 home wins over the NBA\/BAA archive = 116 \(population 160\), expected exactly 117/,
         '',
         mutateTupleLine(
@@ -666,7 +779,7 @@ function main() {
 
       const badRowWinner = abaRows[1]; // ABA row: the guards see an inconsistent GAME row
       applyRejected(
-        'SELF-TEST guard row_winner_consistency: a game row whose winner_team_id is not the higher-scoring side aborts naming the count',
+        `${tag} guard row_winner_consistency: a game row whose winner_team_id is not the higher-scoring side aborts naming the count`,
         /00016 guard row_winner_consistency: 1 game row\(s\) whose winner_team_id is not the higher-scoring side/,
         `UPDATE public.series_game_scores g
             SET winner_team_id = CASE WHEN g.home_score > g.away_score THEN g.away_team_id ELSE g.home_team_id END
@@ -677,7 +790,7 @@ function main() {
 
       const badSeriesWinner = abaRows[2]; // ABA row: the SERIES winner no longer matches game 7
       applyRejected(
-        'SELF-TEST guard series_winner_game7_consistency: an archived series whose winner_team_id is not its game-7 winner aborts naming the count',
+        `${tag} guard series_winner_game7_consistency: an archived series whose winner_team_id is not its game-7 winner aborts naming the count`,
         /00016 guard series_winner_game7_consistency: 1 archived series whose winner_team_id is not their game-7 winner/,
         `UPDATE public.series s
             SET winner_team_id = s.team_b_id
@@ -687,9 +800,12 @@ function main() {
         migrationText,
       );
 
-      // The clean run, last: seed + apply + the census the AC names.
+      // The clean run, last: seed + apply + the census the AC names. In
+      // committed mode this re-applies the committed file after the tampers
+      // disturbed the container — the same text the ordered replay already
+      // applied once (byte-identical by the --check above).
       seedFixture();
-      mustSucceed('SELF-TEST clean 00016 rendering applied over the fixture archive', psql({ file: migrationText }));
+      mustSucceed(`${tag} clean 00016 ${committedMigration ? 'committed file re-applied' : 'rendering applied'} over the fixture archive`, psql({ file: migrationText }));
 
       const leagueCount = (league) => Number(psqlValue(`SELECT count(*) FROM public.series WHERE league = '${league}'`));
       const nullLeague = Number(psqlValue('SELECT count(*) FROM public.series WHERE league IS NULL'));
@@ -701,32 +817,45 @@ function main() {
         `SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id
           WHERE g.game_number = 7 AND s.league IN ('NBA','BAA') AND g.home_team_id = s.team_b_id`,
       ));
-      console.log(`SELF-TEST census — league: ${leagueCount('NBA')} NBA + ${leagueCount('BAA')} BAA + ${leagueCount('ABA')} ABA = 178, NULL ${nullLeague}; NBA/BAA Game-7: ${homeWins} home wins + ${swappedRows} swapped (home = team_b) over the ${leagueCount('NBA') + leagueCount('BAA')} population; Game-7 home wins = ${homeWins}`);
-      assert('SELF-TEST league census is 159 NBA + 1 BAA + 18 ABA with zero NULL', leagueCount('NBA') === 159 && leagueCount('BAA') === 1 && leagueCount('ABA') === 18 && nullLeague === 0);
-      assert('SELF-TEST Game-7 home wins over the 160 NBA/BAA series = 117 (nba.com 117-43, same population)', homeWins === 117);
-      assert('SELF-TEST exactly 43 rows took the team+score swap', swappedRows === 43);
+      const homeIsWinner = Number(psqlValue(
+        `SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id
+          WHERE g.game_number = 7 AND s.league IN ('NBA','BAA') AND g.home_team_id = s.winner_team_id`,
+      ));
+      console.log(`${tag} census — league: ${leagueCount('NBA')} NBA + ${leagueCount('BAA')} BAA + ${leagueCount('ABA')} ABA = 178, NULL ${nullLeague}; NBA/BAA Game-7: ${homeWins} home wins + ${swappedRows} swapped (home = team_b) over the ${leagueCount('NBA') + leagueCount('BAA')} population; home = stored winner in ${homeIsWinner}`);
+      assert(`${tag} league census is 159 NBA + 1 BAA + 18 ABA with zero NULL`, leagueCount('NBA') === 159 && leagueCount('BAA') === 1 && leagueCount('ABA') === 18 && nullLeague === 0);
+      assert(`${tag} Game-7 home wins over the 160 NBA/BAA series = 117 (nba.com 117-43, same population)`, homeWins === venueBackfill.EXPECTED_GAME7_HOME_WINS);
+      // Mode-invariant and stronger than the slot-space split it replaces
+      // (P2-14): the census measured through the STORED winner instead of the
+      // scores. Scores and identity have to agree on every NBA/BAA Game 7, in
+      // the synthetic fixture and against curated production data alike.
+      assert(`${tag} the same census measured through identity, not scores: 117 game-7 rows name the series winner as home`, homeIsWinner === venueBackfill.EXPECTED_GAME7_HOME_WINS);
+      if (committedMigration) {
+        console.log(`${tag} swap-count in CSV slot space is not asserted in committed mode (P2-14): the stored orientation is the database's, and ${swappedRows} game-7 rows currently name stored team_b as home`);
+      } else {
+        assert(`${tag} exactly ${swaps.length} rows took the team+score swap`, swappedRows === swaps.length);
+      }
       assert(
-        'SELF-TEST every swapped game-7 row still has winner_team_id = the higher-scoring side (all 1,246 rows checked)',
+        `${tag} every swapped game-7 row still has winner_team_id = the higher-scoring side (all 1,246 rows checked)`,
         psqlValue(`SELECT count(*) FROM public.series_game_scores g WHERE g.winner_team_id IS DISTINCT FROM (CASE WHEN g.home_score > g.away_score THEN g.home_team_id ELSE g.away_team_id END)`) === '0',
       );
       assert(
-        'SELF-TEST every series still has winner_team_id = its game-7 winner',
+        `${tag} every series still has winner_team_id = its game-7 winner`,
         psqlValue(`SELECT count(*) FROM public.series s JOIN public.series_game_scores g ON g.series_id = s.id AND g.game_number = 7 WHERE s.winner_team_id IS DISTINCT FROM (CASE WHEN g.home_score > g.away_score THEN g.home_team_id ELSE g.away_team_id END)`) === '0',
       );
       assert(
-        'SELF-TEST no games 1-6 row was touched (no statement may reach game_number <> 7)',
+        `${tag} no games 1-6 row was touched (no statement may reach game_number <> 7)`,
         psqlValue('SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id WHERE g.game_number <> 7 AND g.home_team_id <> s.team_a_id') === '0',
       );
       assert(
-        'SELF-TEST the 18 ABA game-7 rows stay exactly as archived (home = team_a, Call 2)',
+        `${tag} the 18 ABA game-7 rows stay exactly as archived (home = team_a, Call 2)`,
         psqlValue("SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id WHERE g.game_number = 7 AND s.league = 'ABA' AND g.home_team_id <> s.team_a_id") === '0',
       );
       assert(
-        'SELF-TEST series_league_check exists',
+        `${tag} series_league_check exists`,
         psqlValue(`SELECT count(*) FROM pg_constraint WHERE conrelid = 'public.series'::regclass AND conname = 'series_league_check'`) === '1',
       );
       assert(
-        'SELF-TEST league is NOT NULL with DEFAULT \'NBA\' — in that order, so the backfill owned every archived value and the default owns pipeline rows (Call 4)',
+        `${tag} league is NOT NULL with DEFAULT 'NBA' — in that order, so the backfill owned every archived value and the default owns pipeline rows (Call 4)`,
         psqlValue(`SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'`) === 'NO' &&
           psqlValue(`SELECT column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'`) === `'NBA'::text`,
       );
@@ -734,12 +863,14 @@ function main() {
       // Call 4 end-to-end: a birth through the UNCHANGED 00015 RPC lands with
       // league filled by the column default — no RPC signature change.
       const defaultedId = psqlValue(
-        `SELECT public.pipeline_birth_series(p_year => 2093, p_round => 'SELF-TEST Default League', p_team_a_id => ${TEAM_A}, p_team_b_id => ${TEAM_B}, p_scores => '${sixThreeThree}'::jsonb)`,
+        `SELECT public.pipeline_birth_series(p_year => 2093, p_round => '${tag} Default League', p_team_a_id => ${TEAM_A}, p_team_b_id => ${TEAM_B}, p_scores => '${sixThreeThree}'::jsonb)`,
       );
-      assert('SELF-TEST a pipeline birth after 00016 defaults to league = NBA without any RPC change',
+      assert(`${tag} a pipeline birth after 00016 defaults to league = NBA without any RPC change`,
         countWhere(`id = '${defaultedId}'::uuid AND league = 'NBA'`) === 1);
 
-      console.log('SELF-TEST Story 2.8 section complete: every guard observed failing, the clean census holds, 00016 itself is NOT in supabase/migrations/.');
+      console.log(committedMigration
+        ? 'Story 2.8 committed-00016 section complete: every guard observed failing over the seeded fixture with the post-reject state measured, --check holds on the committed CSV<->migration pair, and the census reads 159/1/18 + 117.'
+        : 'SELF-TEST Story 2.8 section complete: every guard observed failing, the clean census holds, 00016 itself is NOT in supabase/migrations/.');
     } finally {
       try {
         rmSync(selfTestDir, { recursive: true, force: true });
@@ -748,7 +879,7 @@ function main() {
       }
     }
 
-    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, and Story 2.8\'s self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2).');
+    console.log(`\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015's RPCs assert, land atomically, and stay service_role-only, and Story 2.8's ${committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)'}.`);
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });

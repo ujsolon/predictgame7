@@ -4,7 +4,16 @@
 // Pure-function tests (no Docker, no network, no database): the throwaway
 // rehearsal (scripts/rehearse-migration-00014.mjs section 5) is what proves
 // the emitted SQL itself.
+//
+// Loopback pass 1 (E5/VG-4): expectations about the COMMITTED file are derived
+// from blankVenueRows(...) — the same instrument the gate is — so this suite
+// inverts itself at curation instead of turning `npm test` red the moment the
+// owner's venues land. scripts/** is checked by none of the four gate steps,
+// so the `node --check` smoke and the seed-abbreviation pin below exist to
+// close part of that gap from inside the gate.
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CURATED_CSV_PATH,
@@ -15,6 +24,7 @@ import {
   blankVenueRows,
   curatedAssignments,
   firstDriftLine,
+  normalizeEol,
   orientationDecision,
   pairMatches,
   parseVenuesCsv,
@@ -36,6 +46,13 @@ function fullAssignments(count: number): string {
   // rule: the generator only counts them and splits them in file order.
   return csv(...Array.from({ length: count }, (_, i) => `${1900 + i},BOS,CHI,NBA,`));
 }
+
+// The committed file's CURRENT state, read through the same instrument the
+// refuse-to-emit gate is. Every test that speaks about "this session" branches
+// on this count, so the suite inverts itself at curation instead of turning
+// `npm test` red the moment the owner's venues land (loopback pass 1, E5/VG-4).
+const committedRows = parseVenuesCsv(readFileSync(CURATED_CSV_PATH, 'utf8'), 'game7_venues_curated.csv');
+const committedBlanks = blankVenueRows(committedRows);
 
 describe('parseVenuesCsv — the curated row shape', () => {
   it('reads the five columns, keeping the blank venue as an empty string', () => {
@@ -86,7 +103,7 @@ describe('parseVenuesCsv — the curated row shape', () => {
 });
 
 describe('the committed curated file', () => {
-  const rows = parseVenuesCsv(readFileSync(CURATED_CSV_PATH, 'utf8'), 'game7_venues_curated.csv');
+  const rows = committedRows;
 
   it('carries one row per archived series: 178 total, 160 NBA/BAA, 18 ABA, 1 BAA', () => {
     expect(rows).toHaveLength(178);
@@ -95,13 +112,40 @@ describe('the committed curated file', () => {
     expect(rows.filter((r) => r.league === 'ABA')).toHaveLength(18);
     // The ABA blanks are a permanent rule (Call 2); the NBA/BAA blanks are
     // this session's state and NOT asserted here — the refusal gate is the
-    // instrument for that, tested below with fixtures and run live via the CLI.
+    // instrument for that, tested below with fixtures and run live via the
+    // CLI in a state-neutral form that INVERTS at curation (E5).
     expect(rows.filter((r) => r.league === 'ABA' && r.home !== '')).toHaveLength(0);
   });
 
   it('resolves every row to a distinct (year, unordered team pair) — the identity the migration joins on', () => {
     const keys = rows.map((r) => `${r.year}|${[r.teamA, r.teamB].sort().join('|')}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('the committed CSV against the teams seed 00016 joins on (E5)', () => {
+  // The migration resolves every curated row through teams.abbreviation, and
+  // the probe reads the same 59-team seed of 00005 + 00007. Nothing else
+  // pins an abbreviation typo introduced at curation before the Docker
+  // rehearsal — and no gate step runs the Docker rehearsal.
+  const seedText =
+    readFileSync(new URL('../../supabase/migrations/00005_release_1_data_model.sql', import.meta.url), 'utf8') +
+    readFileSync(new URL('../../supabase/migrations/00007_backfill_missing_historical_series.sql', import.meta.url), 'utf8');
+  const seeded = new Map<string, number>();
+  for (const match of seedText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seeded.set(match[2], Number(match[1]));
+
+  it('the seed parse holds the 59 abbreviations the archive covers', () => {
+    expect(seeded.size).toBe(59);
+  });
+
+  it('every curated abbreviation (slots and curated homes alike) resolves in the seed', () => {
+    const missing: string[] = [];
+    for (const row of committedRows) {
+      for (const abbr of [row.teamA, row.teamB, row.home]) {
+        if (abbr !== '' && !seeded.has(abbr)) missing.push(`${CURATED_CSV_PATH}:${row.line} ${abbr}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });
 
@@ -121,15 +165,30 @@ describe('the refuse-to-emit gate (spec-2-8 D2)', () => {
     expect(blankVenueRows(rows)).toHaveLength(0);
   });
 
-  it('the committed file trips the gate this session: the CLI exits non-zero and writes no migration', () => {
+  it('the committed file is refused or accepted strictly by its blank count — the suite inverts at curation (E5)', () => {
     const written: string[] = [];
     const result = runVenueBackfillCli([], {
       readFile: (path) => readFileSync(path, 'utf8'),
-      writeFile: (path) => written.push(path),
+      writeFile: (path) => {
+        written.push(path);
+      },
     });
-    expect(result.exitCode).toBe(2);
-    expect(result.messages.join('\n')).toContain('refuses to emit: 160 NBA/BAA row(s)');
-    expect(written).toEqual([]);
+    const messages = result.messages.join('\n');
+    if (committedBlanks.length > 0) {
+      // This session's state: the data gap is an instrument that cannot pass.
+      expect(result.exitCode).toBe(2);
+      expect(messages).toContain(`refuses to emit: ${committedBlanks.length} NBA/BAA row(s)`);
+      expect(written).toEqual([]);
+    } else {
+      // Curation landed: the emit path must run clean and target the real
+      // migrations path with exactly the curated render (or find it there).
+      expect(result.exitCode).toBe(0);
+      expect(messages).toContain('00016');
+      if (written.length > 0) {
+        expect(written).toHaveLength(1);
+        expect([...written][0].replace(/\\/g, '/')).toContain('/supabase/migrations/');
+      }
+    }
   });
 });
 
@@ -206,6 +265,17 @@ describe('renderMigration — the single emitted copy of 00016', () => {
     ]) {
       expect(text).toContain(`00016 guard ${guard}`);
     }
+  });
+
+  it('ships no dead code, and its census guard ASSERTS the population it names (E6)', () => {
+    // The unused `v_found` would have been inherited by every future reader
+    // of 00016; the 117 only means nba.com's 117-43 over exactly 160 NBA/BAA
+    // Game 7s, so the population gets its own raise, not an interpolation.
+    expect(text).not.toContain('v_found');
+    expect(text).toMatch(
+      /IF v_population <> 160 THEN\s+RAISE EXCEPTION '00016 guard game7_home_win_census: NBA\/BAA Game-7 population is %/,
+    );
+    expect(text).toContain('Game-7 home wins over the NBA/BAA archive = % (population %), expected exactly 117');
   });
 
   it('never touches a non-game-7 row and never writes winner_team_id', () => {
@@ -313,6 +383,72 @@ describe('firstDriftLine and the --check contract', () => {
     expect(targetPath.replace(/\\/g, '/')).toContain('/supabase/migrations/');
     expect([...written.values()][0]).toBe(renderMigration(rows, curatedAssignments(rows), { selfTest: false }));
   });
+
+  it('a CRLF checkout does not make --check red (E2): line endings normalize before the compare', () => {
+    const complete = csv('2016,CLE,GSW,NBA,CLE', '2017,GSW,CLE,NBA,CLE');
+    const rows: VenueRow[] = parseVenuesCsv(complete, 'c.csv');
+    const rendered = renderMigration(rows, curatedAssignments(rows), { selfTest: false });
+    const crlfCheckout = rendered.replace(/\n/g, '\r\n'); // exactly what core.autocrlf=true produces
+    const result = runVenueBackfillCli(['--check', '--csv=c.csv'], {
+      readFile: (path) =>
+        path === 'c.csv' ? complete : path.endsWith(MIGRATION_FILENAME) ? crlfCheckout : (() => { throw new Error(`unexpected read ${path}`); })(),
+      writeFile: () => {
+        throw new Error('--check must not write');
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.messages.join('\n')).toContain('--check ok');
+  });
+
+  it('the emit path is idempotent across EOL conventions too (E2): a CRLF committed file that agrees is left alone', () => {
+    const complete = csv('2016,CLE,GSW,NBA,CLE', '2017,GSW,CLE,NBA,CLE');
+    const rows: VenueRow[] = parseVenuesCsv(complete, 'c.csv');
+    const rendered = renderMigration(rows, curatedAssignments(rows), { selfTest: false });
+    const written: string[] = [];
+    const result = runVenueBackfillCli(['--csv=c.csv'], {
+      readFile: (path) =>
+        path === 'c.csv' ? complete : path.endsWith(MIGRATION_FILENAME) ? rendered.replace(/\n/g, '\r\n') : (() => { throw new Error(`unexpected read ${path}`); })(),
+      writeFile: (path) => {
+        written.push(path);
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.messages.join('\n')).toContain('nothing written');
+    expect(written).toEqual([]);
+  });
+
+  it('normalizeEol flattens CRLF and lone CR to LF', () => {
+    expect(normalizeEol('a\r\nb\rc\nd')).toBe('a\nb\nc\nd');
+    expect(firstDriftLine('a\r\nb', 'a\nb')).toBeNull();
+  });
+
+  it('the committed CSV <-> migration pair runs through the REAL-IO CLI and is refused or green by state (E2)', () => {
+    // The injected-IO tests above prove the compare logic; this one drives the
+    // shipped default IO over the committed files, so the normally-executed
+    // path is exercised inside the gate. While curation stands incomplete the
+    // refusal comes first by design (triage R5: there is no committed
+    // migration to compare against yet); after it lands, --check must be
+    // green on the committed pair.
+    const exists = (() => {
+      try {
+        return readFileSync(new URL(`../../supabase/migrations/${MIGRATION_FILENAME}`, import.meta.url), 'utf8').length > 0;
+      } catch {
+        return false;
+      }
+    })();
+    const result = runVenueBackfillCli(['--check'], {});
+    const messages = result.messages.join('\n');
+    if (committedBlanks.length > 0) {
+      expect(result.exitCode).toBe(2);
+      expect(messages).toContain(`refuses to emit: ${committedBlanks.length} NBA/BAA row(s)`);
+    } else if (exists) {
+      expect(result.exitCode).toBe(0);
+      expect(messages).toContain('--check ok');
+    } else {
+      expect(result.exitCode).toBe(2);
+      expect(messages).toContain('does not exist');
+    }
+  });
 });
 
 describe('the self-test CLI path (what the rehearsal drives)', () => {
@@ -339,7 +475,7 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
     expect(refused.messages.join('\n')).toContain('must never land in');
   });
 
-  it('the real emission stays refused while the committed venues are blank, even via explicit flags', () => {
+  it('the real emission stays refused while the committed venues are blank, even via explicit flags', { skip: committedBlanks.length === 0 }, () => {
     const result = runVenueBackfillCli([], {
       readFile: (path) => readFileSync(path, 'utf8'),
       writeFile: () => {
@@ -349,4 +485,20 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
     expect(result.exitCode).toBe(2);
     expect(result.messages.join('\n')).toContain('no migration written');
   });
+});
+
+describe('the scripts/** coverage gap (E5)', () => {
+  // No gate step type-checks or lints scripts/** (AGENTS.md), so at minimum
+  // the two Story 2.8 additions must parse under Node's own syntax check.
+  // Anything deeper is the Docker rehearsal's job — which also runs in no
+  // gate step, and says so in its header.
+  for (const script of ['probe-game7-venues.mjs', 'rehearse-migration-00014.mjs']) {
+    it(`node --check parses scripts/${script}`, () => {
+      const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
+        encoding: 'utf8',
+      });
+      expect(res.stderr).toBe('');
+      expect(res.status).toBe(0);
+    });
+  }
 });

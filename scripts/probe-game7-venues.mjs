@@ -5,17 +5,21 @@
 // is that the agent never runs it: paste the whole output back, then fill
 // `game7_venues_curated.csv`'s venue column and re-run the generator.
 //
-// What it does: iterates the `leaguegamelog` feed over seasons 1993-94 →
-// 2025-26 (the depth Story 2.1 measured) and prints each completed series'
-// Game-7 home team as a CSV-shaped line:
+// What it does: iterates the `leaguegamelog` feed over seasons 1992-93 →
+// 2025-26 (the depth Story 2.1 measured, pushed back one season so the
+// calendar-1993 rows — season 1992-93's postseason — are answered too; the
+// curated CSV holds two of them) and prints each completed series' Game-7
+// home team as a CSV-shaped line:
 //
 //   year,team_a,team_b,game7_home_team
 //
-// The owner pastes the fourth field into the matching curated row. Matching
-// is by (year, UNORDERED team pair) — this probe's team_a/team_b follow the
-// adapter's game-1-home convention, which need not equal the archive's
-// winner-first slots; only the home abbreviation travels. It writes NOTHING:
-// no file, no database, no environment read.
+// Printed team_a/team_b follow the CURATED file's convention, winner-first
+// (team_a = series winner, same as docs/NBASeriesResults.xlsx and 00007's
+// slots) — so the fourth field can be pasted straight into the matching row.
+// Matching into the curated file is by (year, UNORDERED team pair) either
+// way, and only the home abbreviation travels; the adapter's own slots
+// follow game-1-home and are not what is printed. It writes NOTHING: no
+// file, no database, no environment read.
 //
 // The feed posture is the shipped adapter's, not a re-implementation (the
 // same triage rule Story 2.4 learned): the probe imports `createNbaComAdapter`
@@ -37,11 +41,12 @@
 // its rows — the pre-1993 block included — are hand-entered from a reference
 // by the owner. No agent-drafted venue list is authorized.
 //
-// Requires Node >= 22.18 (imports the shipped TypeScript adapter under native
-// type-stripping; an older Node crashes at import, as in the 2.4 probe).
+// Requires Node >= 22.18 (imports the shipped TypeScript adapter and the
+// Story 2.8 generator under native type-stripping; an older Node crashes at
+// import, as in the 2.4 probe).
 //
 // Usage:
-//   node scripts/probe-game7-venues.mjs                 # all seasons 1993-94 → 2025-26
+//   node scripts/probe-game7-venues.mjs                 # all seasons 1992-93 → 2025-26
 //   node scripts/probe-game7-venues.mjs --season=2016-17  # one season (drill)
 const exitWith = (code, reason) => {
   console.error(`\nPROBE COULD NOT RUN TO COMPLETION: ${reason}`);
@@ -66,13 +71,21 @@ async function runVenueProbe(seasonOverrideRaw) {
   // must not quietly fall back to its own HTTP; the catch above exits 2.
   const shipped = await import('../supabase/scripts/pipeline/adapters/nbaCom.ts');
   const { createNbaComAdapter, validateSeasonOverride } = shipped;
+  // The Story 2.8 generator, imported for the coverage report at the end:
+  // which curated rows this run answered and which still stand blank is
+  // exactly where D1's residual risk (a compensating pair) materialises, so
+  // the owner must see it while pasting (review pass 1, E4).
+  const generator = await import('../supabase/scripts/pipeline/venueBackfill.ts');
 
-  // Season ids are calendar-crossing strings: the postseason of 1993-94 is
-  // played in 1994. The list is the 1993-94 → 2025-26 depth Story 2.1
-  // measured; anything older (the ~63-row block, and every ABA season the
-  // LeagueID=00 feed cannot answer at all) is D1's hand-entry fallback.
+  // Season ids are calendar-crossing strings: the postseason of 1992-93 is
+  // played in calendar 1993 — and the curated CSV holds two year-1993 rows,
+  // so the loop starts at 1992, not 1993 (review pass 1, E4: starting at
+  // 1993-94 answers 96 of the 160 NBA/BAA rows, not 97). The list is the
+  // 1992-93 → 2025-26 depth Story 2.1 measured; anything older (the pre-1993
+  // block, and every ABA season the LeagueID=00 feed cannot answer at all)
+  // is D1's hand-entry fallback.
   const seasons = [];
-  for (let start = 1993; start <= 2025; start++) {
+  for (let start = 1992; start <= 2025; start++) {
     seasons.push(`${start}-${String((start + 1) % 100).padStart(2, '0')}`);
   }
   const selected = seasonOverrideRaw !== undefined ? [validateSeasonOverride(seasonOverrideRaw)] : seasons;
@@ -96,8 +109,18 @@ async function runVenueProbe(seasonOverrideRaw) {
 
   console.log('story 2.8 venue probe — shipped nba_com adapter, season by season (read-only, zero Supabase, writes nothing)');
   console.log(`seasons asked: ${selected.length} (${selected[0]} → ${selected[selected.length - 1]})`);
-  console.log('# lines below: year,team_a,team_b,game7_home_team — paste the 4th field into');
+  console.log('# lines below: year,team_a,team_b,game7_home_team — winner-first like the curated');
+  console.log('# file itself; paste the 4th field into');
   console.log('# supabase/scripts/pipeline/data/game7_venues_curated.csv by (year, UNORDERED pair).');
+
+  // The curated file drives the coverage report: identity is (year, unordered
+  // team pair), the same key the migration resolves on.
+  const curatedCsvRel = '../supabase/scripts/pipeline/data/game7_venues_curated.csv';
+  const curatedRows = generator.parseVenuesCsv(await readFileSafe(curatedCsvRel), 'game7_venues_curated.csv');
+  const pairKey = (year, a, b) => `${year}|${[a, b].sort().join('|')}`;
+  const curatedByKey = new Map(curatedRows.map((row) => [pairKey(row.year, row.teamA, row.teamB), row]));
+  const answeredKeys = new Set();
+  const unmatchedProbeAnswers = [];
 
   const failures = [];
   let printed = 0;
@@ -123,6 +146,15 @@ async function runVenueProbe(seasonOverrideRaw) {
       const scores = await adapter.fetch_game_scores();
       const report = adapter.describeRun();
       const completed = statuses.filter((s) => s.winner_team_id !== null);
+      if (completed.length === 0) {
+        // D1 names this exact condition as the feed-depth/mapping blocker
+        // evidence — it must not read as a quiet success at exit 0
+        // (review pass 1, E4).
+        failures.push(`${season}: feed answered with ZERO completed Game-7 series — depth short of this season or a mapping blocker (D1 evidence); rows for this calendar year need the hand-entry fallback`);
+        console.log(`\n=== ${season} — FAILED — 0 completed Game-7 series answered by the feed`);
+        for (const note of report.notes) console.log(`note: ${note}`);
+        continue;
+      }
       console.log(`\n=== ${season} — ${report.countsLine} — ${completed.length} completed Game-7 series`);
       for (const status of completed) {
         const game7 = scores.find(
@@ -146,8 +178,19 @@ async function runVenueProbe(seasonOverrideRaw) {
         // follow game-1-home. Say which is which so the paste target is never a guess.
         const winner = idToAbbr.get(status.winner_team_id);
         const loser = winner === idToAbbr.get(status.team_a_id) ? idToAbbr.get(status.team_b_id) : idToAbbr.get(status.team_a_id);
-        console.log(`${status.year},${winner},${loser},${home}`);
+        // The paste target travels with the answer (review pass 2, P2-5): the
+        // line the owner must edit, not a row they hunt for by eye. Matching is
+        // still (year, unordered pair), so the number is a convenience, never a
+        // key — a curated row moved between runs shows up as a mismatch here.
+        const key = pairKey(status.year, winner, loser);
+        const targetRow = curatedByKey.get(key);
+        console.log(`${status.year},${winner},${loser},${home}${targetRow ? `\t# paste into ${curatedCsvRel.replace(/^\.\.\//, '')}:${targetRow.line}` : ''}`);
         printed += 1;
+        if (curatedByKey.has(key)) {
+          answeredKeys.add(key);
+        } else {
+          unmatchedProbeAnswers.push(`${status.year},${winner},${loser} — no curated row holds this (year, unordered pair)`);
+        }
       }
       for (const note of report.notes) console.log(`note: ${note}`);
     } catch (error) {
@@ -160,6 +203,24 @@ async function runVenueProbe(seasonOverrideRaw) {
   }
 
   console.log(`\nGame-7 venue lines printed: ${printed}`);
+
+  // Coverage report (review pass 1, E4): which curated rows this run answered
+  // and which still stand blank — with file:line, because that list is where
+  // D1's accepted residual risk (a compensating pair) actually materialises.
+  const answeredBlanks = curatedRows.filter((row) => generator.isNbaBaa(row) && row.home === '' && answeredKeys.has(pairKey(row.year, row.teamA, row.teamB)));
+  const stillUnanswered = curatedRows.filter((row) => generator.isNbaBaa(row) && row.home === '' && !answeredKeys.has(pairKey(row.year, row.teamA, row.teamB)));
+  console.log('\n-- coverage report (game7_venues_curated.csv) --');
+  console.log(`curated NBA/BAA rows answered by this run: ${answeredKeys.size} (of which venue still blank: ${answeredBlanks.length})`);
+  console.log(`curated NBA/BAA rows still blank this run did NOT answer: ${stillUnanswered.length}`);
+  for (const row of stillUnanswered) {
+    console.log(`  ${curatedCsvRel.replace(/^\.\.\//, '')}:${row.line}: ${row.year}, ${row.teamA} vs ${row.teamB} (${row.league})`);
+  }
+  if (unmatchedProbeAnswers.length > 0) {
+    console.log(`probe answers matching NO curated row: ${unmatchedProbeAnswers.length}`);
+    for (const line of unmatchedProbeAnswers) console.log(`  ${line}`);
+    console.log('  (archive growth or a key mismatch — reconcile against the live table BEFORE emitting: 00016\'s league_backfill_complete guard aborts db push on any uncovered series)');
+  }
+
   if (failures.length > 0) {
     console.error(`\nPROBE INCOMPLETE — ${failures.length} season(s) could not be answered: ${failures.map((f) => f.split(':')[0]).join(', ')}`);
     for (const failure of failures) console.error(`  ${failure}`);
