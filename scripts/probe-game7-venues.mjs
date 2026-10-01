@@ -5,10 +5,10 @@
 // is that the agent never runs it: paste the whole output back, then fill
 // `game7_venues_curated.csv`'s venue column and re-run the generator.
 //
-// What it does: iterates the `leaguegamelog` feed over seasons 1992-93 →
-// 2025-26 (the depth Story 2.1 measured, pushed back one season so the
-// calendar-1993 rows — season 1992-93's postseason — are answered too; the
-// curated CSV holds two of them) and prints each completed series' Game-7
+// What it does: iterates the `leaguegamelog` feed over seasons 1946-47 →
+// 2025-26 — the whole span the archive can need, since the owner's 2026-10-01
+// depth drill answered 1962-63 and proved the older block was never a feed
+// limitation — and prints each completed series' Game-7
 // home team as a CSV-shaped line:
 //
 //   year,team_a,team_b,game7_home_team
@@ -45,8 +45,8 @@
 // feed's numeric TEAM_ID is a foreign namespace (measured 2026-10-01: 0 agree
 // / 16 differ) and Story 2.4 already refused to assume it.
 //
-// What a run can reveal, per D1: feed depth short of 1993-94 (a season the
-// route answers empty), 403s on the historical seasons, or a franchise whose
+// What a run can reveal, per D1: feed depth short of the season asked (a route that
+// answers with no series at all), 403s on the historical seasons, or a franchise whose
 // feed abbreviation the `teams` table does not hold. Each prints loudly with
 // the URL and the season; none is a fallback. If a season cannot be covered,
 // its rows — the pre-1993 block included — are hand-entered from a reference
@@ -88,15 +88,17 @@ async function runVenueProbe(seasonOverrideRaw) {
   // the owner must see it while pasting (review pass 1, E4).
   const generator = await import('../supabase/scripts/pipeline/venueBackfill.ts');
 
-  // Season ids are calendar-crossing strings: the postseason of 1992-93 is
-  // played in calendar 1993 — and the curated CSV holds two year-1993 rows,
-  // so the loop starts at 1992, not 1993 (review pass 1, E4: starting at
-  // 1993-94 answers 96 of the 160 NBA/BAA rows, not 97). The list is the
-  // 1992-93 → 2025-26 depth Story 2.1 measured; anything older (the pre-1993
-  // block, and every ABA season the LeagueID=00 feed cannot answer at all)
-  // is D1's hand-entry fallback.
+  // Season ids are calendar-crossing strings: the postseason of 1946-47 is played
+  // in calendar 1947. The sweep starts at 1946 — the earliest franchise season the
+  // archive can need (its oldest row is the 1948 BAA tiebreaker) — because the owner
+  // drilled 1962-63 on 2026-10-01 and the route ANSWERED it: the pre-1993 block was
+  // never a depth limit, only an unasked range. Seasons the route cannot answer come
+  // back as `empty-feed` and are named, so widening costs visibility, never silence.
+  // ABA seasons stay outside this entirely: the LeagueID=00 feed does not carry them,
+  // and the 18 ABA rows are blank-legal by scope (Call 2), so nothing here can fill
+  // one by accident.
   const seasons = [];
-  for (let start = 1992; start <= 2025; start++) {
+  for (let start = 1946; start <= 2025; start++) {
     seasons.push(`${start}-${String((start + 1) % 100).padStart(2, '0')}`);
   }
   const selected = seasonOverrideRaw !== undefined ? [validateSeasonOverride(seasonOverrideRaw)] : seasons;
@@ -331,12 +333,14 @@ async function runVenueProbe(seasonOverrideRaw) {
     );
   }
 
-  if (feedOnlyCodes.size > 0) {
-    // Not a failure: these are the codes the feed uses that `teams` does not
-    // hold. Each one is reported so the owner can see which franchises the
-    // archive simply never stored, instead of losing a whole season's answers.
-    console.log(`\nfeed abbreviations the teams table does not hold: ${[...feedOnlyCodes].sort().join(', ')}`);
-    console.log('  (these rows cannot be pasted anywhere — the archive never stored that franchise under any slot)');
+  if ([...feedOnlyCodes].some((code) => !feedAliases.some((alias) => alias.feed === code))) {
+    // Codes the seed lacks AND the alias table does not cover. An aliased code is
+    // still seen here as raw feed vocabulary, so it is filtered out — reporting
+    // `UTH` as unheld while `UTH->UTA` sits approved in the table would send the
+    // owner looking for a mapping that already exists.
+    const unresolved = [...feedOnlyCodes].filter((code) => !feedAliases.some((alias) => alias.feed === code)).sort();
+    console.log(`\nfeed abbreviations neither in the teams table nor covered by an approved alias: ${unresolved.join(', ')}`);
+    console.log('  (each is reported as a proposal below where one exists; none is ever applied without you)');
   }
 
   if (aliasProposals.length > 0) {

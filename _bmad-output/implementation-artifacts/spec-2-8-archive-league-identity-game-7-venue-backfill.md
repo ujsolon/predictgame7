@@ -500,6 +500,23 @@ The 1988 line is the rule earning its keep: three curated rows hold `LAL` that y
 
 What this does **not** claim: the probe's own print loop is still executed only on the owner's machine — `scripts/**` is invisible to all four gate steps, Biome's `files.includes` skips it even when asked directly (`npx biome lint scripts/…` reports "No files were processed"), and its verification here is `node --check` plus the matcher tests underneath it. The next full run is the first real exercise of that glue.
 
+**The full sweep, transcribed (owner's run 2026-10-01, then the agent's paste).** `node scripts/probe-game7-venues.mjs` over 34 seasons:
+
+```
+Game-7 venue lines printed: 97
+curated NBA/BAA rows answered by this run: 97 (of which venue still blank: 97)
+curated NBA/BAA rows still blank this run did NOT answer: 63
+=== 1998-99 — FAILED — the route returned no series at all …
+# proposed alias rows (1) — CHH → CHA for 2001 MIL vs CHA (csv:135)
+# curated slot order disagrees with the feed's winner (1) — csv:215 OKC vs SAS
+```
+
+All 97 answers were transcribed into `game7_venues_curated.csv` by script, not by hand, each one refused unless its own line reproduced the year and unordered pair the probe printed, its venue was one of that row's two slots, the slot was previously blank, and the row was not ABA — **97 written, 0 refused**. Spot-verified after: `1993,SEA,HOU,NBA,SEA`, `2016,CLE,GSW,NBA,GSW` (a road Game 7, so one of the ~43 the migration will swap), `2026,OKC,SAS,NBA,OKC`; the 18 ABA rows are still blank; `--check` still refuses, now naming **63** blanks; the rehearsal and the gate are green (320 tests).
+
+**Why 63 remain, and it is not depth.** The sweep only ever asked 1992-93 → 2025-26, so the 62 pre-1993 rows were never requested — while the owner's own `--season=1962-63` drill had already answered that era. The loop therefore starts at **1946-47** now (the archive's oldest row is the 1948 BAA tiebreaker), seasons the route cannot answer report as `empty-feed` rather than passing silently, and the code list at the tail filters out codes an approved alias already covers, which had been reporting `UTH` as unheld while `UTH->UTA` sat in the table. The 63rd row is csv:135's `CHH`, which needs the owner's approval of `CHH -> CHA` — proposed with evidence, deliberately not applied by the agent.
+
+**Two things the sweep raised that are not venue questions.** The 2026 Finals row is confirmed inverted against the curated convention — the feed says SAS won a Game 7 hosted at OKC, while the file holds OKC in the winner-first slot — exactly the divergence `CURRENT_DATA_MODEL.md` asserts for that row, now with source evidence; the migration reads the winner from the table and matches unordered, so nothing depends on it. And 1998-99 answering with **no series at all** sits oddly beside an archive that holds no 1999 Game 7 either: the two agree, but a whole empty postseason is the kind of thing to check once against a reference rather than accept, because nba.com's published 160 Game 7s is the denominator this file is being built to match.
+
 **Known limits, stated not glossed.**
 - Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — verified
   only by running them, per AGENTS.md. `venueBackfill.ts` is under the gate by design (Biome + `tsc -b`
