@@ -150,16 +150,33 @@ agree from opposite directions.
 4. A **request posture** for stats.nba.com: required headers, no rate-limit knowledge,
    backoff, and a probe before any in-season dependency is announced.
 
-## Owed before this record can be called complete
+## Owed before this record can be called complete — disposition 2026-10-02
 
 - **The in-season leg is unprovable today.** It is 2026-09-30; the playoffs are concluded
   and the schedule blob has rolled to 2026-27, so "current playoff bracket" was measured
   against the finished 2026 postseason. Re-run `probe-resultsheets.mjs` during the 2027
   window (SM-1, Apr–Jun 2027) before trusting in-series `SeriesStandings` freshness.
+  **→ STILL OWED, and it cannot be closed earlier than the window: 2027 Apr–Jun.** Routed
+  out of this record so it stops reading as unfinished paperwork: one dated entry in
+  `deferred-work.md`, owner-run in the 2027 playoff window (the FR-20/21 pipeline cadence —
+  no Epic 2 story is gated on it), with the exact command. Its result is written back into
+  this record, not into a new open item.
 - **The keyed alternate's shape** needs an owner-supplied key (see constraints).
+  **→ CLOSED 2026-10-02 as "no consumer", not as "answered".** `api.balldontlie.io/v1/games`
+  answered 401 with no key in `.env`, and the unkeyed `stats.nba.com/stats/leaguegamelog`
+  route went on to carry everything since: Story 2.4's shipped adapter is that route, and
+  Story 2.8's curation got **all 160** NBA/BAA Game-7 venues out of it across three sweeps
+  with 0 conflicts, depth drilled to 1962-63. So the goal the alternate was probed for is
+  attained. Reopening the leg needs a story that wants a *second* source — and the named
+  trigger is written down: `leaguegamelog` is a hostile route with unmeasured limits, so if
+  it ever breaks, this becomes the fallback and the key is owed again.
 - **The 19 duplicate `(year, round)` groups and the 17-value `round` domain** must land in
   Story 2.2's spec before its migration is written — this record states them; 2.2's spec
   has not yet been updated.
+  **→ CLOSED 2026-10-02: shipped, and measured in production.** AD-5's identity is
+  `UNIQUE (year, team_a_id, team_b_id)` (`series_year_team_pair_key`, migration `00014`,
+  applied), `round` is deliberately ungated across its 17 era spellings, and `00016` was
+  applied on top of it. Story 2.2 is done.
 
 ## Deliberately not done here
 
