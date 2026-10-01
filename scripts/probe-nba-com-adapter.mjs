@@ -191,15 +191,25 @@ async function runProbe(seasonOverrideRaw) {
   const target = decided[0];
   const pairKey = new Set([target.team_a_id, target.team_b_id]);
   const abbrOf = (id) => idToAbbr.get(id);
-  const gameDates = new Map();
+  const pairAbbrs = new Set([abbrOf(target.team_a_id), abbrOf(target.team_b_id)]);
+  const gamesSeen = new Map();
   for (const row of set.rowSet) {
-    if (!pairKey.has(seed.get(row[idx.TEAM_ABBREVIATION]))) continue;
-    const g = gameDates.get(row[idx.GAME_ID]) ?? { date: row[idx.GAME_DATE], abbrs: new Set() };
-    g.abbrs.add(row[idx.TEAM_ABBREVIATION]);
-    gameDates.set(row[idx.GAME_ID], g);
+    const abbr = row[idx.TEAM_ABBREVIATION];
+    if (!pairKey.has(seed.get(abbr))) continue;
+    const g = gamesSeen.get(row[idx.GAME_ID]) ?? { date: row[idx.GAME_DATE], abbrs: new Set() };
+    g.abbrs.add(abbr);
+    gamesSeen.set(row[idx.GAME_ID], g);
   }
-  const ordered = [...gameDates.entries()].sort((l, r) => l[1].date.localeCompare(r[1].date));
-  if (ordered.length !== 7) throw new Error(`series ${abbrOf(target.team_a_id)}/${abbrOf(target.team_b_id)}: expected 7 games on the wire, captured ${ordered.length}`);
+  // GAMES IN THE SERIES, not games the franchises played. The filter above
+  // admits every game either side appears in, so a franchise that advanced
+  // contributes its later rounds too — measured live on 2025-26, the CLE/TOR
+  // first round gathered 18 GAME_IDs instead of 7 because CLE kept winning. A
+  // game belongs to this pair only when BOTH of its rows are these two
+  // abbreviations.
+  const ordered = [...gamesSeen.entries()]
+    .filter(([, g]) => g.abbrs.size === 2 && [...g.abbrs].every((abbr) => pairAbbrs.has(abbr)))
+    .sort((l, r) => l[1].date.localeCompare(r[1].date));
+  if (ordered.length !== 7) throw new Error(`series ${abbrOf(target.team_a_id)}/${abbrOf(target.team_b_id)}: expected 7 games in this pair, captured ${ordered.length} of ${gamesSeen.size} games either franchise appears in`);
   const [game7Id, game7] = ordered[6];
   const feedRows = set.rowSet.filter((row) => row[idx.GAME_ID] === game7Id);
   if (feedRows.length !== 2) throw new Error(`game ${game7Id}: expected 2 feed rows, captured ${feedRows.length}`);
