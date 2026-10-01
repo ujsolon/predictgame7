@@ -95,11 +95,37 @@ The following legacy tables are no longer part of the active `public` schema and
 
 `supabase/scripts/load-games/main.py` — the old spreadsheet loader — was deleted, not repaired: it blind-inserted into `game_sevens`, a table `00013` moved to `archive` and nothing reads, and its winner-oriented row shape (no home/away) is the wrong one for the current schema. Its `venv/` was never tracked (`.gitignore` has excluded `venv` and `data` all along), so the deletion was of the one tracked script plus `requirements.txt`; the directory is now gone entirely. The source spreadsheet it read, `NBASeriesResults.xlsx`, **is** in the repo — moved to `docs/NBASeriesResults.xlsx` (2026-10-01) for provenance, where nothing reads it. Its successor is the pipeline runner under `supabase/scripts/pipeline/`, whose `manual_csv` adapter reads the committed operator file `data/series_manual.csv` (long format, one row per game; header-only — and therefore a zero-write plan — outside a playoff window), with `data/series_manual.example.csv` beside it showing the row shape. That adapter is the spreadsheet floor of the `SeriesDataSource` port — see `_bmad-output/implementation-artifacts/seriesdatasource-port.md`.
 
-### The archive carries slots, not venues
+### The archive carries slots, not venues — and slot `a` is the series winner
 
-Measured on the live table 2026-09-30: in 177 of the 178 archived series, **every one of the seven score rows names the same team as `home_team_id`** — the series' `team_a_id`. The backfill came from that winner-oriented spreadsheet, so historical rows hold no real home/away information. Consequences the pipeline must respect: an adapter that supplies genuine venue data (Story 2.4's) cannot reconcile a historical series, and the runner's "never rewrites archived games" guard will refuse the attempt by design. `team_a` = game 1's home team is therefore true of the archive only because the archive wrote it that way.
+Measured on the live table 2026-09-30: in 177 of the 178 archived series, **every one of the seven score rows names the same team as `home_team_id`** — the series' `team_a_id`.
+
+**Corrected 2026-10-01 from the source data: that `team_a_id` is the series *winner*, not game 1's home team.** The measurement above is real but was read backwards, and the correction is mechanical rather than statistical — it comes from the archive's own ancestry, which is committed:
+
+- The source spreadsheet `docs/NBASeriesResults.xlsx` is **winner-oriented**. Its 22 columns are `Year, League, Series Type, Winner Team, Winner Games, Loser Team, Loser Games, Total games`, then G1–G7 scores for the winner and the loser. **There is no home/away column anywhere in it.**
+- The retired loader mapped that orientation straight into the slots: `team_a = "Winner Team"`, `team_b = "Loser Team"`, and passed `home_team = None` (`git show 5b518ef~1:supabase/scripts/load-games/main.py`, deleted in Story 2.3).
+- `00007_backfill_missing_historical_series.sql:129-204` then wrote `home_team_id = team_a_id` for **all seven** games of every historical series.
+
+So for every archived series `home_team_id` **is** the series winner, on game 7 included. Two consequences, both load-bearing:
+
+1. `scripts/spike-2-1/audit-slot-semantics.mjs:55` compares game 1's `home_team_id` to `team_a_id` — a question 00007 answers before the audit runs. The "`team_a_id` = game 1's home team in 178/178" line recorded in `decision-2-1-q-4-data-source.md:85-87` and `sprint-change-proposal-2026-09-30.md:30` is therefore **not a measurement of the archive**; it restates the backfill's own SQL. The same audit's `winner_is_A` tally (177/178) was the live-table evidence that pointed the other way, and it is now explained.
+2. Any whole-table "home team won Game 7" statistic over the archived rows computes to **exactly 100%**, by construction, and is meaningless. The NBA's published figure is 117-43 (.731). A home-court metric needs real venues, which this table does not contain.
+
+### The archive's league composition, and its reconciliation to the published count
+
+The spreadsheet carries a `League` column that the loader **dropped** — no `series` row records which league it came from. Reading it directly (rows with `Total games = 7`) gives the archive's composition, and it reconciles to the published NBA figure exactly:
+
+| Source | Game-7 series | NBA | BAA | ABA |
+|---|---|---|---|---|
+| `docs/NBASeriesResults.xlsx` | **177** | 158 | 1 | 18 |
+| Live `series` table (measured 2026-09-30) | **178** | — | — | — |
+
+The sheet stops at the 2026 conference semifinals and has no 2026 Finals row, which accounts for the live table's one extra series (the 2026 Finals Game 7), and makes the archive **159 + 1 = 160 NBA/BAA Game 7s plus 18 ABA Game 7s**. nba.com's "Facts to know about Game 7 matchups" (updated 2026-05-31) states 160 Game 7s in NBA history — the NBA counts BAA 1946-49 as its own, and excludes the ABA. So nothing is missing from the archive and nothing in it is spurious: **178 − 18 ABA = 160**, and every one of the 18 ABA series is identifiable from the sheet (1969–1976, listed with year/round/matchup). The 1 non-uniform series flagged by the 2026-09-30 measurement is, on this evidence, that same 178th row — a series written by a path that did not use winner-first orientation.
+
+**Still true and still respected by the pipeline:** the archived rows hold no venue information; an adapter that supplies genuine venue data cannot reconcile a historical series, and the runner's "never rewrites archived games" guard refuses the attempt by design.
 
 **Resolved 2026-10-01 (Story 2.4, Decision 11, owner call 2A): the archive is frozen — option (a).** No automated adapter re-ingests historical seasons; the venue/slot mismatch above stays as measured and is handled by never testing it, not by repairing it. Enforcement is by FETCH SCOPE, not a stored flag: the `nba_com` adapter asks for the one postseason derived from the run's UTC date (`--season=` overrides for drills), so **a year the table already holds cannot be re-fetched** — that is the whole of what construction guarantees, and it is worth stating precisely, because the freeze does not stop *new* archive rows arriving: a series decided inside the fetched season enters the plan as fresh archive data with no drill involved, which is the pipeline working as intended. If a `--season=` drill is aimed at an archived year anyway, Story 2.3's archive guard (`plan.ts:382-390`: identical source → skip, disagreeing source → non-zero abort naming the series) is the enforcement point and refuses the rewrite — and because the archived rows predate the slot/venue boundary above, a drill that reaches back through `manual_csv`-sourced years is expected to hit that guard's abort rather than reconcile the two venue conventions. The freeze is deliberately not derived from any stored date or timestamp (AD-4 forbids phase from dates). Series created from here on carry real venues — both adapters supply game-true home/away — so the table's venue/slot split has a hard boundary at the last archived year.
+
+**The freeze stands as written, but its premise is now known to be wrong** (see the correction above): the archived slots are winner-first, not game-1-home, so the boundary being protected is not a venue convention the archive got right. As of 2026-10-01 the owner has accepted a one-time lift of it — backfilling the **Game 7 home team only**, for the 160 NBA/BAA series, from a single hand-curated source, together with a `league` column carrying three values (`NBA` / `BAA` / `ABA`) — on the condition that it ships as a course correction with its own migration and rehearsal, not inside an insights story. Nothing has been applied to the database and `00016` does not exist yet; until it lands, no home-court statistic may be computed from archived rows.
 
 ## Current app usage
 
