@@ -469,6 +469,17 @@ describe('nba_com — feed shape drift rejects naming GAME_ID', () => {
     await expect(adapter.fetch_series_statuses()).rejects.toThrow(/game 004270101 2027-05-02: home PTS null/);
   });
 
+  it('a tie score rejects naming GAME_ID — the chain walk would otherwise pick a winner silently', async () => {
+    // `manual_csv` refuses a tie at the adapter (manualCsv.ts:112) and this one
+    // mirrors it: winners feed both the depth walk and Decision 3's selection,
+    // so `plan.ts`'s later guard would be too late to keep the label honest.
+    const body = feedBody([{ home: 'BOS', away: 'PHI', startDate: '2027-05-02', results: ['home'] }]);
+    body.resultSets[0].rowSet[1][5] = 110; // away PTS now equals home PTS
+    const stub = stubFeed([{ status: 200, body }]);
+    const adapter = createNbaComAdapter(depsFor(stub));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/game 004270101 2027-05-02: tie score 110-110/);
+  });
+
   it('an abbreviation the teams table does not hold rejects naming the abbreviation AND GAME_ID', async () => {
     const body = feedBody([{ home: 'BOS', away: 'PHI', startDate: '2027-05-02', results: ['home'] }]);
     body.resultSets[0].rowSet[1] = ['004270101', '2027-05-02', 99, 'XYZ', 'XYZ @ BOS', 100, 'L'];

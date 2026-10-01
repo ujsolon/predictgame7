@@ -370,6 +370,17 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
           'before it can become a certified score',
       );
     }
+    const homePts = finalScore('home', game.gameId, game.date, home.pts);
+    const awayPts = finalScore('away', game.gameId, game.date, away.pts);
+    // Rejected here, at the merge, rather than left to `plan.ts`: the chain walk
+    // and Decision 3's selection both derive a game's winner from these scores,
+    // so a tie would silently decide which franchise advances and what round the
+    // next series is labelled — before any plan assertion could see it.
+    if (homePts === awayPts) {
+      throw new NbaComError(
+        `game ${game.gameId} ${game.date}: tie score ${homePts}-${awayPts} — every source game must be final and decided`,
+      );
+    }
     feedGames.push({
       gameId: game.gameId,
       date: game.date,
@@ -377,8 +388,8 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
       awayAbbr: away.abbr,
       homeId: home.id,
       awayId: away.id,
-      homePts: finalScore('home', game.gameId, game.date, home.pts),
-      awayPts: finalScore('away', game.gameId, game.date, away.pts),
+      homePts,
+      awayPts,
     });
   }
 
