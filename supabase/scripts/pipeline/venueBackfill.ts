@@ -265,23 +265,35 @@ export function parseTeamsSeed(seedText: string, sourceName: string): Map<string
  */
 export type SeasonOutcome = 'ok' | 'empty-feed' | 'missing-game7' | 'no-game7';
 
+/**
+ * What one season of the venue feed just told the owner (spec-2-8 D1 evidence).
+ *
+ * **Agreement outranks silence.** The first version asked whether the route returned
+ * anything before asking whether the archive expected anything, and the 2026-10-01
+ * full sweep showed what that costs: thirteen seasons reported as failures —
+ * 1946-47, 1948-49, 1949-50, 1952-53, 1955-56, 1957-58, 1966-67, 1971-72, 1982-83,
+ * 1984-85, 1988-89, 1990-91, 1998-99 — and the curated file holds **no Game 7 for
+ * any of those thirteen calendar years**. The feed and the archive agree on every one;
+ * a run that ends in exit 2 on agreement trains the owner to ignore the instrument.
+ */
 export function classifySeason(input: {
   seriesInFeed: number;
   completedGame7: number;
   curatedRowsForYear: number;
 }): SeasonOutcome {
-  if (input.seriesInFeed === 0) return 'empty-feed';
-  if (input.completedGame7 === 0) {
-    return input.curatedRowsForYear > 0 ? 'missing-game7' : 'no-game7';
-  }
-  return 'ok';
+  if (input.completedGame7 > 0) return 'ok';
+  // Nothing reached Game 7 on the feed's account. If the archive holds none either,
+  // that is corroboration — it does not matter whether the route said "no series" or
+  // "no Game 7".
+  if (input.curatedRowsForYear === 0) return 'no-game7';
+  return input.seriesInFeed === 0 ? 'empty-feed' : 'missing-game7';
 }
 
 export const SEASON_OUTCOME_MEANING: Record<SeasonOutcome, string> = {
   ok: 'answered',
-  'empty-feed': 'the route returned no series at all — feed depth short of this season, or a hostile-cadence block (spec-2-8 D1 evidence)',
+  'empty-feed': 'the archive holds a Game 7 for this calendar year and the route returned no series at all — depth short of this season, or a hostile-cadence block (spec-2-8 D1 evidence)',
   'missing-game7': 'the feed answered the season but no series reached Game 7, while the curated file holds NBA/BAA Game 7s for that calendar year — a real disagreement to resolve, not a gap to fill by hand',
-  'no-game7': 'no series reached Game 7 and the archive holds none for that year either — corroborating, not a failure',
+  'no-game7': 'no Game 7 on the feed and none in the archive for that year — corroborating, not a failure',
 };
 
 /** One approved row of `data/game7_feed_aliases.csv`. */

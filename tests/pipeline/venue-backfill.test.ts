@@ -524,24 +524,31 @@ describe('the scripts/** coverage gap (E5)', () => {
 });
 
 describe('classifySeason — when a quiet season is news (curation run, P2-4/P2-5)', () => {
-  it('route silence is the depth blocker, whatever the archive holds', () => {
+  it('route silence is the blocker only when the archive expected something', () => {
     expect(classifySeason({ seriesInFeed: 0, completedGame7: 0, curatedRowsForYear: 3 })).toBe('empty-feed');
-    expect(classifySeason({ seriesInFeed: 0, completedGame7: 0, curatedRowsForYear: 0 })).toBe('empty-feed');
-  });
-
-  it('1998-99 is corroboration, not failure: zero Game 7s answered and zero curated', () => {
-    // The owner's run printed "0 completed Game-7 series" for 1998-99 and the
-    // first version of the probe called that a blocker. The committed file holds
-    // no 1999 row at all, which is the archive and the feed agreeing.
-    expect(committedRows.some((row) => row.year === 1999)).toBe(false);
-    expect(classifySeason({ seriesInFeed: 15, completedGame7: 0, curatedRowsForYear: 0 })).toBe('no-game7');
-  });
-
-  it('a season the archive says had a Game 7 but the feed did not answer is a real disagreement', () => {
     expect(classifySeason({ seriesInFeed: 15, completedGame7: 0, curatedRowsForYear: 2 })).toBe('missing-game7');
+    expect(classifySeason({ seriesInFeed: 15, completedGame7: 4, curatedRowsForYear: 0 })).toBe('ok');
   });
 
-  it('every blocker reading carries a meaning the probe can print', () => {
+  it('agreement outranks silence: no Game 7 anywhere is corroboration, not failure', () => {
+    // The 2026-10-01 sweep reported thirteen seasons as failures on exactly this
+    // shape. The first classifier asked the route before it asked the archive, so an
+    // instrument built to surface a depth gap cried failure on agreement — and
+    // thirteen false failures is how an owner learns to ignore the report.
+    expect(classifySeason({ seriesInFeed: 0, completedGame7: 0, curatedRowsForYear: 0 })).toBe('no-game7');
+  });
+
+  it('every season the sweep called depth-blocked is a year the archive holds no Game 7 for', () => {
+    // Asserted against the committed file rather than restated from the run: if a row
+    // for any of these calendar years is ever added, this test is what notices.
+    // 1998-99 is in the family — the owner confirmed the gap from their own dataset.
+    const blocked = [1947, 1949, 1950, 1953, 1956, 1958, 1967, 1972, 1983, 1985, 1989, 1991, 1999];
+    const curatedYears = new Set(committedRows.filter((row) => row.league !== 'ABA').map((row) => row.year));
+    expect(blocked.filter((year) => curatedYears.has(year))).toEqual([]);
+    expect(blocked).toContain(1999);
+  });
+
+  it('every reading carries a meaning the probe can print', () => {
     for (const outcome of ['ok', 'empty-feed', 'missing-game7', 'no-game7'] as const) {
       expect(SEASON_OUTCOME_MEANING[outcome].length).toBeGreaterThan(0);
     }
