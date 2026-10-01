@@ -315,8 +315,8 @@ export interface FeedSeriesPair {
 export interface MatchedSeries {
   series: FeedSeriesPair;
   row: VenueRow;
-  /** `'direct'`, or the alias that made the pair resolve. */
-  via: 'direct' | FeedAlias;
+  /** `'direct'`, or the approved alias(es) that made the pair resolve. */
+  via: 'direct' | { aliases: FeedAlias[] };
 }
 
 export interface UnmatchedSeries {
@@ -420,10 +420,13 @@ function slotPairMatches(row: VenueRow, a: string, b: string): boolean {
  *    are returned so the owner can see what an alias would have to claim. Two is not
  *    a choice to make — it means pair-uniqueness or one-alias-per-code has broken, so
  *    it raises.
- * 4. **One substitution per series.** Every observed case needed exactly one (the
- *    opposing side always matched directly). A pair that needs *two* unknown codes
- *    mapped before it resolves is left unmatched rather than believed, because then
- *    the answer would rest on two unverified codes at once.
+ * 4. **Every substitution applied at once, each one owner-approved separately.** The
+ *    first version allowed exactly one and left pairs like `WAS/SAN` (1979 Bullets at
+ *    the Spurs) unmatched on the reasoning that the answer would then rest on two
+ *    unverified codes. The owner approved that change on 2026-10-01: an alias is only
+ *    ever consulted from the audited table, so a pair needing two of them is no less
+ *    verified than a pair needing one — and the constraint that carries the safety,
+ *    exactly one surviving row, is unchanged.
  */
 export function matchSeasonFeedSeries(input: {
   year: number;
@@ -448,32 +451,31 @@ export function matchSeasonFeedSeries(input: {
 
   const unmatched: UnmatchedSeries[] = [];
   for (const series of pending) {
-    const reachable = new Map<number, { row: VenueRow; alias: FeedAlias }>();
-    for (const alias of input.aliases) {
-      const a = series.codeA === alias.feed ? alias.teams : series.codeA;
-      const b = series.codeB === alias.feed ? alias.teams : series.codeB;
-      if (a === series.codeA && b === series.codeB) continue;
-      const row = rowsForYear.find((candidate) => !claimed.has(candidate.line) && slotPairMatches(candidate, a, b));
-      if (row !== undefined) reachable.set(row.line, { row, alias });
-    }
+    const applied: FeedAlias[] = [];
+    const substitute = (code: string): string => {
+      const alias = input.aliases.find((candidate) => candidate.feed === code);
+      if (alias === undefined) return code;
+      applied.push(alias);
+      return alias.teams;
+    };
+    const codeA = substitute(series.codeA);
+    const codeB = substitute(series.codeB);
+    const survivors = applied.length === 0 ? [] : rowsForYear.filter((row) => !claimed.has(row.line) && slotPairMatches(row, codeA, codeB));
 
-    if (reachable.size === 1) {
-      const [hit] = [...reachable.values()];
-      claimed.add(hit.row.line);
-      matched.push({ series, row: hit.row, via: hit.alias });
+    if (survivors.length === 1) {
+      const [row] = survivors;
+      claimed.add(row.line);
+      matched.push({ series, row, via: { aliases: applied } });
       continue;
     }
-    if (reachable.size > 1) {
+    if (survivors.length > 1) {
       // Not a judgement call — an invariant broke. `parseVenuesCsv` rejects two
       // curated rows on the same (year, unordered pair) and `parseFeedAliases`
-      // rejects two aliases for one feed code, so exactly one row can become
-      // reachable per series. Reaching this line means one of those two rules
-      // no longer holds, so it is raised rather than resolved by preference.
-      const detail = [...reachable.values()]
-        .map((value) => `${value.row.year} ${value.row.teamA}/${value.row.teamB} via ${value.alias.feed}->${value.alias.teams}`)
-        .join('; ');
+      // rejects two aliases for one feed code, so substitution can land on at most
+      // one row. Reaching this line means one of those rules no longer holds.
+      const detail = survivors.map((row) => `${row.year} ${row.teamA}/${row.teamB} (csv:${row.line})`).join('; ');
       throw new VenueBackfillError(
-        `alias resolution is not single-valued for series ${input.year} ${series.codeA}/${series.codeB}: ${detail} — ` +
+        `alias resolution is not single-valued for series ${input.year} ${series.codeA}/${series.codeB} -> ${codeA}/${codeB}: ${detail} — ` +
           'one curated row per (year, pair) and one alias per feed code are the guarantees this rests on',
       );
     }

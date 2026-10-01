@@ -34,3 +34,11 @@ WAS,WSB,1975-76 game 7 CLE vs WAS resolves to curated row 1976 CLE vs WSB (csv:8
 GOS,GSW,1975-76 game 7 GOS vs PHX resolves to curated row 1976 PHX vs GSW (csv:91) — opposing side PHX matches and GSW is the only unclaimed 1976 row holding it; this is also the row whose HOME side is the aliased code
 UTH,UTA,1987-88 game 7 LAL vs UTH resolves to curated row 1988 LAL vs UTA (csv:114) — the direct pass already claimed 1988 LAL vs DAL (csv:112) and 1988 LAL vs DET (csv:113), leaving UTA as the only unclaimed 1988 row with LAL
 CHH,CHA,2000-01 game 7 MIL vs CHH resolves to curated row 2001 MIL vs CHA (csv:135) — the only unclaimed row for that year holding MIL; owner confirmed the venue from a reference (May 20, 2001, Bradley Center, Charlotte 95 at Milwaukee 104)
+BOM,SLB,1948 game 7 PHW vs BOM resolves to curated row 1948 PHW vs SLB (csv:43) — the only unclaimed row for that year holding PHW
+ROC,ROR,1951 game 7 ROC vs NYK resolves to curated row 1951 ROR vs NYK (csv:44) — the only unclaimed row for that year holding NYK
+MNL,MPL,1952 game 7 MNL vs NYK resolves to curated row 1952 MPL vs NYK (csv:45) and 1954 game 7 MNL vs SYR to 1954 MPL vs SYR (csv:46)
+FTW,FWP,1955 game 7 SYR vs FTW resolves to curated row 1955 SYR vs FWP (csv:47) — the only unclaimed row for that year holding SYR
+PHL,PHI,1965 game 7 BOS vs PHL resolves to curated row 1965 BOS vs PHI (csv:58) and the same code recurs at csv:61, 97, 105, 108, 109, 112
+BLT,BLB,1970 game 7 NYK vs BLT resolves to curated row 1970 NYK vs BLB (csv:70) and 1971 game 7 BLT vs NYK to 1971 BLB vs NYK (csv:72)
+CAP,CPB,1974 game 7 NYK vs CAP resolves to curated row 1974 NYK vs CPB (csv:87) — the only unclaimed row for that year holding NYK
+SAN,SAS,1981 game 7 SAN vs HOU resolves to curated row 1981 HOU vs SAS (csv:106) and 1990 game 7 POR vs SAN to 1990 POR vs SAS (csv:120)

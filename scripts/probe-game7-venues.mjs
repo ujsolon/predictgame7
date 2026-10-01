@@ -266,7 +266,7 @@ async function runVenueProbe(seasonOverrideRaw) {
         // Print the CURATED row's own shape, so the line you paste into and the line
         // printed agree slot for slot. What the feed's slots were is reported
         // separately, as a winner inversion.
-        const via = m.via === 'direct' ? '' : `  [via alias ${m.via.feed}->${m.via.teams}]`;
+        const via = m.via === 'direct' ? '' : `  [via alias ${m.via.aliases.map((a) => `${a.feed}->${a.teams}`).join(', ')}]`;
         console.log(`${m.row.year},${m.row.teamA},${m.row.teamB},${home}\t# paste into ${curatedCsvRel.replace(/^\.\.\//, '')}:${m.row.line}${via}`);
         printed += 1;
         answeredKeys.add(pairKey(m.row.year, m.row.teamA, m.row.teamB));

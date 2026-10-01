@@ -646,7 +646,7 @@ describe('the era-code alias table and the two-pass season matcher (curation opt
       aliases,
     });
     expect(unmatched).toEqual([]);
-    expect(matched.map((m) => [m.row.teamA, m.row.teamB, (m.via as { feed: string }).feed])).toEqual([
+    expect(matched.map((m) => [m.row.teamA, m.row.teamB, m.via === 'direct' ? 'direct' : m.via.aliases.map((a) => a.feed).join('+')])).toEqual([
       ['BOS', 'CNR', 'CIN'],
       ['LAL', 'SLH', 'STL'],
     ]);
@@ -717,39 +717,55 @@ describe('the era-code alias table and the two-pass season matcher (curation opt
     expect(unmatched[0].candidates.map((row) => row.teamB)).toEqual(['CNR']);
   });
 
-  it('a pair needing TWO substitutions is left unmatched rather than believed', () => {
-    const twoAliases = parseFeedAliases(
-      'feed_abbr,teams_abbr,evidence\nCHH,CHI,evidence one\nDXX,DAL,evidence two',
-      'a.csv',
-      new Map([['CHI', 1], ['DAL', 2]]),
-    );
+  it('a pair needing TWO approved substitutions resolves — each code is still individually audited', () => {
+    // 1979 is real: the feed printed `WAS vs SAN` for the Bullets–Spurs Game 7 and
+    // `SAN vs PHL` for the Spurs–Sixers, and the first version left both unmatched
+    // because it allowed one substitution. The owner approved the change on
+    // 2026-10-01; what still guards a wrong answer is exactly-one-surviving-row.
+    const rows = curated('1979,WSB,SAS,NBA,', '1979,SAS,PHI,NBA,', '1979,SEA,PHX,NBA,');
+    const { matched, unmatched } = matchSeasonFeedSeries({
+      year: 1979,
+      series: [
+        { codeA: 'WAS', codeB: 'SAN' },
+        { codeA: 'SAN', codeB: 'PHL' },
+        { codeA: 'SEA', codeB: 'PHX' },
+      ],
+      curated: rows,
+      aliases,
+    });
+    expect(unmatched).toEqual([]);
+    expect(matched.map((m) => [m.row.line, m.via === 'direct' ? 'direct' : m.via.aliases.map((a) => a.feed).join('+')])).toEqual([
+      [4, 'direct'],
+      [2, 'WAS+SAN'],
+      [3, 'SAN+PHL'],
+    ]);
+  });
+
+  it('a pair no approved alias can place is still unmatched, with its candidates listed', () => {
     const rows = curated('1970,CHI,DAL,NBA,');
     const { matched, unmatched } = matchSeasonFeedSeries({
       year: 1970,
-      series: [{ codeA: 'CHH', codeB: 'DXX' }],
+      series: [{ codeA: 'ZZQ', codeB: 'QQZ' }],
       curated: rows,
-      aliases: twoAliases,
+      aliases,
     });
     expect(matched).toEqual([]);
     expect(unmatched[0].reason).toBe('no-alias');
+    expect(unmatched[0].candidates).toEqual([]);
   });
 
-  it('raises instead of choosing if one series becomes reachable through two rows — the invariants that make it single-valued broke', () => {
-    // Reachable-through-two needs both aliases to claim the same series, which can
-    // only happen if a curated row itself carries an unmapped code — i.e. the
-    // one-row-per-(year,pair) guarantee has already been violated elsewhere. The
-    // matcher must refuse to pick, not rank.
-    const crossAliases = parseFeedAliases(
-      'feed_abbr,teams_abbr,evidence\nCHH,CHI,evidence one\nDXX,DAL,evidence two',
-      'a.csv',
-      new Map([['CHI', 1], ['DAL', 2]]),
-    );
-    const broken: VenueRow[] = [
-      { line: 2, year: 1970, teamA: 'CHI', teamB: 'DXX', league: 'NBA', home: '' },
-      { line: 3, year: 1970, teamA: 'CHH', teamB: 'DAL', league: 'NBA', home: '' },
+  it('raises instead of choosing if substitution lands on two rows — the invariant that makes it single-valued broke', () => {
+    // Unreachable through `parseVenuesCsv`, which rejects a repeated (year, unordered
+    // pair) — so this builds the rows directly. The branch exists because that
+    // uniqueness is what allows a match to be trusted; if it ever lapses, the matcher
+    // must refuse to rank rather than pick one.
+    const duplicated: VenueRow[] = [
+      { line: 2, year: 1970, teamA: 'CHI', teamB: 'DAL', league: 'NBA', home: '' },
+      { line: 3, year: 1970, teamA: 'DAL', teamB: 'CHI', league: 'NBA', home: '' },
     ];
+    const oneAlias = parseFeedAliases('feed_abbr,teams_abbr,evidence\nCHH,CHI,evidence one', 'a.csv', new Map([['CHI', 1], ['DAL', 2]]));
     expect(() =>
-      matchSeasonFeedSeries({ year: 1970, series: [{ codeA: 'CHH', codeB: 'DXX' }], curated: broken, aliases: crossAliases }),
+      matchSeasonFeedSeries({ year: 1970, series: [{ codeA: 'CHH', codeB: 'DAL' }], curated: duplicated, aliases: oneAlias }),
     ).toThrowError(/alias resolution is not single-valued/);
   });
 });
