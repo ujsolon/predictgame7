@@ -54,6 +54,10 @@ development_status:
   # and the rehearsal self-test are committed; 00016 itself lands only with the owner's
   # curated venues, so 2-9 and 2-5 stay blocked behind that data commit.
   2-8-archive-league-identity-and-game7-venue-backfill: review
+  # 2-9 depends on 00016 being APPLIED, not committed (a client that selects `league`
+  # against a table without the column gets HTTP 400 42703). Its first move is the read
+  # path, not the chip: PredictPage's SERIES_SELECT omits `league` while HistoricalPage
+  # selects `*`, and src/types/types.ts does not declare the field — spec-2-8 E9.
   2-9-league-chip-and-filter-on-the-archive-surface: backlog
   2-5-insights-cache-refresh: backlog
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
