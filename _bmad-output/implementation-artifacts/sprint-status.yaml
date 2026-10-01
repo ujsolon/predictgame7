@@ -49,25 +49,29 @@ development_status:
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: done
   2-4-automated-adapter-per-the-spike-decision: review
-  # 2-8 ends 'review' = CURATED / EMITTED / REHEARSED, APPLY-PENDING (it was machinery-complete /
-  # venue-blocked; D2's deferral closed 2026-10-02): all 160 NBA/BAA Game-7 venues are in the curated
-  # CSV (159 NBA + 1 BAA + 18 ABA = 178, the ABA rows blank by scope), every one answered by the
-  # owner's probe across three runs that agreed on all 160 with 0 conflicts — no hand entry was needed.
-  # 00016 is emitted from that file, the rehearsal replays 00001-00016 in order and exits 0 with the
-  # census measured in the database (117 home wins + 43 swapped over the 160), and CURRENT_DATA_MODEL.md
-  # was rewritten to the post-00016 boundary in the same commit (standing rule).
-  # What remains is the owner's two commands: git push origin master, then npx supabase db push.
-  # Production is UNCHANGED until then — no database anywhere has a `league` column — so 2-9 and 2-5
-  # are blocked behind that apply, not behind data.
-  # D5 still holds: 178/160/18/117 are pinned literals. If the live archive grew between curation and
-  # apply, append the newer series AND change the constants in that same commit; never relax a guard.
-  # Two review passes closed 2026-10-01 (spec-2-8 Review Triage Log). The owner still owes an
-  # independent bmad-code-review of 2.8 in a fresh session, as with 2.4.
+  # 2-8's data gate is CLOSED: 00016 is APPLIED to production (owner ran git push + npx supabase db
+  # push on 2026-10-02; 'Applying migration 00016… Finished supabase db push', no guard abort). A
+  # clean push IS the measurement — all nine guards evaluated against the live 178-series table inside
+  # one committed transaction — and the anon re-read afterwards printed 159 NBA + 1 BAA + 18 ABA,
+  # NULL 0, game-7 population 160 with 117 home wins / 43 swaps, AD-4 consistency clean over 1,246
+  # rows, and five named venues matching the curated CSV. It stays at 'review' only because the owner
+  # owes the independent bmad-code-review of the story (as with 2-4), not because work remains.
+  # The history that got here: all 160 venues answered by the owner's probe across three runs that
+  # agreed with 0 conflicts (no hand entry needed), 00016 emitted by the generator, the rehearsal
+  # replaying 00001-00016 green with the census measured in-database, and CURRENT_DATA_MODEL.md
+  # rewritten to the post-00016 boundary in the same commit as the file (standing rule).
+  # D5 still governs every future migration in this range: 178/160/18/117 are pinned literals, and an
+  # archive that outgrows the CSV aborts the next apply — append the series AND change the constants
+  # in the same commit; never relax a guard.
+  # What 2-8 releases: 2-5's home_team_stats card may compute (game 7 of NBA/BAA rows only) and 2-9
+  # has a live column to read.
   2-8-archive-league-identity-and-game7-venue-backfill: review
-  # 2-9 depends on 00016 being APPLIED, not committed (a client that selects `league`
-  # against a table without the column gets HTTP 400 42703). Its first move is the read
-  # path, not the chip: PredictPage's SERIES_SELECT omits `league` while HistoricalPage
-  # selects `*`, and src/types/types.ts does not declare the field — spec-2-8 E9.
+  # 2-9's ordering gate is SATISFIED since 2026-10-02: 00016 is applied, so `league` exists on the
+  # live table and a client may select it (before the apply it got HTTP 400 42703 and the archive page
+  # failed to load). Its first move is still the read path, not the chip: PredictPage's SERIES_SELECT
+  # omits `league` while HistoricalPage selects `*`, and src/types/types.ts does not declare the field
+  # — so one path never sees a column that already ships and the other receives it through an
+  # unvalidated cast. spec-2-8 E9.
   2-9-league-chip-and-filter-on-the-archive-surface: backlog
   2-5-insights-cache-refresh: backlog
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
