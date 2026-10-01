@@ -495,8 +495,9 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
   until a measurement is cited. A non-zero exit is evidence too: paste it, and the story records the route
   as red rather than untested.
 - Optional, also owner-run because it opens a production session:
-  `node supabase/scripts/pipeline/run.ts --source=nba_com --dry-run --season=2025-26 --env-file=.env` —
-  expect the report lines first, then a plan summary, then zero writes.
+  `node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run --season=2025-26` —
+  `--env-file=` must precede the script path, or Node passes it to the runner as a run flag instead of
+  loading it. Expect the report lines first, then a plan summary, then zero writes.
 - AD-5's port text still names exactly two operations; `describeRun?()` is additive and optional, and the
   amendment (triage row 9) is the owner's call to make in the spine.
 
@@ -729,8 +730,9 @@ the decision record's claim stays marked unsourced until someone cites a measure
   **The id-space question is this leg's to answer**: if the printed `TEAM_ID`s differ from the resolved
   `teams.id`s, the decision record's claim is refuted by measurement and the resolver was load-bearing; if
   they agree, record that too, so the next reader has the measurement instead of the assertion.
-- `node supabase/scripts/pipeline/run.ts --source=nba_com --dry-run` -- expected: needs
-  `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` before it reaches the feed, then prints the counts line
+- `node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run` -- expected: needs
+  `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (via `--env-file=.env`, which must come **before** the script
+  path) before it reaches the feed, then prints the counts line
   and an empty-or-real plan with zero writes. **Owner-run**: it opens a production session. Because the
   report now prints before the adapter's rows are even grouped, an abort in `groupSourceRows`, in planning,
   or on a missing env var still shows what the feed parsed.
