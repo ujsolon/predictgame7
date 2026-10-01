@@ -60,7 +60,22 @@ const REQUIRED_COLUMNS = ['year', 'team_a', 'team_b', 'league', 'game7_home_team
 
 export const LEAGUES = ['NBA', 'BAA', 'ABA'];
 
-/** The pinned post-00016 archive facts (epic-2-context "Measured archive facts"). */
+/**
+ * The pinned post-`00016` archive facts (epic-2-context "Measured archive facts"):
+ * measured against the live table on 2026-10-01, and deliberately **pinned rather
+ * than derived** — spec-2-8 D5, owner decision 2026-10-01. Pinned means a drifted
+ * archive cannot be silently absorbed: these numbers are interpolated into the
+ * migration's own guards, so growth or a shrink aborts the apply loudly at
+ * `league_backfill_complete` / `venue_coverage` / `aba_row_census` /
+ * `game7_home_win_census` rather than re-scoping a statistic nobody re-read.
+ *
+ * The rule that goes with it: if the live archive has grown by apply time, the
+ * fix is to **re-measure it (owner-run), append the newer series to the curated
+ * CSV, and change these constants in that same commit** — never to relax or
+ * delete a guard. The 178 total and the 1,246 row count are pinned alongside
+ * them by `parseVenuesCsv`'s one-row-per-series contract and the rehearsal's
+ * fixture census.
+ */
 export const EXPECTED_NBA_BAA = 160;
 export const EXPECTED_ABA = 18;
 export const EXPECTED_GAME7_HOME_WINS = 117;
@@ -396,7 +411,7 @@ BEGIN
       JOIN public.teams tb ON tb.id = s.team_b_id
      WHERE s.league IS NULL
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive',
+    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive. Either curation is incomplete or the live archive grew after it was cut (spec-2-8 D5): re-measure the table, append the newer series to game7_venues_curated.csv and re-derive the pinned counts in the same commit. Relaxing this guard is not the route',
       v_null, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;
@@ -485,7 +500,7 @@ BEGIN
               OR (tta.abbreviation = c.team_b AND ttb.abbreviation = c.team_a))
        )
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route',
+    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route. If these rows are newer than the curated file, the archive grew after it was cut (spec-2-8 D5): append them and re-derive the pinned counts in the same commit that changes this migration',
       v_missing, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;

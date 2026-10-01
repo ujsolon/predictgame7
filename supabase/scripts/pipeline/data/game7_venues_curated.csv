@@ -23,9 +23,16 @@
 #   flagship 2026 Thunder-Spurs (FR-13, 2026-09-25; the flagship list is winner-first, the
 #   same convention as the sheet), league NBA.
 # Census: 159 NBA + 1 BAA + 18 ABA = 178 rows; 160 NBA/BAA Game 7s = nba.com's published
-#   count. game7_home_team curation route (D1): node scripts/probe-game7-venues.mjs
-#   (owner-run), hand entry as the fallback. A curated row must satisfy the 117 Game-7
-#   home-win checksum baked into 00016's guards — a list with a wrong row does not land on it.
+#   count. game7_home_team curation route (spec-2-8 D1/D6, owner-run): 98 of the 160 rows
+#   are in calendar years >= 1993 and answered by node scripts/probe-game7-venues.mjs
+#   (seasons 1992-93 -> 2025-26; each line prints the file:line to paste into); the
+#   remaining 62 (1948-1992, including the single BAA row) are hand-entered from
+#   basketball-reference.com. ABA rows stay blank by scope, never by omission.
+#   A curated row must satisfy the 117 Game-7 home-win checksum and the 160 population
+#   baked into 00016's guards -- a list with a wrong row does not land on it. If the live
+#   archive has grown past these 178 rows, append the newer series AND change the pinned
+#   constants in supabase/scripts/pipeline/venueBackfill.ts in the same commit (D5);
+#   relaxing a guard is not the route.
 #
 # Do not hand-edit without re-running: node supabase/scripts/pipeline/venueBackfill.ts --check
 year,team_a,team_b,league,game7_home_team
