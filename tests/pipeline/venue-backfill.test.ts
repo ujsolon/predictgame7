@@ -158,6 +158,13 @@ describe('the committed CSV against the teams seed 00016 joins on (E5)', () => {
     );
   });
 
+  it('a duplicated abbreviation aborts instead of folding first-wins (P3-5)', () => {
+    const doubled =
+      "INSERT INTO teams VALUES (1, 'Boston Celtics', 'BOS', NULL);\n" +
+      "INSERT INTO teams VALUES (2, 'Buffalo Braves', 'BOS', NULL);";
+    expect(() => parseTeamsSeed(doubled, 'fixture.sql')).toThrowError(/holds abbreviation "BOS" twice \(ids 1 and 2\)/);
+  });
+
   it('every curated abbreviation (slots and curated homes alike) resolves in the seed', () => {
     const missing: string[] = [];
     for (const row of committedRows) {
@@ -467,6 +474,16 @@ describe('firstDriftLine and the --check contract', () => {
     } else {
       expect(result.exitCode).toBe(2);
       expect(messages).toContain('does not exist');
+    }
+  });
+});
+
+describe('CLI argument discipline (P3-6)', () => {
+  it('a bare value flag is refused, not silently defaulted', () => {
+    for (const arg of ['--csv', '--self-test-migration', '--self-test-fixture']) {
+      const result = runVenueBackfillCli([arg], { readFile: () => '', writeFile: () => {} });
+      expect(result.exitCode).toBe(2);
+      expect(result.messages.join('\n')).toContain(`${arg} requires a value`);
     }
   });
 });

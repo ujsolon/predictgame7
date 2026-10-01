@@ -204,18 +204,16 @@ function main() {
   const fixtureSeedText = venueBackfill.renderFixtureSeed(curatedRows);
 
   // Review M1: every file IS replayed, but only 00001..COVERED_THROUGH is
-  // certified present-and-in-order. A migration above the ceiling would be
-  // applied silently and leave the claim weaker than it reads — except for
-  // 00016, where the ceiling and the file share a commit by D2, so an
-  // on-disk 00016 below the ceiling is a hard failure, not a warning.
+  // certified present-and-in-order. By D2/E1 the emitting commit and the
+  // ceiling bump share a commit, so ANY file above the ceiling means that
+  // pairing broke — hard failure, not a warning. (This check was 00016-specific
+  // until the ceiling reached 16 and the prefix test went vacuous; pass 3,
+  // P3-4 generalized it rather than delete the enforcement.)
   const beyondCoverage = files.filter((f) => Number(f.slice(0, 5)) > COVERED_THROUGH);
-  if (beyondCoverage.some((f) => f.startsWith('00016'))) {
-    throw new RehearsalFailure(
-      `${beyondCoverage.filter((f) => f.startsWith('00016')).join(', ')} exists in supabase/migrations/ while COVERED_THROUGH = ${COVERED_THROUGH} — the curation commit must bump the ceiling to 16 in the SAME commit that emits 00016 (spec-2-8 E1: emit and ceiling share a commit or neither is certified).`,
-    );
-  }
   if (beyondCoverage.length) {
-    console.warn(`WARNING: ${beyondCoverage.join(', ')} replayed but is above COVERED_THROUGH=${COVERED_THROUGH}; bump the constant if its replay must be certified.`);
+    throw new RehearsalFailure(
+      `${beyondCoverage.join(', ')} exists in supabase/migrations/ while COVERED_THROUGH = ${COVERED_THROUGH} — the emitting commit must bump the ceiling in the SAME commit (spec-2-8 E1: emit and ceiling share a commit or neither is certified).`,
+    );
   }
 
   try {
@@ -546,10 +544,11 @@ function main() {
     try {
       // Which state this run is in, printed rather than asserted (pass 2,
       // P2-9): the emit/ceiling pairing is enforced by the pre-flight above,
-      // which throws before the container starts — proven by deliberately
-      // leaving a committed 00016 under COVERED_THROUGH = 15. Asserting it again
-      // here could never fail, and "an assertion that cannot fail is not a
-      // rehearsal assertion" is this story's own rule (E3).
+      // which throws before the container starts — proven for the 15→16
+      // transition by deliberately leaving a committed 00016 under the old
+      // ceiling (the check is number-agnostic since pass 3, P3-4). Asserting
+      // it again here could never fail, and "an assertion that cannot fail is
+      // not a rehearsal assertion" is this story's own rule (E3).
       console.log(`${tag} mode: ${committedMigration ? 'committed 00016 (ceiling ' + COVERED_THROUGH + ')' : 'SELF-TEST rendering; 00016 unemitted while COVERED_THROUGH = ' + COVERED_THROUGH} — supabase/migrations/ left untouched by this branch`);
 
       let migrationText;

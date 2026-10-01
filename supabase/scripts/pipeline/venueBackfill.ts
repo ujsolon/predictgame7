@@ -246,7 +246,15 @@ const TEAM_SEED_ROW = /\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g;
 export function parseTeamsSeed(seedText: string, sourceName: string): Map<string, number> {
   const seed = new Map<string, number>();
   for (const match of seedText.matchAll(TEAM_SEED_ROW)) {
-    if (!seed.has(match[2])) seed.set(match[2], Number(match[1]));
+    // A duplicate used to fold first-wins: 60 rows with one repeated
+    // abbreviation still yielded 59 uniques and passed the count pin while
+    // silently dropping a team (pass 3, P3-5).
+    if (seed.has(match[2])) {
+      throw new VenueBackfillError(
+        `${sourceName}: teams seed holds abbreviation "${match[2]}" twice (ids ${seed.get(match[2])} and ${match[1]}) — refusing to fold first-wins under the ${EXPECTED_TEAM_COUNT}-count pin`,
+      );
+    }
+    seed.set(match[2], Number(match[1]));
   }
   if (seed.size !== EXPECTED_TEAM_COUNT) {
     throw new VenueBackfillError(
@@ -1096,6 +1104,13 @@ export function runVenueBackfillCli(argv: readonly string[], io: { readFile?: (p
     );
     if (unknown.length > 0) {
       throw new VenueBackfillError(`unrecognised argument(s): ${unknown.join(', ')} — supported: --check, --worksheet, --csv=, --self-test-migration=, --self-test-fixture=`);
+    }
+    // A bare value flag used to parse to `true`, miss the string test below and
+    // silently fall back to the default path (pass 3, P3-6).
+    for (const name of ['csv', 'self-test-migration', 'self-test-fixture']) {
+      if (flags.get(name) === true) {
+        throw new VenueBackfillError(`--${name} requires a value: write --${name}=<path> — a bare --${name} would silently fall back to a default`);
+      }
     }
     const csvPath = typeof flags.get('csv') === 'string' ? (flags.get('csv') as string) : CURATED_CSV_PATH;
     const rows = parseVenuesCsv(readFile(csvPath), csvPath);
