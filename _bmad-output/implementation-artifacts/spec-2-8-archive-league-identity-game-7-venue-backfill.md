@@ -446,6 +446,30 @@ What the drill does **not** buy: the venue values were synthetic, so it certifie
 
 **Pass-2 patches applied by the main session after the drill** (the rows marked `patch — done` in the pass-2 triage table, each verified by re-running the rehearsal and the gate): `conflictRow`/`flippedVenue` picked from `keepVenues` by property instead of `venues[5]`/`find` (P2-2, and the two tampers now use different series); the census split made mode-aware with a new identity-space assertion, `home_team_id = series.winner_team_id` counted over the NBA/BAA game-7 rows, which must equal the score-derived 117 (P2-3); the probe prints `# paste into …csv:<line>` beside each answer so the owner is not hunting rows by eye (P2-5); both winner-consistency guard messages now say the drift they report predates `00016`, and `docs/CURRENT_DATA_MODEL.md` carries the two pre-apply measurements the owner takes — archive coverage and AD-4 invariants — so a guard abort is never the first time anyone looked (P2-6); `.gitattributes`' comment rewritten to what `git ls-files --eol` actually shows, including the renormalize churn the new pattern owes 14 untouched migrations (P2-8); the self-referential coherence assert deleted in favor of a printed mode line, with the enforcement left in the pre-flight that the drill fired on purpose (P2-9); Story 2.9's read-path prerequisite written into `epic-2-context.md`'s dependencies and onto its `sprint-status.yaml` line, and `CURRENT_DATA_MODEL.md` declared the authoritative boundary statement that the other two point at (P2-10, P2-11); `deferred-work.md`'s stale `~97 / ~63` replaced by the measured 98/62 with the reason, and the probe's duplicated seed regex filed with a home in the curation commit (P2-7's non-frozen half, P2-12).
 
+**The owner's first probe run (2026-10-01) — D1's live leg, and three findings.** `node scripts/probe-game7-venues.mjs`, 34 seasons, decisive lines verbatim:
+
+```
+seasons asked: 34 (1992-93 → 2025-26)
+=== 1992-93 — FAILED — game 0049200018: unknown team abbreviation "CHH" — not in the teams table. …
+=== 1993-94 — FAILED — game 0049300024: unknown team abbreviation "GOS" — …
+=== 1994-95 — FAILED — game 0049400009: unknown team abbreviation "UTH" — …
+=== 1995-96 — FAILED — game 0049500007: unknown team abbreviation "SAN" — …
+=== 1998-99 — FAILED — 0 completed Game-7 series answered by the feed
+2003,DAL,POR,DAL        # paste into supabase/scripts/pipeline/data/game7_venues_curated.csv:139
+2016,CLE,GSW,GSW        # paste into …:178
+2026,SAS,OKC,OKC        # paste into …:215
+Game-7 venue lines printed: 78
+curated NBA/BAA rows answered by this run: 78 (of which venue still blank: 78)
+curated NBA/BAA rows still blank this run did NOT answer: 82
+PROBE INCOMPLETE — 10 season(s) could not be answered: 1992-93 … 2001-02
+```
+
+1. **Four feed codes the `teams` table does not hold — `CHH`, `GOS`, `UTH`, `SAN` — aborted nine seasons** including their clean Game-7 answers, costing 20 of the 98 rows D6 expected (78 answered + 20 = 98, verified by counting the blank list). The adapter's refusal is correct for the pipeline, which would have to write into a `REFERENCES teams(id)` column; the probe writes nothing, so it now maps such a code to a private negative id that can never match a curated pair, prints the raw code in the unmatched report, and keeps the season's other answers.
+2. **`1998-99 — 0 completed Game-7 series` was a false alarm of mine.** The curated file holds **no 1999 row at all** (verified), so the feed and the archive agree; failing the run on that is the instrument crying wolf. `classifySeason` now separates route silence (`empty-feed`, a real depth blocker), a season the archive says had a Game 7 that the feed did not answer (`missing-game7`, a genuine disagreement), and agreement (`no-game7` — printed as "agrees", not a failure). Both decisions live in `venueBackfill.ts` under tests, because the network leg is owner-run and nothing else can execute them.
+3. **CSV line 215 — the 2026 Finals row appended by inference — is answered, and its inferred slot order is wrong.** The probe printed `2026,SAS,OKC,OKC`: winner **SAS**, Game 7 hosted at **OKC**, while the file reads `2026,OKC,SAS,NBA,`. Nothing in the migration depends on the CSV's slot order (resolution is by unordered pair and `winner_team_id` is read from the table), so this is safe — and it is direct evidence for the sentence `docs/CURRENT_DATA_MODEL.md` carries, that the 178th series was written by a path that did not use winner-first orientation. The venue for that row is now known: `OKC`.
+
+Also closed by this change: P2-12 (the probe's duplicated seed regex now calls `parseTeamsSeed`, which the test verifies), and D6's remaining-hand-entry route got a tool — `node supabase/scripts/pipeline/venueBackfill.ts --worksheet` prints the still-blank rows as a binary checklist (`csv:  39  1948  BAA  PHW vs SLB  ->  game7_home_team = ____ (one of PHW | SLB)`), because a curated home is always one of the row's own two slots. Hand entry therefore never means transcribing an outside site's abbreviation for a relocated franchise — which is where a hand-built list actually goes wrong — and the worksheet lists exactly **62** rows for the 1948–1992 block.
+
 **Known limits, stated not glossed.**
 - Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — verified
   only by running them, per AGENTS.md. `venueBackfill.ts` is under the gate by design (Biome + `tsc -b`

@@ -17,20 +17,25 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CURATED_CSV_PATH,
+  EXPECTED_TEAM_COUNT,
   LEAGUES,
   MIGRATION_FILENAME,
+  SEASON_OUTCOME_MEANING,
   type VenueRow,
   VenueBackfillError,
   blankVenueRows,
+  classifySeason,
   curatedAssignments,
   firstDriftLine,
   normalizeEol,
   orientationDecision,
   pairMatches,
+  parseTeamsSeed,
   parseVenuesCsv,
   refusalReport,
   renderFixtureSeed,
   renderMigration,
+  renderWorksheet,
   runVenueBackfillCli,
   syntheticAssignments,
 } from '../../supabase/scripts/pipeline/venueBackfill.ts';
@@ -125,17 +130,24 @@ describe('the committed curated file', () => {
 
 describe('the committed CSV against the teams seed 00016 joins on (E5)', () => {
   // The migration resolves every curated row through teams.abbreviation, and
-  // the probe reads the same 59-team seed of 00005 + 00007. Nothing else
-  // pins an abbreviation typo introduced at curation before the Docker
-  // rehearsal — and no gate step runs the Docker rehearsal.
+  // the probe reads the same 59-team seed of 00005 + 00007. Nothing else pins an
+  // abbreviation typo introduced at curation before the Docker rehearsal — and
+  // no gate step runs the Docker rehearsal. The reader is `parseTeamsSeed`
+  // itself (pass 2, P2-12): the probe calls the same function, so this test
+  // verifies the probe's instrument rather than a copy of it.
   const seedText =
     readFileSync(new URL('../../supabase/migrations/00005_release_1_data_model.sql', import.meta.url), 'utf8') +
     readFileSync(new URL('../../supabase/migrations/00007_backfill_missing_historical_series.sql', import.meta.url), 'utf8');
-  const seeded = new Map<string, number>();
-  for (const match of seedText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seeded.set(match[2], Number(match[1]));
+  const seeded = parseTeamsSeed(seedText, '00005 + 00007 teams seed');
 
   it('the seed parse holds the 59 abbreviations the archive covers', () => {
-    expect(seeded.size).toBe(59);
+    expect(seeded.size).toBe(EXPECTED_TEAM_COUNT);
+  });
+
+  it('a partial seed is refused by name, not silently mapped', () => {
+    expect(() => parseTeamsSeed("INSERT INTO teams VALUES (1, 'Boston Celtics', 'BOS', NULL);", 'fixture.sql')).toThrowError(
+      /found 1 abbreviations, expected exactly 59/,
+    );
   });
 
   it('every curated abbreviation (slots and curated homes alike) resolves in the seed', () => {
@@ -501,4 +513,67 @@ describe('the scripts/** coverage gap (E5)', () => {
       expect(res.status).toBe(0);
     });
   }
+});
+
+describe('classifySeason — when a quiet season is news (curation run, P2-4/P2-5)', () => {
+  it('route silence is the depth blocker, whatever the archive holds', () => {
+    expect(classifySeason({ seriesInFeed: 0, completedGame7: 0, curatedRowsForYear: 3 })).toBe('empty-feed');
+    expect(classifySeason({ seriesInFeed: 0, completedGame7: 0, curatedRowsForYear: 0 })).toBe('empty-feed');
+  });
+
+  it('1998-99 is corroboration, not failure: zero Game 7s answered and zero curated', () => {
+    // The owner's run printed "0 completed Game-7 series" for 1998-99 and the
+    // first version of the probe called that a blocker. The committed file holds
+    // no 1999 row at all, which is the archive and the feed agreeing.
+    expect(committedRows.some((row) => row.year === 1999)).toBe(false);
+    expect(classifySeason({ seriesInFeed: 15, completedGame7: 0, curatedRowsForYear: 0 })).toBe('no-game7');
+  });
+
+  it('a season the archive says had a Game 7 but the feed did not answer is a real disagreement', () => {
+    expect(classifySeason({ seriesInFeed: 15, completedGame7: 0, curatedRowsForYear: 2 })).toBe('missing-game7');
+  });
+
+  it('every blocker reading carries a meaning the probe can print', () => {
+    for (const outcome of ['ok', 'empty-feed', 'missing-game7', 'no-game7'] as const) {
+      expect(SEASON_OUTCOME_MEANING[outcome].length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('renderWorksheet and --worksheet — the hand-entry route for rows no feed answers (D6)', () => {
+  it('lists only the blank NBA/BAA rows, each answerable by one of its own two slots', () => {
+    const sheet = renderWorksheet(
+      parseVenuesCsv(csv('1962,BOS,LAL,NBA,', '1963,BOS,CNR,NBA,BOS', '1971,IND,KEN,ABA,'), 'fixture.csv'),
+    );
+    expect(sheet).toContain('1 NBA/BAA row(s) still blank');
+    expect(sheet).toContain('1962');
+    expect(sheet).toContain('one of BOS | LAL');
+    expect(sheet).not.toContain('1963');
+    expect(sheet).not.toContain('KEN');
+  });
+
+  it('names the exact CSV line to edit, so the answer is a paste and not a hunt', () => {
+    const sheet = renderWorksheet(committedRows);
+    const blanks = blankVenueRows(committedRows);
+    expect(blanks.length).toBeGreaterThan(0);
+    for (const row of blanks) expect(sheet).toContain(`csv:${String(row.line).padStart(4, ' ')}`);
+    expect(sheet.match(/game7_home_team = ____/g)).toHaveLength(blanks.length);
+  });
+
+  it('exits 0 while the venues are still blank and writes nothing — the worksheet is for the gap', () => {
+    const written = new Map<string, string>();
+    const result = runVenueBackfillCli(['--worksheet', '--csv=curated.csv'], {
+      readFile: () => csv('1948,PHW,SLB,BAA,', '1957,BOS,SLH,NBA,'),
+      writeFile: (path, data) => written.set(path, data),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(written.size).toBe(0);
+    expect(result.messages.join('\n')).toContain('2 NBA/BAA row(s) still blank');
+  });
+
+  it('refuses to be combined with the instruments that write', () => {
+    const result = runVenueBackfillCli(['--worksheet', '--check'], { readFile: () => csv('1948,PHW,SLB,BAA,'), writeFile: () => {} });
+    expect(result.exitCode).toBe(2);
+    expect(result.messages.join('\n')).toContain('read-only report');
+  });
 });

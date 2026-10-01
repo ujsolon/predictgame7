@@ -91,21 +91,35 @@ async function runVenueProbe(seasonOverrideRaw) {
   const selected = seasonOverrideRaw !== undefined ? [validateSeasonOverride(seasonOverrideRaw)] : seasons;
 
   // The resolver the port contract requires: the SAME ids the database ships,
-  // read off the committed seeds (no DB access, zero Supabase). 00005 seeds
-  // the 30 current franchises, 00007 the 29 historical ones — 59 abbreviations
-  // cover the archive.
+  // read off the committed seeds (no DB access, zero Supabase), through the one
+  // reader the generator and the tests share (review pass 2, P2-12).
   const seedText =
     (await readFileSafe('../supabase/migrations/00005_release_1_data_model.sql')) +
     (await readFileSafe('../supabase/migrations/00007_backfill_missing_historical_series.sql'));
-  const seed = new Map();
-  for (const match of seedText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seed.set(match[2], Number(match[1]));
-  if (seed.size !== 59) {
-    throw new Error(
-      `teams seed parse found ${seed.size} abbreviations in 00005+00007, expected 59 — seed format drifted, ` +
-        'fix this probe\'s regex before trusting its output (a wrong id space is exactly what the curated rows must not inherit)',
-    );
-  }
+  const seed = generator.parseTeamsSeed(seedText, '00005 + 00007 teams seed');
   const idToAbbr = new Map([...seed].map(([abbr, id]) => [id, abbr]));
+
+  // A feed abbreviation the `teams` table does not hold is information, not a
+  // season failure (owner's run 2026-10-01: CHH, GOS, UTH and SAN each aborted a
+  // whole season, including its clean Game-7 answers). The shipped adapter's
+  // refusal is right for the PIPELINE — it would have to write a row into a
+  // column with REFERENCES teams(id) — and this probe writes nothing, so such a
+  // code maps to a private negative id that can never collide with a real one,
+  // and its row simply never matches a curated pair. Those rows surface in the
+  // unmatched report with the raw code spelled out.
+  const feedOnlyIds = new Map();
+  const feedOnlyAbbr = new Map();
+  const resolveOrSentinel = (abbr) => {
+    const known = seed.get(abbr);
+    if (known !== undefined) return known;
+    if (!feedOnlyIds.has(abbr)) {
+      const sentinel = -1000 - feedOnlyIds.size;
+      feedOnlyIds.set(abbr, sentinel);
+      feedOnlyAbbr.set(sentinel, abbr);
+    }
+    return feedOnlyIds.get(abbr);
+  };
+  const nameOf = (id) => idToAbbr.get(id) ?? `feed:${feedOnlyAbbr.get(id) ?? `id${id}`}`;
 
   console.log('story 2.8 venue probe — shipped nba_com adapter, season by season (read-only, zero Supabase, writes nothing)');
   console.log(`seasons asked: ${selected.length} (${selected[0]} → ${selected[selected.length - 1]})`);
@@ -119,8 +133,13 @@ async function runVenueProbe(seasonOverrideRaw) {
   const curatedRows = generator.parseVenuesCsv(await readFileSafe(curatedCsvRel), 'game7_venues_curated.csv');
   const pairKey = (year, a, b) => `${year}|${[a, b].sort().join('|')}`;
   const curatedByKey = new Map(curatedRows.map((row) => [pairKey(row.year, row.teamA, row.teamB), row]));
+  const nbaBaaByCalendarYear = new Map();
+  for (const row of curatedRows) {
+    if (generator.isNbaBaa(row)) nbaBaaByCalendarYear.set(row.year, (nbaBaaByCalendarYear.get(row.year) ?? 0) + 1);
+  }
   const answeredKeys = new Set();
   const unmatchedProbeAnswers = [];
+  const feedOnlyCodes = new Set();
 
   const failures = [];
   let printed = 0;
@@ -130,14 +149,18 @@ async function runVenueProbe(seasonOverrideRaw) {
       // One full second between seasons: unmeasured limits on a hostile route.
       await sleepMs(1000);
     }
+    // The postseason of season S is played in calendar year S+1, and the
+    // archive's `year` is a calendar year — that is the curated population a
+    // quiet season has to be compared against.
+    const calendarYear = Number(season.slice(0, 4)) + 1;
     const adapter = createNbaComAdapter({
       readFile: () => {
         throw new Error('probe: manual_csv-only dependency touched — wiring bug');
       },
-      // The adapter aborts its parse naming any abbreviation this map lacks —
-      // surfaced below as a named season failure, which is D1's mapping-blocker
-      // evidence (it never silently drops a franchise).
-      teamIdByAbbreviation: (abbr) => seed.get(abbr),
+      // Unknown feed codes become private sentinels instead of aborting the
+      // season; they can never match a curated pair, so they cannot corrupt a
+      // paste, and the season's clean answers still print.
+      teamIdByAbbreviation: resolveOrSentinel,
       now: () => new Date(Date.UTC(2026, 9, 1)),
       seasonOverride: season,
     });
@@ -146,16 +169,30 @@ async function runVenueProbe(seasonOverrideRaw) {
       const scores = await adapter.fetch_game_scores();
       const report = adapter.describeRun();
       const completed = statuses.filter((s) => s.winner_team_id !== null);
-      if (completed.length === 0) {
-        // D1 names this exact condition as the feed-depth/mapping blocker
-        // evidence — it must not read as a quiet success at exit 0
-        // (review pass 1, E4).
-        failures.push(`${season}: feed answered with ZERO completed Game-7 series — depth short of this season or a mapping blocker (D1 evidence); rows for this calendar year need the hand-entry fallback`);
-        console.log(`\n=== ${season} — FAILED — 0 completed Game-7 series answered by the feed`);
+      for (const s of statuses) {
+        for (const id of [s.team_a_id, s.team_b_id]) {
+          if (feedOnlyAbbr.has(id)) feedOnlyCodes.add(feedOnlyAbbr.get(id));
+        }
+      }
+      // `no-game7` is the case the first version got wrong: 1998-99 answers zero
+      // completed Game 7s and the archive holds none for calendar 1999 either —
+      // the feed corroborating the file, not a blocker. Only route silence, or a
+      // season the archive says had a Game 7, is news (owner's run 2026-10-01).
+      const outcome = generator.classifySeason({
+        seriesInFeed: statuses.length,
+        completedGame7: completed.length,
+        curatedRowsForYear: nbaBaaByCalendarYear.get(calendarYear) ?? 0,
+      });
+      if (outcome === 'empty-feed' || outcome === 'missing-game7') {
+        failures.push(`${season} (calendar ${calendarYear}): ${generator.SEASON_OUTCOME_MEANING[outcome]}`);
+        console.log(`\n=== ${season} — FAILED — ${generator.SEASON_OUTCOME_MEANING[outcome]}`);
         for (const note of report.notes) console.log(`note: ${note}`);
         continue;
       }
-      console.log(`\n=== ${season} — ${report.countsLine} — ${completed.length} completed Game-7 series`);
+      console.log(
+        `\n=== ${season} — ${report.countsLine} — ${completed.length} completed Game-7 series` +
+          (outcome === 'no-game7' ? `; calendar ${calendarYear} holds no curated NBA/BAA Game 7 either — agrees` : ''),
+      );
       for (const status of completed) {
         const game7 = scores.find(
           (g) =>
@@ -165,19 +202,24 @@ async function runVenueProbe(seasonOverrideRaw) {
             g.game_number === 7,
         );
         if (!game7) {
-          console.log(`${status.year},${idToAbbr.get(status.team_a_id)},${idToAbbr.get(status.team_b_id)},MISSING-GAME-7-ROW`);
+          console.log(`${status.year},${nameOf(status.team_a_id)},${nameOf(status.team_b_id)},MISSING-GAME-7-ROW`);
           failures.push(`${season}: series ${status.year} pair resolved with a winner but no game-7 row in the same parse`);
           continue;
         }
         const home = idToAbbr.get(game7.home_team_id);
         if (home === undefined) {
-          failures.push(`${season}: game 7 home id ${game7.home_team_id} is not in the 00005+00007 seed`);
+          const raw = feedOnlyAbbr.get(game7.home_team_id) ?? `id ${game7.home_team_id}`;
+          unmatchedProbeAnswers.push(
+            `${status.year} ${nameOf(status.team_a_id)} vs ${nameOf(status.team_b_id)} — Game 7 hosted by feed code "${raw}", which the teams table does not hold: not pasteable, and this season's other answers still stand`,
+          );
           continue;
         }
         // winner-first is the CURATED file's convention; the adapter's slots
         // follow game-1-home. Say which is which so the paste target is never a guess.
-        const winner = idToAbbr.get(status.winner_team_id);
-        const loser = winner === idToAbbr.get(status.team_a_id) ? idToAbbr.get(status.team_b_id) : idToAbbr.get(status.team_a_id);
+        // nameOf() keeps a feed-only code visible and unmatchable rather than
+        // printing "undefined" into a line the owner might paste from.
+        const winner = nameOf(status.winner_team_id);
+        const loser = winner === nameOf(status.team_a_id) ? nameOf(status.team_b_id) : nameOf(status.team_a_id);
         // The paste target travels with the answer (review pass 2, P2-5): the
         // line the owner must edit, not a row they hunt for by eye. Matching is
         // still (year, unordered pair), so the number is a convenience, never a
@@ -219,6 +261,14 @@ async function runVenueProbe(seasonOverrideRaw) {
     console.log(`probe answers matching NO curated row: ${unmatchedProbeAnswers.length}`);
     for (const line of unmatchedProbeAnswers) console.log(`  ${line}`);
     console.log('  (archive growth or a key mismatch — reconcile against the live table BEFORE emitting: 00016\'s league_backfill_complete guard aborts db push on any uncovered series)');
+  }
+
+  if (feedOnlyCodes.size > 0) {
+    // Not a failure: these are the codes the feed uses that `teams` does not
+    // hold. Each one is reported so the owner can see which franchises the
+    // archive simply never stored, instead of losing a whole season's answers.
+    console.log(`\nfeed abbreviations the teams table does not hold: ${[...feedOnlyCodes].sort().join(', ')}`);
+    console.log('  (these rows cannot be pasted anywhere — the archive never stored that franchise under any slot)');
   }
 
   if (failures.length > 0) {

@@ -210,6 +210,97 @@ export function blankVenueRows(rows: readonly VenueRow[]): VenueRow[] {
   return rows.filter((row) => isNbaBaa(row) && row.home === '');
 }
 
+/** The archive's teams: 30 current franchises from `00005` plus 29 historical from `00007`. */
+export const EXPECTED_TEAM_COUNT = 59;
+
+const TEAM_SEED_ROW = /\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g;
+
+/**
+ * The `teams` seed as an abbreviation → id map — the same 59 rows `00016`
+ * resolves abbreviations through, and the only id space this repo's clients
+ * speak. Owned here (review pass 2, P2-12) because both `00016`'s generator and
+ * the owner-run venue probe read it: two copies of one regex is how a curated
+ * abbreviation starts meaning two different things.
+ *
+ * Throws when the count is not exactly 59 — the seed format drifting is a
+ * louder event than a venue list built on a partial map.
+ */
+export function parseTeamsSeed(seedText: string, sourceName: string): Map<string, number> {
+  const seed = new Map<string, number>();
+  for (const match of seedText.matchAll(TEAM_SEED_ROW)) {
+    if (!seed.has(match[2])) seed.set(match[2], Number(match[1]));
+  }
+  if (seed.size !== EXPECTED_TEAM_COUNT) {
+    throw new VenueBackfillError(
+      `${sourceName}: teams seed parse found ${seed.size} abbreviations, expected exactly ${EXPECTED_TEAM_COUNT} ` +
+        '(00005 seeds the 30 current franchises, 00007 the 29 historical ones) — fix the reader before trusting any output built on it',
+    );
+  }
+  return seed;
+}
+
+/**
+ * What one season of the venue feed just told the owner (review pass 2, P2-4/P2-5
+ * of the curation run). The distinction the first version of the probe got wrong:
+ * **zero completed Game 7s is only news when the archive says there was one.**
+ * 1998-99 answers zero and the curated file holds no 1999 row — that is the feed
+ * corroborating the archive, and failing the run on it would be a false alarm.
+ */
+export type SeasonOutcome = 'ok' | 'empty-feed' | 'missing-game7' | 'no-game7';
+
+export function classifySeason(input: {
+  seriesInFeed: number;
+  completedGame7: number;
+  curatedRowsForYear: number;
+}): SeasonOutcome {
+  if (input.seriesInFeed === 0) return 'empty-feed';
+  if (input.completedGame7 === 0) {
+    return input.curatedRowsForYear > 0 ? 'missing-game7' : 'no-game7';
+  }
+  return 'ok';
+}
+
+export const SEASON_OUTCOME_MEANING: Record<SeasonOutcome, string> = {
+  ok: 'answered',
+  'empty-feed': 'the route returned no series at all — feed depth short of this season, or a hostile-cadence block (spec-2-8 D1 evidence)',
+  'missing-game7': 'the feed answered the season but no series reached Game 7, while the curated file holds NBA/BAA Game 7s for that calendar year — a real disagreement to resolve, not a gap to fill by hand',
+  'no-game7': 'no series reached Game 7 and the archive holds none for that year either — corroborating, not a failure',
+};
+
+/**
+ * The hand-entry worksheet for the rows no feed answers (spec-2-8 D6: the 62
+ * NBA/BAA series in 1948–1992, plus anything the venue probe cannot reach).
+ *
+ * The point of generating it instead of reading the CSV is that **the answer is
+ * binary**: the curated home is always one of the row's own two slots, because
+ * `parseVenuesCsv` refuses anything else. So the worksheet asks "which of these
+ * two hosted Game 7" and names the exact line to edit — no abbreviation
+ * transcription from an outside source, which is where a hand-entered list
+ * actually goes wrong (a reference site's code for a relocated franchise is not
+ * this repo's `teams.abbreviation`).
+ */
+export function renderWorksheet(rows: readonly VenueRow[]): string {
+  const blanks = blankVenueRows(rows);
+  const head = [
+    `# Game-7 venue worksheet — ${blanks.length} NBA/BAA row(s) still blank in game7_venues_curated.csv`,
+    '# For each line, answer with the abbreviation of the team that HOSTED Game 7.',
+    '# The answer is always one of the two names shown; anything else is refused',
+    '# by the parser. Fill column 5 of the named line, then run:',
+    '#   node supabase/scripts/pipeline/venueBackfill.ts   # emits 00016 when none are left',
+    '#',
+  ];
+  const lines = blanks.map(
+    (row) =>
+      `${curatedLineLabel(row.line)}  ${row.year}  ${row.league}  ${row.teamA} vs ${row.teamB}  ->  game7_home_team = ____ (one of ${row.teamA} | ${row.teamB})`,
+  );
+  return `${[...head, ...lines].join('\n')}\n`;
+}
+
+/** Where a curated row lives, so a worksheet answer can be pasted without hunting. */
+function curatedLineLabel(line: number): string {
+  return `csv:${String(line).padStart(4, ' ')}`;
+}
+
 /**
  * The refuse-to-emit gate: a message naming the count while any NBA/BAA venue
  * is blank, `null` when curation is complete. The caller exits non-zero on a
@@ -734,7 +825,7 @@ function parseFlags(argv: readonly string[]): Map<string, string | true> {
     } else if (arg.startsWith('--')) {
       flags.set(arg.slice(2), true);
     } else {
-      throw new VenueBackfillError(`unrecognised argument "${arg}" — supported: --check, --csv=, --self-test-migration=, --self-test-fixture=`);
+      throw new VenueBackfillError(`unrecognised argument "${arg}" — supported: --check, --worksheet, --csv=, --self-test-migration=, --self-test-fixture=`);
     }
   }
   return flags;
@@ -764,13 +855,26 @@ export function runVenueBackfillCli(argv: readonly string[], io: { readFile?: (p
   try {
     const flags = parseFlags(argv);
     const unknown = [...flags.keys()].filter(
-      (name) => !['check', 'csv', 'self-test-migration', 'self-test-fixture'].includes(name),
+      (name) => !['check', 'csv', 'self-test-migration', 'self-test-fixture', 'worksheet'].includes(name),
     );
     if (unknown.length > 0) {
-      throw new VenueBackfillError(`unrecognised flag(s): ${unknown.join(', ')} — supported: --check, --csv=, --self-test-migration=, --self-test-fixture=`);
+      throw new VenueBackfillError(`unrecognised argument(s): ${unknown.join(', ')} — supported: --check, --worksheet, --csv=, --self-test-migration=, --self-test-fixture=`);
     }
     const csvPath = typeof flags.get('csv') === 'string' ? (flags.get('csv') as string) : CURATED_CSV_PATH;
     const rows = parseVenuesCsv(readFile(csvPath), csvPath);
+
+    // The hand-entry worksheet (D6) is deliberately reachable while blanks stand
+    // — that is exactly when it is needed — and writes nothing.
+    if (flags.get('worksheet') !== undefined) {
+      if (flags.get('check') !== undefined || flags.get('self-test-migration') !== undefined || flags.get('self-test-fixture') !== undefined) {
+        throw new VenueBackfillError('--worksheet is a read-only report; do not combine it with --check or --self-test-*');
+      }
+      const blanks = blankVenueRows(rows);
+      messages.push(
+        blanks.length === 0 ? `${csvPath}: no NBA/BAA row is blank — nothing to hand-enter` : renderWorksheet(rows),
+      );
+      return { exitCode: 0, messages };
+    }
 
     const selfMigration = flags.get('self-test-migration');
     const selfFixture = flags.get('self-test-fixture');
