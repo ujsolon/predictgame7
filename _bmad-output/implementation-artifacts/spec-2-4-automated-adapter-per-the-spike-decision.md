@@ -265,7 +265,8 @@ older than the pipeline are never reconciled or rewritten.
 
 ## Implementation Notes
 
-Built 2026-10-01 on `baseline_commit 0f740f9`. **The story is not `done`:** Decision 12 makes AC:369's
+Built 2026-10-01 on `baseline_commit 0f740f9`, committed to `master` as `c5ffd05` (not pushed — pushing
+is the owner's call, as in Stories 2.2/2.3). **The story is not `done`:** Decision 12 makes AC:369's
 live clause the owner's, and `node scripts/probe-nba-com-adapter.mjs` has not been run yet (this
 session's policy refused the agent's outbound call to stats.nba.com). Until its output is pasted at the
 bottom of this section, nothing here claims the feed still answers the 2026-09-30 header posture.
