@@ -82,7 +82,12 @@ function seriesFixture(
 ): FixtureGame[] {
   const games: FixtureGame[] = [];
   winners.forEach((winner, index) => {
-    const date = `${firstDate}-${String(startDay + index * 2).padStart(2, '0')}`; // every other day
+    // Every other day, rolled through a real calendar: a seven-game series
+    // starting on the 20th ends on the 2nd of the next month, as it does in a
+    // feed, so the fixture's dates are dates and not day counters.
+    const date = new Date(Date.UTC(Number(firstDate.slice(0, 4)), Number(firstDate.slice(5, 7)) - 1, startDay + index * 2))
+      .toISOString()
+      .slice(0, 10);
     const homeIsA = index % 2 === 0;
     const home = homeIsA ? teamA : teamB;
     const away = homeIsA ? teamB : teamA;
@@ -777,6 +782,26 @@ describe('nba_com through the runner', () => {
     expect(sink.births).toHaveLength(0);
     expect(sink.completions).toHaveLength(0);
     expect(out.lines.join('\n')).toMatch(/already archived with identical games 1–7/);
+  });
+
+  it('feed shape drift aborts the run through the runner: non-zero exit, the GAME_ID named, zero writes', async () => {
+    const sink = new FakeSink();
+    const errors = capture();
+    const games = pendingSeries();
+    games[3] = { ...games[3], homePts: 105, awayPts: 105 };
+    const stub = stubFeed([{ status: 200, body: feedBody(games) }]);
+    const code = await runPipeline({
+      env: { ...VALID_ENV },
+      argv: ['--source=nba_com'],
+      createSink: () => sink,
+      fetch: stub.fetch,
+      now: () => new Date(Date.UTC(2027, 4, 10)),
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(new RegExp(`${games[3].gameId}.*tie score`, 's'));
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
   });
 
   it('an unrecognised flag refuses with help text naming --season= and the frozen-archive rule', async () => {

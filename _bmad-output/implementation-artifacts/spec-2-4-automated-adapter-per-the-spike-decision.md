@@ -297,7 +297,7 @@ bottom of this section, nothing here claims the feed still answers the 2026-09-3
   behind both port methods; malformed `--season=` throws at factory time, before any request;
   `describeRun()` throws if called before the feed resolved, so a run can never report a parse it
   never did).
-- `tests/pipeline/nba-com.test.ts` (32 tests) — the I/O matrix row by row against an injected `fetch`
+- `tests/pipeline/nba-com.test.ts` (33 tests) — the I/O matrix row by row against an injected `fetch`
   and a synthetic fixture postseason built in the file (zero network, zero Supabase): the season
   derivation table, the one Decision-1 URL, malformed `--season=`, both methods reading one cached
   parse (`urls.length === 1`), offseason zero rows → runner exit 0, pending 3–3, completed Game 7,
@@ -311,8 +311,11 @@ bottom of this section, nothing here claims the feed still answers the 2026-09-3
   printed without complaint, a constructed depth-5 series excluded and named, the runner birth printing
   the counts line + histogram, a re-run that is all skips, completing a pending series, the
   `--season=2016-17` **disagreeing** drill landing on the archive guard's message with zero writes, the
-  **matching** drill skipping with `already archived with identical games 1–7`, and the unknown-flag
-  help text naming `--season=` and the freeze rule.
+  **matching** drill skipping with `already archived with identical games 1–7`, the shape-drift row
+  driven through the runner (exit 2, the `GAME_ID` named, zero writes), and the unknown-flag
+  help text naming `--season=` and the freeze rule. The fixture builder rolls its every-other-day
+  spacing through a real calendar (`Date.UTC`), so a seven-game series starting on the 20th ends on
+  the 2nd of the next month the way a feed does — the dates are dates, not day counters.
 - `scripts/probe-nba-com-adapter.mjs` (237 lines) — the owner-run live leg: unkeyed, read-only, zero
   Supabase calls; one `leaguegamelog` fetch (adapter's headers/posture), the same two-row merge,
   same-UTC-day count, series grouping + chain-depth labels + histogram, the counts line, every Game-7
