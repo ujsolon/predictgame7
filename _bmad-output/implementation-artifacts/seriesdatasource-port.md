@@ -123,8 +123,10 @@ spike's six headers copied verbatim.
   `TEAM_ABBREVIATION` through the port's `deps.teamIdByAbbreviation` — the
   same resolver `manual_csv` uses — because the sink's columns carry
   `REFERENCES teams(id)`. The feed's numeric `TEAM_ID` is a foreign namespace
-  (`decision-2-1-q-4-data-source.md:104`'s claim that the two agree is
-  unsourced; the owner-run `scripts/probe-nba-com-adapter.mjs` measures it).
+  — **measured 2026-10-01** by the owner-run `scripts/probe-nba-com-adapter.mjs`
+  against the live 2025-26 playoffs: 0 agree / 16 differ (`CLE` is
+  `1610612739` on the wire and `6` here). That run retires
+  `decision-2-1-q-4-data-source.md:104`'s unsourced claim that the two agree.
   Consequence to remember operationally: **a feed carrying a team the `teams`
   table lacks aborts the run naming the abbreviation and its `GAME_ID`, and
   writes nothing** — that is the loud failure replacing a silent wrong-franchise
@@ -158,7 +160,10 @@ against `boxscoretraditionalv2`. **Exit 0 means every check passed** — a
 disagreement or an unexpected request count throws and exits 2, so a "PROBE
 PASSED" line can never sit under a printed FAIL (review triage row 20). It
 needs Node ≥ 22.18, since it imports the shipped TypeScript adapter under
-native type-stripping.
+native type-stripping. Two owner runs on 2026-10-01 are the evidence: the
+first exited 2 on a defect in **this script's** own series selection (a
+franchise that advanced contributed its later rounds — fixed in `4002893`),
+the second passed every leg end to end against `Season=2025-26`.
 
 ## What the runner asserts before it writes (plan.ts)
 

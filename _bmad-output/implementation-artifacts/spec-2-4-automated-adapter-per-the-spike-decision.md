@@ -420,8 +420,8 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
   predicted — the cross-check leg grouped games by *either franchise appearing* rather than by the pairing,
   so a winning first-round team contributed its later series and the leg aborted on 18 `GAME_ID`s for a
   seven-game series. Selection now requires both of a game's rows to carry the pair's two abbreviations
-  (commit `4002893`), verified offline on a synthetic rowSet that reproduces the measured 18 → 7. The
-  cross-check leg itself still has not reported.
+  (commit `4002893`), verified offline on a synthetic rowSet that reproduces the measured 18 → 7. Run 2,
+  on the fixed script, passed every leg including the cross-check — see `### Live evidence`.
 - `_bmad-output/implementation-artifacts/seriesdatasource-port.md` — intro now names Story 2.3 extended by
   Story 2.4; the interface snippet shows `describeRun?()` marked optional/additive with the AD-5
   amendment the owner owes; the selection section lists the implemented adapters, the flag-pairing refusal
@@ -493,13 +493,12 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
 
 **Owner handover (what is not closed by unit evidence):**
 
-- AC:369's live clause is the owner's (Decision 12). Run 1 is in `### Live evidence` below and settles
-  every leg the shipped adapter owns; the `boxscoretraditionalv2` leg is still open, because it aborted on
-  a bug in the probe script that was fixed after the run. **Re-run
-  `node scripts/probe-nba-com-adapter.mjs --season=2025-26` (Node ≥ 22.18) and paste the output** — that
-  leg needs a live feed, so this session cannot close it. Until it reports, this story's frontmatter
-  `status` stays `in-review` and `sprint-status.yaml` stays at `review`. A non-zero exit is evidence too:
-  paste it, and the story records the route as red rather than untested.
+- **AC:369's live clause — closed 2026-10-01 by owner run 2.** `node
+  scripts/probe-nba-com-adapter.mjs --season=2025-26` (Node ≥ 22.18) exits 0 and prints `PROBE PASSED`;
+  both transcripts are in `### Live evidence` below. Re-running it is now a maintenance action — the feed's
+  headers and shape are the drift risk and nothing in CI checks them — not an open item. The one live
+  behaviour no run has touched is `deriveSeason` from the run date: both runs passed `--season=`
+  explicitly, so that path stays pinned by unit tests only.
 - Optional, also owner-run because it opens a production session:
   `node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run --season=2025-26` —
   `--env-file=` must precede the script path, or Node passes it to the runner as a run flag instead of
@@ -507,10 +506,11 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
 - AD-5's port text still names exactly two operations; `describeRun?()` is additive and optional, and the
   amendment (triage row 9) is the owner's call to make in the spine.
 
-**The story is not `done`.** Decision 12 makes AC:369's live clause the owner's. The owner ran the probe
-on 2026-10-01 (output below): every leg the shipped adapter owns passed, and the last leg — the
-`boxscoretraditionalv2` cross-check — went red on a **bug in the probe script itself**, not in the
-pipeline. Fixed in commit `4002893`; AC:369 stays open until the owner re-runs and that leg reports.
+**AC:369 is now met** — run 2 below exits 0 and prints `PROBE PASSED`, so the live clause Decision 12 put
+in the owner's hands is closed and every acceptance criterion in Story 2.4 has evidence. The story still
+sits at `in-review`, because what remains is the independent code review — the owner runs
+`bmad-code-review` in a fresh session on a different model; pass 1 and pass 2 above were both rendered
+inside the implementing session, so they are not independent evidence.
 
 ### Live evidence (AC:369) — run 1, owner, 2026-10-01T03:00:21Z
 
@@ -613,14 +613,19 @@ Exit 2 — fix the cause and re-run; paste the whole output either way.
   0 unexplainable; 5 candidates, all decided, all printed with seven games and a `winner`.
 - **AD-4 posture — consistent:** every candidate line resolves to a winner, and the pending-3-3 count is
   a separate bucket the run reported as 0, not inferred from `status`.
+- **Decision 4's slot convention — holds on the live feed for all five printed candidates.** Each series
+  line names `team_a` first and its game 1 line puts that same team at home (`CLE vs TOR` / `TOR 113 @
+  CLE 126`; likewise BOS, DET, DET, OKC), so the convention `UNIQUE (year, team_a_id, team_b_id)` cannot
+  enforce is the one this adapter writes — the same 178/178 shape Story 2.1 measured in the archive.
 - **`decision-2-1-q-4-data-source.md:104` — REFUTED.** 0 of 16 feed `TEAM_ID`s agree with `teams.id`;
   the two spaces are unrelated (league `1610612737`… vs repo `1`…`30`). Review loopback 1's
   `deps.teamIdByAbbreviation` resolver is load-bearing: had the adapter emitted the feed id as the
   original Code Map instructed, every row would have carried a valid-looking FK pointing at a different
   franchise. Recorded at the decision row and in `## Design Notes`.
 - **Not settled by this run:** the `boxscoretraditionalv2` cross-check, which failed for a reason
-  internal to the probe (below), and the `--season`-derived path, since the owner passed the flag
-  explicitly.
+  internal to the probe (below). Run 2, below, settles it. Nor does either run exercise `deriveSeason`,
+  since the owner passed `--season=2025-26` explicitly — the run-date path stays covered by unit tests
+  only.
 
 **The red leg is a probe bug, and it is Story 2.4's most useful review finding.** The cross-check leg
 selected games by *"does either franchise of the pair appear in this row"*, so CLE — which won the series
@@ -630,12 +635,55 @@ seven-game series, and the leg's own `ordered.length !== 7` assertion aborted a 
 message extended to report both counts (`captured 7 of 18 …`) so the next occurrence distinguishes the
 two failures. Verified offline — `scripts/**` is covered by no test runner, so the substitute was a
 synthetic rowSet reproducing the measured shape (one 7-game series for CLE/TOR plus CLE's two later
-series): the pre-fix expression returns 18, the post-fix expression returns 7 in date order. That is a
-reproduction of the counting bug, not of the cross-check itself, which still needs the live feed.
+series): the pre-fix expression returns 18, the post-fix expression returns 7 in date order. That was a
+reproduction of the counting bug only — run 2 below supplies the live cross-check it stood in for.
 
 **Why no gate could have caught it:** the leg needs (a) a live response and (b) a first-round franchise
 that advances, and the unit suite's fixtures are all offline and hand-written; pass 2's row-20 hardening
 made the leg *exit* honestly, which is precisely why it reported the bug instead of silently passing.
+
+### Live evidence (AC:369) — run 2, owner, 2026-10-01T03:18:00Z — **PROBE PASSED**
+
+Same command, against commit `4002893`. The adapter-side output matches run 1 apart from the run-date
+stamp and the console rendering artifact noted below, so only the changed legs are transcribed here; the
+run-1 block above remains the full record of everything before the cross-check.
+
+```
+===== TEAM_ID ↔ abbreviation ↔ resolved teams.id (the :104 claim, measured) =====
+  … 14 rows as run 1 …
+  SAS  feed TEAM_ID=1610612759 resolved=27  DIFFER — copying TEAM_ID would have written the wrong franchise
+  TOR  feed TEAM_ID=1610612761 resolved=28  DIFFER — copying TEAM_ID would have written the wrong franchise
+verdict on decision-2-1-q-4-data-source.md:104 ("numeric ids already match"): 0 agree / 16 differ / 0 not in the teams table.
+(the adapter resolves through the abbreviation map regardless — this line is the measurement, not a dependency.)
+
+===== Game 7 cross-check: boxscoretraditionalv2 =====
+game 0042500137 (2026-05-03): feed says TOR 102 @ CLE 114
+  CLE: feed PTS=114 vs boxscore PTS=114 — MATCH
+  TOR: feed PTS=102 vs boxscore PTS=102 — MATCH
+Game 7 cross-check complete: the leaguegamelog PTS values are the boxscore final scores.
+
+PROBE PASSED — paste this whole output into spec-2-4 `## Implementation Notes` (Decision 12).
+```
+
+- **The cross-check leg is green.** `0042500137` is CLE/TOR game 7, dated 2026-05-03, and reaching it at
+  all means the pair filter counted exactly seven games for that pairing — the leg throws on any other
+  count, so the pass is the evidence, not a printed 7. The fix works on the real rowSet, not just the
+  synthetic one.
+- **The `boxscoretraditionalv2` route is live and agrees with `leaguegamelog`.** Both sides' `PTS` match
+  the second route's team totals, which is what AC:369 asks the feed to attest: the scores this pipeline
+  would write are the games' final scores, read from an endpoint the pipeline never calls. One game, one
+  run — it is a spot check, not a coverage claim.
+- **`GAME_ID` reconfirms `decision-2-1-q-4-data-source.md`'s game-number finding:** `0042500137` ends in
+  `137`, a global postseason ordinal, not `7`. `game_number` must stay a date-ordinal derivation, which is
+  what the adapter does.
+- **`PROBE PASSED` printed with no `FAIL` anywhere above it** — pass 2's row-20 exit contract holding on
+  the real feed, which is the behaviour its rewrite was for.
+- **Cosmetic, and worth knowing before someone reads this transcript:** run 2's counts line and URL line
+  render with the console's leftover cells from run 1 (`… withheld` reappears at the end of the counts
+  line, the URL interleaved). Both lines are complete in the script's own output; this is `cmd.exe`
+  overwriting a wrapped line, not truncation, and the `PASS` tokens on those lines are the script's.
+- **Still not covered by either run:** `deriveSeason` from the run date (both runs passed `--season=`),
+  and the 403/backoff path (no retry fired, since the single request succeeded).
 
 ## Spec Change Log
 
@@ -734,6 +782,17 @@ made the leg *exit* honestly, which is precisely why it reported the bug instead
   CLE's advance turned a seven-game series into 18 `GAME_ID`s and tripped the leg's own count assertion
   (commit `4002893`, verified offline on a synthetic rowSet reproducing 18 → 7, since `scripts/**` is run by
   no test harness). No frozen artifact changed; the story stays `in-review` pending that one leg.
+
+- 2026-10-01 (owner live run 2 — **AC:369 closed**, no Decision/AC/Boundary changed): the fixed probe ran
+  clean end to end — `PROBE PASSED`, exit 0 — with the `boxscoretraditionalv2` leg checking CLE/TOR game 7
+  (`0042500137`, 2026-05-03) and both sides' `PTS` matching. Every acceptance criterion now has evidence,
+  so the `## Verification` entry for the live leg and the Owner-handover bullet are rewritten from owed to
+  recorded, and `seriesdatasource-port.md` plus the decision record carry the measurement instead of the
+  pending question. Two claims this pass deliberately does **not** make: `deriveSeason` from the run date
+  is still unit-only (both runs passed `--season=`), and the cross-check is one game, not coverage.
+  Frontmatter `status` stays `in-review` and `sprint-status.yaml` stays at `review` — what remains is the
+  owner's independent review pass, and passes 1 and 2 were both rendered inside this implementing session,
+  so they do not substitute for it.
 
 ## Review Triage Log
 
@@ -870,12 +929,15 @@ silent-corruption case this paragraph was written against. `### Live evidence` h
   Decision-6 retry of the same URL reads PASS), the derived round per series, the depth histogram, the
   `TEAM_ID` ↔ abbreviation ↔ resolved `teams.id` triples, and one Game 7 cross-checked field-by-field against
   `boxscoretraditionalv2` — **exit 0 only if every check passed** (row 20: a disagreeing PTS pair now throws
-  `Game 7 cross-check FAILED` instead of printing `MISMATCH` and then declaring the run passed). Its output
-  is pasted into `## Implementation Notes` — that closes AC:369's live clause, and it is also the first
-  evidence that Story 2.1's header posture still works a day later.
-  **The id-space question is this leg's to answer**: if the printed `TEAM_ID`s differ from the resolved
-  `teams.id`s, the decision record's claim is refuted by measurement and the resolver was load-bearing; if
-  they agree, record that too, so the next reader has the measurement instead of the assertion.
+  `Game 7 cross-check FAILED` instead of printing `MISMATCH` and then declaring the run passed). **Ran
+  twice by the owner on 2026-10-01** — transcripts in `### Live evidence`. Run 1 exited 2 on a defect in
+  this script's own series selection; run 2 exited 0 with `PROBE PASSED`, one request, histogram
+  `{1:8, 2:4, 3:2, 4:1}`, and `0042500137` (CLE/TOR game 7) matching `boxscoretraditionalv2` on both
+  sides. That closes AC:369's live clause and is also the first evidence that Story 2.1's header posture
+  still works a day later.
+  **The id-space question was this leg's to answer, and it answered: the 16 printed `TEAM_ID`s all differ
+  from the resolved `teams.id`s**, so the decision record's claim is refuted by measurement and the
+  resolver was load-bearing.
 - `node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run` -- expected: needs
   `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (via `--env-file=.env`, which must come **before** the script
   path) before it reaches the feed, then prints the counts line
