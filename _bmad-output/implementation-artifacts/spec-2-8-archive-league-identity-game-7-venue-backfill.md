@@ -470,6 +470,20 @@ PROBE INCOMPLETE — 10 season(s) could not be answered: 1992-93 … 2001-02
 
 Also closed by this change: P2-12 (the probe's duplicated seed regex now calls `parseTeamsSeed`, which the test verifies), and D6's remaining-hand-entry route got a tool — `node supabase/scripts/pipeline/venueBackfill.ts --worksheet` prints the still-blank rows as a binary checklist (`csv:  39  1948  BAA  PHW vs SLB  ->  game7_home_team = ____ (one of PHW | SLB)`), because a curated home is always one of the row's own two slots. Hand entry therefore never means transcribing an outside site's abbreviation for a relocated franchise — which is where a hand-built list actually goes wrong — and the worksheet lists exactly **62** rows for the 1948–1992 block.
 
+**The depth drill falsifies D6's premise (owner-run, 2026-10-01, four single-season runs).** The sentinel fix works — 1992-93 now answers instead of aborting, and prints paste targets — and the surprise is how far back the route goes:
+
+```
+--season=1992-93 → 1993,SEA,HOU,SEA  # :120 | 1993,PHX,SEA,PHX  # :119           (2 answered, 0 failures)
+--season=1987-88 → 1988,BOS,ATL,BOS # :111 | LAL,DAL,LAL # :112 | LAL,DET,LAL # :113
+                   1988,LAL,feed:UTH,LAL            ← curated :114 is 1988 LAL vs UTA
+--season=1975-76 → 1976,CLE,WAS,CLE                ← curated :88  is 1976 CLE vs WSB
+                   1976 feed:GOS vs PHX, home GOS  ← curated :91  is 1976 PHX vs GSW
+--season=1962-63 → 1963,BOS,feed:CIN,BOS           ← curated :51  is 1963 BOS vs CNR
+                   1963,LAL,feed:STL,LAL            ← curated :52  is 1963 LAL vs SLH
+```
+
+**The feed answers 1962-63.** So the 62-row "hand-enter from basketball-reference" block D6 assumed is not a depth limit at all — it is a **naming** limit, and a small one: seven codes so far (`CHH`, `GOS`, `UTH`, `SAN`, `CIN`, `STL`, `WAS`) where the feed names a franchise one way and `teams` holds it another (`CIN`↔`CNR` Cincinnati Royals, `STL`↔`SLH` St. Louis Hawks, `WAS`↔`WSB` Washington Bullets, `GOS`↔`GSW`, `UTH`↔`UTA`, `SAN`↔`SAS`). In every case above the *series* is still identifiable — the year matches, one side matches a curated slot exactly, and the unmapped code occupies the other slot, which is a derivation from the archive's own data rather than a guess about history. Only the venue abbreviation is blocked, and only for `GOS` (where the home team is the unmapped side). Consequences to settle with the owner: D6's reference route may be unnecessary, the probe's unmatched hint ("archive growth or a key mismatch") was mislabouring these rows and now names the era-code case, and whether the mapping lives in a committed, auditable alias table is an architecture question this story shouldn't answer silently.
+
 **Known limits, stated not glossed.**
 - Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — verified
   only by running them, per AGENTS.md. `venueBackfill.ts` is under the gate by design (Biome + `tsc -b`
