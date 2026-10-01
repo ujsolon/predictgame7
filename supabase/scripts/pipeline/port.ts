@@ -1,8 +1,9 @@
 /**
- * Story 2.3 — the `SeriesDataSource` port (ARCHITECTURE-SPINE AD-5).
+ * Story 2.3 — the `SeriesDataSource` port (ARCHITECTURE-SPINE AD-5); Story
+ * 2.4 registered the first automated adapter (`nba_com`) behind it.
  *
- * Every source of series data — the `manual_csv` floor shipped here and the
- * automated adapters Story 2.4 swaps in behind this same seam — speaks exactly
+ * Every source of series data — the `manual_csv` floor and the automated
+ * adapters Story 2.4 swaps in behind this same seam — speaks exactly
  * two operations, named verbatim as AD-5 fixes them so the spine and the code
  * cannot diverge: `fetch_series_statuses` and `fetch_game_scores`. The runner
  * never knows which adapter produced its rows.
@@ -17,6 +18,7 @@
  * `_bmad-output/implementation-artifacts/seriesdatasource-port.md`.
  */
 import { createManualCsvAdapter } from './adapters/manualCsv.ts';
+import { createNbaComAdapter } from './adapters/nbaCom.ts';
 
 /** One series as the source sees it: identity, display round, and whether game 7 has landed. */
 export interface SeriesStatusRow {
@@ -41,10 +43,26 @@ export interface GameScoreRow {
   away_score: number;
 }
 
+/** Optional reporting surface (Story 2.4): how an automated adapter selected its rows. */
+export interface AdapterRunReport {
+  /** One line naming feed size and selection counts — printed on every run so a silent narrowing of coverage cannot pass unnoticed. */
+  countsLine: string;
+  /** Derived chain-depth histogram (a postseason in flight legitimately shows a partial one — information, not a gate). */
+  depthHistogram: Record<number, number>;
+  /** Named exclusions (series whose derived depth falls outside 1..4). */
+  notes: string[];
+}
+
 /** The port AD-5 names. Method names are frozen; Story 2.4's adapter implements the same two. */
 export interface SeriesDataSource {
   fetch_series_statuses(): Promise<SeriesStatusRow[]>;
   fetch_game_scores(): Promise<GameScoreRow[]>;
+  /**
+   * Optional. Automated adapters report their selection counts and depth
+   * histogram through it (Story 2.4 Boundaries); the runner prints the report
+   * after the two fetch methods resolve. Not one of AD-5's frozen two.
+   */
+  describeRun?(): AdapterRunReport;
 }
 
 export class AdapterSelectionError extends Error {}
@@ -52,35 +70,69 @@ export class AdapterSelectionError extends Error {}
 /** AD-5's adapter list; `manual_csv` is the default and the floor. */
 export const DEFAULT_ADAPTER_NAME = 'manual_csv';
 
+/** The narrow slice of `fetch` an HTTP adapter needs — tests inject a stub, so nothing reaches the network. */
+export interface AdapterFetchInit {
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}
+
+export interface AdapterFetchResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
+export type AdapterFetch = (url: string, init: AdapterFetchInit) => Promise<AdapterFetchResponse>;
+
+/**
+ * What the runner hands an adapter factory. Story 2.4 (Decision 8) kept this
+ * from accreting CSV fields: the CSV pieces are `manual_csv`-only, the
+ * `nba_com` pieces are the season/date seam plus the injectable network and
+ * backoff — every field is used by at least one shipped adapter.
+ */
 export interface AdapterDeps {
-  /** Path of the CSV the manual_csv adapter reads (flag `--csv=` or the default file). */
-  csvPath: string;
+  /** `manual_csv` only: path of the CSV it reads (flag `--csv=` or the default file). Other adapters receive `undefined`. */
+  csvPath?: string;
   readFile: (path: string) => string;
   /** Resolves `teams.abbreviation` (UNIQUE) to `teams.id`; undefined for a team the table does not hold. */
   teamIdByAbbreviation: (abbreviation: string) => number | undefined;
+  /** `nba_com` only: `--season=YYYY-YY` override; undefined lets the adapter derive the season from `runDate`. */
+  season?: string;
+  /** `nba_com` only: the run's date — season derivation and the same-UTC-day exclusion read its UTC fields. */
+  runDate?: Date;
+  /** `nba_com` only: injectable fetch (tests never touch the network); defaults to the runtime's global fetch. */
+  fetch?: AdapterFetch;
+  /** `nba_com` only: injectable backoff sleep between retry attempts; defaults to a real timer. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface AdapterEntry {
   implemented: boolean;
   /** Only implemented adapters carry a factory. */
   create?: (deps: AdapterDeps) => SeriesDataSource;
+  /** Only unimplemented adapters carry a reason: where its rejection or its pending story lives. */
+  reason?: string;
 }
 
-function unimplementedEntry(): AdapterEntry {
-  return { implemented: false };
+function unimplementedEntry(reason: string): AdapterEntry {
+  return { implemented: false, reason };
 }
 
 /**
- * The adapter registry keyed by `SERIES_SOURCE`. Story 2.4 registers its
- * automated adapter here; until then `fantrax` and `nba_com` are recognised
- * names that fail loudly — the runner never falls back to `manual_csv`
- * silently, because a silent fallback during the playoff window would leave
- * Active Series stale while looking healthy.
+ * The adapter registry keyed by `SERIES_SOURCE`. Story 2.4 registered
+ * `nba_com` here; `fantrax` stays recognised-but-unimplemented with its
+ * message pointing at the spike's rejection — recorded, never silently
+ * dropped. The runner never falls back to `manual_csv` silently, because a
+ * silent fallback during the playoff window would leave Active Series stale
+ * while looking healthy.
  */
 export const ADAPTER_REGISTRY: Record<string, AdapterEntry> = {
   manual_csv: { implemented: true, create: createManualCsvAdapter },
-  fantrax: unimplementedEntry(),
-  nba_com: unimplementedEntry(),
+  fantrax: unimplementedEntry(
+    'rejected by the Story 2.1 spike: its endpoints return fantasy point totals and playoff configuration, ' +
+      'never real home/away game scores (see _bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md)',
+  ),
+  nba_com: { implemented: true, create: createNbaComAdapter },
 };
 
 /**
@@ -99,7 +151,7 @@ export function assertAdapterImplemented(name: string): void {
   }
   if (!entry.implemented) {
     throw new AdapterSelectionError(
-      `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented (Story 2.4). ` +
+      `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented — ${entry.reason ?? 'no adapter is shipped for it'}. ` +
         'The runner never falls back silently — unset SERIES_SOURCE (or pass --source=manual_csv) to use the manual_csv floor.',
     );
   }

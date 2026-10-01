@@ -11,6 +11,11 @@
  *
  * Owner usage (the agent never runs this against production):
  *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
+ *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
+ *
+ * `--season=<YYYY-YY>` overrides the nba_com adapter's date-derived season;
+ * the archive is frozen (Story 2.4 Decision 11), so pointing it at an archived
+ * year is a drill that lands on the runner's archive guard, never a rewrite.
  *
  * `.env` must supply SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the same
  * names the handle-contact function uses; NFR-S1 — never a `VITE_*` name,
@@ -24,6 +29,8 @@ import {
   createAdapterSource,
   DEFAULT_ADAPTER_NAME,
   type AdapterDeps,
+  type AdapterFetch,
+  type AdapterRunReport,
 } from './port.ts';
 import { groupSourceRows, planPipeline, type CurrentSeriesRow, type Plan, type SourceSeries } from './plan.ts';
 import { createSupabaseSink, type PipelineSink, type SinkOptions } from './writer.ts';
@@ -43,6 +50,12 @@ export interface RunDeps {
   readFile?: (path: string) => string;
   log?: (line: string) => void;
   logError?: (line: string) => void;
+  /** Test seam for the run's UTC date (Story 2.4: season derivation + same-day exclusion). */
+  now?: () => Date;
+  /** Test seam for HTTP adapters — `tests/pipeline` never touches the network (Story 2.4 Decision 8). */
+  fetch?: AdapterFetch;
+  /** Test seam for an HTTP adapter's retry backoff, so a refused-feed test does not wait on real timers. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -52,13 +65,25 @@ function flagValue(argv: string[], name: string): string | undefined {
 }
 
 /**
- * The first argument that is not one of the three supported flags. A typo like
+ * The first argument that is not one of the supported flags. A typo like
  * `--dry-run=true` or `--dryrun` must not read as "dry run requested and
  * silently ignored" — the whole point of the flag is that no write follows, so
- * an unrecognised flag refuses the run instead.
+ * an unrecognised flag refuses the run instead. The help text names the
+ * frozen-archive rule beside `--season=` (Story 2.4 Decision 11) so a drill
+ * onto an archived year reads as intentional, not as an accidental attack on
+ * rows the adapter may never rewrite.
  */
 function unknownFlag(argv: string[]): string | undefined {
-  return argv.find((arg) => arg.startsWith('--') && arg !== '--dry-run' && !/^--(source|csv)=\S/.test(arg));
+  return argv.find((arg) => arg.startsWith('--') && arg !== '--dry-run' && !/^--(source|csv|season)=\S/.test(arg));
+}
+
+function flagHelp(): string {
+  return (
+    'supported: --dry-run, --source=<adapter>, --csv=<path> (manual_csv), ' +
+    '--season=<YYYY-YY> (nba_com; overrides the derived postseason — the archived years are FROZEN: ' +
+    'pointing --season= at one reaches the archive guard, which skips it when the source matches and aborts naming ' +
+    'the series when it disagrees, never a rewrite)'
+  );
 }
 
 function requiredEnv(env: RunDeps['env'], name: string): string {
@@ -93,6 +118,15 @@ function describePlan(plan: Plan, log: (line: string) => void): void {
   );
 }
 
+/** `{1:8, 2:4, 3:2, 4:1}` — depth order, so a reviewer can read the bracket shape at a glance. */
+function formatHistogram(histogram: Record<number, number>): string {
+  return `{${Object.keys(histogram)
+    .map(Number)
+    .sort((left, right) => left - right)
+    .map((depth) => `${depth}:${histogram[depth]}`)
+    .join(', ')}}`;
+}
+
 /**
  * Run the pipeline. Returns the process exit code (0 success — including an
  * empty plan — 2 on any refusal or failure). Never calls `process.exit`
@@ -109,19 +143,19 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
   try {
     const stray = unknownFlag(argv);
     if (stray) {
-      throw new PipelineRunError(
-        `unrecognised flag "${stray}" — supported: --dry-run, --source=<adapter>, --csv=<path>`,
-      );
+      throw new PipelineRunError(`unrecognised flag "${stray}" — ${flagHelp()}`);
     }
     const dryRun = argv.includes('--dry-run');
     // An empty SERIES_SOURCE — a CI job that declares the variable with no
     // value — means "unset": the documented default is the manual_csv floor.
     const sourceName = flagValue(argv, 'source') ?? (deps.env.SERIES_SOURCE?.trim() || DEFAULT_ADAPTER_NAME);
     // Adapter selection is validated before any secret is read: a recognised
-    // but unimplemented name (Story 2.4's) refuses loudly, never silently
-    // falling back to manual_csv.
+    // but unimplemented name refuses loudly, never silently falling back to
+    // manual_csv.
     assertAdapterImplemented(sourceName);
-    const csvPath = flagValue(argv, 'csv') ?? DEFAULT_CSV_PATH;
+    // Story 2.4 (Decision 8): the CSV path is resolved for the adapter that
+    // can use it and for no other.
+    const csvPath = sourceName === DEFAULT_ADAPTER_NAME ? (flagValue(argv, 'csv') ?? DEFAULT_CSV_PATH) : undefined;
 
     const supabaseUrl = requiredEnv(deps.env, ENV_SUPABASE_URL);
     const serviceRoleKey = requiredEnv(deps.env, ENV_SERVICE_ROLE_KEY);
@@ -133,13 +167,22 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       csvPath,
       readFile,
       teamIdByAbbreviation: (abbreviation) => teamIds.get(abbreviation),
+      season: flagValue(argv, 'season'),
+      runDate: deps.now ? deps.now() : new Date(),
+      fetch: deps.fetch,
+      sleep: deps.sleep,
     };
 
-    const source = await loadSource(sourceName, adapterDeps);
+    const { sources, report } = await loadSource(sourceName, adapterDeps);
     const current: CurrentSeriesRow[] = await sink.readCurrent();
-    const plan = planPipeline(source, current);
+    const plan = planPipeline(sources, current);
 
     log(`pipeline adapter=${sourceName}${dryRun ? ' (dry-run — no writes will be issued)' : ''}`);
+    if (report) {
+      log(report.countsLine);
+      log(`depth histogram: ${formatHistogram(report.depthHistogram)}`);
+      for (const note of report.notes) log(note);
+    }
     describePlan(plan, log);
 
     if (dryRun) {
@@ -177,11 +220,20 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
   }
 }
 
-async function loadSource(sourceName: string, adapterDeps: AdapterDeps): Promise<SourceSeries[]> {
+interface LoadedSource {
+  sources: SourceSeries[];
+  /** The adapter's selection report, when it has one (Story 2.4: automated adapters report counts + histogram). */
+  report?: AdapterRunReport;
+}
+
+async function loadSource(sourceName: string, adapterDeps: AdapterDeps): Promise<LoadedSource> {
   const adapter = createAdapterSource(sourceName, adapterDeps);
   const statuses = await adapter.fetch_series_statuses();
   const scores = await adapter.fetch_game_scores();
-  return groupSourceRows(statuses, scores);
+  // Both fetch methods have resolved — an HTTP adapter's single request is
+  // spent and its cached parse is complete, so the run report exists now.
+  const report = adapter.describeRun?.();
+  return { sources: groupSourceRows(statuses, scores), report };
 }
 
 // Only auto-run when executed as the entry script (`node supabase/scripts/pipeline/run.ts …`);
