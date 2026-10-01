@@ -204,12 +204,11 @@ older than the pipeline are never reconciled or rewritten.
   `series_game_scores.home_team_id`/`away_team_id` (`winner_team_id` likewise) — **every team id this
   adapter emits must be a `teams.id`**, and a foreign feed's own numeric `TEAM_ID` is a different namespace
   until something measures the two against each other.
-- `_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md:104` -- the mapping row that says
+- `_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md:104` -- the mapping row that said
   "`team_a_id`, `team_b_id` | `TEAM_ID` from the two rows of a game | numeric ids already match the app's
-  team ids". **Unsourced**: no script in `scripts/spike-2-1/` compares a feed `TEAM_ID` with `teams.id`, and
-  both spike scripts group by abbreviation. Do not read it as a measurement — the id space is settled by
-  `deps.teamIdByAbbreviation`, and the owner-run probe prints the pairs so the live feed can be checked
-  against the seed on the first real run.
+  team ids". **Unsourced when loopback 1 found it, and now measured false**: the owner's 2026-10-01 live
+  probe reports `0 agree / 16 differ / 0 not in the teams table` (`### Live evidence`). The row carries the
+  measurement; the id space is settled by `deps.teamIdByAbbreviation`.
 - `_bmad-output/implementation-artifacts/seriesdatasource-port.md` -- the port contract doc; gains the
   `nba_com` adapter section (epics.md:353's location).
 - `_bmad-output/implementation-artifacts/deferred-work.md` :293-294 (slots-not-venues, → this story),
@@ -416,6 +415,13 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
   line; and named throws replace bare `TypeError`s when the boxscore lacks a home or away row (row 31). The
   header now states **exit 0 ONLY on a full pass** and the Node ≥ 22.18 requirement the `await import()` of
   the TypeScript adapter inherits (rows 29, 30).
+  **Run 1 (owner, 2026-10-01) is in `### Live evidence`:** it took the `:104` claim from unsourced to
+  measured-false (0 agree / 16 differ), and it exposed one further probe-only defect that no review pass
+  predicted — the cross-check leg grouped games by *either franchise appearing* rather than by the pairing,
+  so a winning first-round team contributed its later series and the leg aborted on 18 `GAME_ID`s for a
+  seven-game series. Selection now requires both of a game's rows to carry the pair's two abbreviations
+  (commit `4002893`), verified offline on a synthetic rowSet that reproduces the measured 18 → 7. The
+  cross-check leg itself still has not reported.
 - `_bmad-output/implementation-artifacts/seriesdatasource-port.md` — intro now names Story 2.3 extended by
   Story 2.4; the interface snippet shows `describeRun?()` marked optional/additive with the AD-5
   amendment the owner owes; the selection section lists the implemented adapters, the flag-pairing refusal
@@ -487,13 +493,13 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
 
 **Owner handover (what is not closed by unit evidence):**
 
-- AC:369's live clause is the owner's (Decision 12). Run `node scripts/probe-nba-com-adapter.mjs
-  --season=2025-26` (Node ≥ 22.18) and paste its output into the block below. Until then this story's
-  frontmatter `status` stays `in-review` and `sprint-status.yaml` stays at `review`, and no claim is made
-  that the feed still answers the 2026-09-30 header posture — nor that the live `TEAM_ID`s agree with
-  `teams.id`. The probe answers `decision-2-1-q-4-data-source.md:104`; that row stays marked unsourced
-  until a measurement is cited. A non-zero exit is evidence too: paste it, and the story records the route
-  as red rather than untested.
+- AC:369's live clause is the owner's (Decision 12). Run 1 is in `### Live evidence` below and settles
+  every leg the shipped adapter owns; the `boxscoretraditionalv2` leg is still open, because it aborted on
+  a bug in the probe script that was fixed after the run. **Re-run
+  `node scripts/probe-nba-com-adapter.mjs --season=2025-26` (Node ≥ 22.18) and paste the output** — that
+  leg needs a live feed, so this session cannot close it. Until it reports, this story's frontmatter
+  `status` stays `in-review` and `sprint-status.yaml` stays at `review`. A non-zero exit is evidence too:
+  paste it, and the story records the route as red rather than untested.
 - Optional, also owner-run because it opens a production session:
   `node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run --season=2025-26` —
   `--env-file=` must precede the script path, or Node passes it to the runner as a run flag instead of
@@ -501,15 +507,135 @@ decision (a) — all re-derived from the amended Tasks, with team identity now *
 - AD-5's port text still names exactly two operations; `describeRun?()` is additive and optional, and the
   amendment (triage row 9) is the owner's call to make in the spine.
 
-**The story is not `done`.** Decision 12 makes AC:369's live clause the owner's, and the live leg has not
-been run: this session's policy refused the agent's outbound call to stats.nba.com (the agent did not run
-the probe, not even its offline failure path).
+**The story is not `done`.** Decision 12 makes AC:369's live clause the owner's. The owner ran the probe
+on 2026-10-01 (output below): every leg the shipped adapter owns passed, and the last leg — the
+`boxscoretraditionalv2` cross-check — went red on a **bug in the probe script itself**, not in the
+pipeline. Fixed in commit `4002893`; AC:369 stays open until the owner re-runs and that leg reports.
 
-### Live evidence (AC:369) — OWED, owner-run
+### Live evidence (AC:369) — run 1, owner, 2026-10-01T03:00:21Z
 
 ```
-(paste the output of `node scripts/probe-nba-com-adapter.mjs --season=2025-26` here)
+C:\Users\yujey\Documents\predictgame7>node scripts/probe-nba-com-adapter.mjs --season=2025-26
+story 2.4 live probe — shipped adapter against the real feed (read-only, zero Supabase)
+run date (UTC): 2026-10-01T03:00:21.809Z — season asked: 2025-26
+
+===== shipped adapter output =====
+nba_com: 15 series in feed, 5 Game-7 candidate(s) (0 pending 3-3, 5 decided through game 7) — excluded: 10 ended before game 7, 0 in flight, 0 unexplainable; 0 game(s) played on 2026-10-01 withheld
+nba_com depth histogram {1:8, 2:4, 3:2, 4:1}
+feed requests made by the adapter: 1 call(s), 1 distinct URL — PASS (one request per run)
+URL: https://stats.nba.com/stats/leaguegamelog?Counter=1000&DateFrom=&DateTo=&GameSegment=&LastNGames=0&LeagueID=00&Location=&Month=0&OpponentTeamID=0&Outcome=&PORound=0&Period=0&PlayerOrTeam=T&Season=2025-26&SeasonSegment=&SeasonType=Playoffs&SortColumn=DATE&SortDir=ASC
+
+===== derived round + per-game scores (rows from the shipped adapter) =====
+2026 First Round: CLE vs TOR — winner CLE
+  game 1: TOR 113 @ CLE 126
+  game 2: TOR 105 @ CLE 115
+  game 3: CLE 104 @ TOR 126
+  game 4: CLE 89 @ TOR 93
+  game 5: TOR 120 @ CLE 125
+  game 6: CLE 110 @ TOR 112
+  game 7: TOR 102 @ CLE 114
+2026 First Round: BOS vs PHI — winner PHI
+  game 1: PHI 91 @ BOS 123
+  game 2: PHI 111 @ BOS 97
+  game 3: BOS 108 @ PHI 100
+  game 4: BOS 128 @ PHI 96
+  game 5: PHI 113 @ BOS 97
+  game 6: BOS 93 @ PHI 106
+  game 7: PHI 109 @ BOS 100
+2026 First Round: DET vs ORL — winner DET
+  game 1: ORL 112 @ DET 101
+  game 2: ORL 83 @ DET 98
+  game 3: DET 105 @ ORL 113
+  game 4: DET 88 @ ORL 94
+  game 5: ORL 109 @ DET 116
+  game 6: DET 93 @ ORL 79
+  game 7: ORL 94 @ DET 116
+2026 Conference Semifinals: DET vs CLE — winner CLE
+  game 1: CLE 101 @ DET 111
+  game 2: CLE 97 @ DET 107
+  game 3: DET 109 @ CLE 116
+  game 4: DET 103 @ CLE 112
+  game 5: CLE 117 @ DET 113
+  game 6: DET 115 @ CLE 94
+  game 7: CLE 125 @ DET 94
+2026 Conference Finals: OKC vs SAS — winner SAS
+  game 1: SAS 122 @ OKC 115
+  game 2: SAS 113 @ OKC 122
+  game 3: OKC 123 @ SAS 108
+  game 4: OKC 82 @ SAS 103
+  game 5: SAS 114 @ OKC 127
+  game 6: OKC 91 @ SAS 118
+  game 7: SAS 111 @ OKC 103
+
+===== TEAM_ID ↔ abbreviation ↔ resolved teams.id (the :104 claim, measured) =====
+  ATL  feed TEAM_ID=1610612737 resolved=1  DIFFER — copying TEAM_ID would have written the wrong franchise
+  BOS  feed TEAM_ID=1610612738 resolved=2  DIFFER — copying TEAM_ID would have written the wrong franchise
+  CLE  feed TEAM_ID=1610612739 resolved=6  DIFFER — copying TEAM_ID would have written the wrong franchise
+  DEN  feed TEAM_ID=1610612743 resolved=8  DIFFER — copying TEAM_ID would have written the wrong franchise
+  DET  feed TEAM_ID=1610612765 resolved=9  DIFFER — copying TEAM_ID would have written the wrong franchise
+  HOU  feed TEAM_ID=1610612745 resolved=11  DIFFER — copying TEAM_ID would have written the wrong franchise
+  LAL  feed TEAM_ID=1610612747 resolved=14  DIFFER — copying TEAM_ID would have written the wrong franchise
+  MIN  feed TEAM_ID=1610612750 resolved=18  DIFFER — copying TEAM_ID would have written the wrong franchise
+  NYK  feed TEAM_ID=1610612752 resolved=20  DIFFER — copying TEAM_ID would have written the wrong franchise
+  OKC  feed TEAM_ID=1610612760 resolved=21  DIFFER — copying TEAM_ID would have written the wrong franchise
+  ORL  feed TEAM_ID=1610612753 resolved=22  DIFFER — copying TEAM_ID would have written the wrong franchise
+  PHI  feed TEAM_ID=1610612755 resolved=23  DIFFER — copying TEAM_ID would have written the wrong franchise
+  PHX  feed TEAM_ID=1610612756 resolved=24  DIFFER — copying TEAM_ID would have written the wrong franchise
+  POR  feed TEAM_ID=1610612757 resolved=25  DIFFER — copying TEAM_ID would have written the wrong franchise
+  SAS  feed TEAM_ID=1610612759 resolved=27  DIFFER — copying TEAM_ID would have written the wrong franchise
+  TOR  feed TEAM_ID=1610612761 resolved=28  DIFFER — copying TEAM_ID would have written the wrong franchise
+verdict on decision-2-1-q-4-data-source.md:104 ("numeric ids already match"): 0 agree / 16 differ / 0 not in the teams table.
+(the adapter resolves through the abbreviation map regardless — this line is the measurement, not a dependency.)
+
+===== Game 7 cross-check: boxscoretraditionalv2 =====
+
+PROBE COULD NOT RUN TO COMPLETION: series CLE/TOR: expected 7 games on the wire, captured 18
+Exit 2 — fix the cause and re-run; paste the whole output either way.
 ```
+
+**What this run settles, leg by leg:**
+
+- **Decision 6 header posture — confirmed live.** The 2026-09-30 spike's unkeyed request returned a full
+  2025-26 playoff rowSet on 2026-10-01 with the shipped `NBA_COM_HEADERS` and nothing else. The `Season=`
+  string the owner passed was taken verbatim, so this says nothing yet about `deriveSeason` on the run date
+  (see "Not settled by this run" below).
+- **Decision 1 request count — confirmed live:** one call, one distinct URL, for fifteen series and every
+  game of every one of them.
+- **Decision 10 chain-depth rounds — confirmed live.** The histogram is exactly the shape a bracket
+  predicts, `{1:8, 2:4, 3:2, 4:1}` = 15, and the five printed candidates carry the right names for their
+  pairings — three First Round, `DET/CLE` as Conference Semifinals (DET and CLE both won First-Round Game
+  7s, against ORL and TOR), `OKC/SAS` as Conference Finals. No conference map and no `PORound` was
+  consulted, so the derivation carries the whole load.
+- **`year` sourcing — confirmed live:** the 2025-26 postseason's series print as `2026 …`, i.e. the
+  calendar year of `GAME_DATE`, which is the mapping `decision-2-1-q-4-data-source.md:103` records against
+  `SEASON_ID`.
+- **Selection contract — confirmed live.** 10 of 15 ended before Game 7 and are excluded; 0 in flight;
+  0 unexplainable; 5 candidates, all decided, all printed with seven games and a `winner`.
+- **AD-4 posture — consistent:** every candidate line resolves to a winner, and the pending-3-3 count is
+  a separate bucket the run reported as 0, not inferred from `status`.
+- **`decision-2-1-q-4-data-source.md:104` — REFUTED.** 0 of 16 feed `TEAM_ID`s agree with `teams.id`;
+  the two spaces are unrelated (league `1610612737`… vs repo `1`…`30`). Review loopback 1's
+  `deps.teamIdByAbbreviation` resolver is load-bearing: had the adapter emitted the feed id as the
+  original Code Map instructed, every row would have carried a valid-looking FK pointing at a different
+  franchise. Recorded at the decision row and in `## Design Notes`.
+- **Not settled by this run:** the `boxscoretraditionalv2` cross-check, which failed for a reason
+  internal to the probe (below), and the `--season`-derived path, since the owner passed the flag
+  explicitly.
+
+**The red leg is a probe bug, and it is Story 2.4's most useful review finding.** The cross-check leg
+selected games by *"does either franchise of the pair appear in this row"*, so CLE — which won the series
+and kept playing — contributed its Semifinal and later games to the same bucket: 18 `GAME_ID`s for a
+seven-game series, and the leg's own `ordered.length !== 7` assertion aborted a valid run. Fixed in
+`4002893` by requiring **both** rows of a game to carry the pair's two abbreviations, with the abort
+message extended to report both counts (`captured 7 of 18 …`) so the next occurrence distinguishes the
+two failures. Verified offline — `scripts/**` is covered by no test runner, so the substitute was a
+synthetic rowSet reproducing the measured shape (one 7-game series for CLE/TOR plus CLE's two later
+series): the pre-fix expression returns 18, the post-fix expression returns 7 in date order. That is a
+reproduction of the counting bug, not of the cross-check itself, which still needs the live feed.
+
+**Why no gate could have caught it:** the leg needs (a) a live response and (b) a first-round franchise
+that advances, and the unit suite's fixtures are all offline and hand-written; pass 2's row-20 hardening
+made the leg *exit* honestly, which is precisely why it reported the bug instead of silently passing.
 
 ## Spec Change Log
 
@@ -594,6 +720,20 @@ the probe, not even its offline failure path).
   mutation checks (the `rowSet`-row guard, the duplicate-flag refusal) were refused by this session's action
   classifier and were **not** circumvented; that gap is stated in `## Implementation Notes` rather than
   papered over.
+
+- 2026-10-01 (owner live run 1, no Decision/AC/Boundary changed): AC:369's live clause ran against the real
+  feed for the first time. Four of its legs are now closed with evidence in `### Live evidence` — one
+  unkeyed request for a 15-series postseason (Decisions 1 and 6), the chain-depth round derivation matching
+  the bracket exactly at `{1:8, 2:4, 3:2, 4:1}` (Decision 10), the selection contract reporting 10
+  ended-early / 0 in flight / 0 unexplainable, and `decision-2-1-q-4-data-source.md:104` **measured false**
+  at 0 agree / 16 differ, which retroactively makes review loopback 1's resolver the difference between a
+  working pipeline and every row naming the wrong franchise under a valid FK. That claim's row in the
+  decision record now carries the measurement, and the Code Map and Design Notes entries that called it
+  unsourced point at it. The fifth leg, `boxscoretraditionalv2`, went red on a defect in the probe script
+  rather than the pipeline: it grouped games by either franchise appearing instead of by the pairing, so
+  CLE's advance turned a seven-game series into 18 `GAME_ID`s and tripped the leg's own count assertion
+  (commit `4002893`, verified offline on a synthetic rowSet reproducing 18 → 7, since `scripts/**` is run by
+  no test harness). No frozen artifact changed; the story stays `in-review` pending that one leg.
 
 ## Review Triage Log
 
@@ -698,7 +838,13 @@ keeps one mapping from name to id in the repo. If the two spaces do agree, the r
 numbers and the run costs nothing extra; if they do not, a copied `TEAM_ID` is a silent data corruption at
 exactly the moment the playoff window makes the table load-bearing. The owner-run probe prints the
 `TEAM_ID` ↔ abbreviation ↔ resolved id triples so the live feed settles the question on the first run, and
-the decision record's claim stays marked unsourced until someone cites a measurement.
+the decision record's claim stayed marked unsourced until someone cited a measurement.
+
+**Measured 2026-10-01, and it came out against that claim:** the owner's live probe printed 16 feed
+`TEAM_ID`s against their resolved `teams.id` and got `0 agree / 16 differ`, i.e. `CLE` is `1610612739` in
+the feed and `6` in this repo. The alternative the original Code Map implied — copying `TEAM_ID` — would
+have satisfied `REFERENCES teams(id)` while pointing every row at the wrong franchise, which is the
+silent-corruption case this paragraph was written against. `### Live evidence` holds the run.
 
 ## Verification
 

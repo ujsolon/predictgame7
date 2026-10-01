@@ -101,7 +101,7 @@ agree from opposite directions.
 | target | source | note |
 |---|---|---|
 | `year` | calendar year of `GAME_DATE` in `leaguegamelog` | **not** `SEASON_ID`: the 2026 postseason is season `"42025"` / `Season=2025-26`. `scoreboardv2` labels the 2025-06-13 Finals game `SEASON "2024"`. |
-| `team_a_id`, `team_b_id` | `TEAM_ID` from the two rows of a game | numeric ids already match the app's team ids. |
+| `team_a_id`, `team_b_id` | `TEAM_ABBREVIATION` → the app's `teams.id`, **not** `TEAM_ID` | **Refuted 2026-10-01** (this row previously read "numeric ids already match the app's team ids", unsourced). The owner's live probe measured `0 agree / 16 differ / 0 not in the teams table` — feed ids are league ids (`1610612737`…) while `teams` is seeded alphabetically `1..30` (`00005:104-133`), so copying `TEAM_ID` would satisfy `REFERENCES teams(id)` while pointing at a different franchise. Evidence: `spec-2-4-automated-adapter-per-the-spike-decision.md` `### Live evidence`. |
 | `winner_team_id` | `WL` on the deciding game | for Game 7 it is the last game by `GAME_DATE`; 4th-win logic needed for non-7 lengths. |
 | `round` | **no direct source** | derive from the `GAME_ID` series number or in-season `seriesText`, then normalise to a fixed vocabulary (finding 2). |
 | `status` | do not write | vestigial per AD-4; phase derives from `winner_team_id`. |
