@@ -53,7 +53,8 @@ development_status:
   # push on 2026-10-02; 'Applying migration 00016… Finished supabase db push', no guard abort). A
   # clean push IS the measurement — all nine guards evaluated against the live 178-series table inside
   # one committed transaction — and the anon re-read afterwards printed 159 NBA + 1 BAA + 18 ABA,
-  # NULL 0, game-7 population 160 with 117 home wins / 43 swaps, AD-4 consistency clean over 1,246
+  # NULL 0, game-7 population 160 with 117 home wins / 43 home losses (42 rows naming stored team_b; the 43rd
+  # is the 2026 WCF, whose live slot one is game-1 home OKC rather than the winner), AD-4 consistency clean over 1,246
   # rows, and five named venues matching the curated CSV. The owed independent bmad-code-review ran
   # on 2026-10-02 (pass 4): both owner-resolved decisions closed (one rejected, one deferred to 2-9),
   # all six patch findings applied in f21a12d — 2-8 is done. Caveat carried in the spec: pass 4 was
