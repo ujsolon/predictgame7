@@ -1,10 +1,11 @@
-# `SeriesDataSource` port contract — Story 2.3
+# `SeriesDataSource` port contract — Story 2.3, extended by Story 2.4
 
-Status: shipped in `supabase/scripts/pipeline/` (Story 2.3). This is the port
-documentation `epics.md` Story 2.3 AC (:353) asks for, with `manual_csv` as
-the reference implementation. Source of truth for the boundary is
-`ARCHITECTURE-SPINE.md` AD-5; the method names below are verbatim from AD-5
-and must not drift.
+Status: shipped in `supabase/scripts/pipeline/` (Story 2.3; the `nba_com`
+adapter landed beside it in Story 2.4). This is the port documentation
+`epics.md` Story 2.3 AC (:353) asks for, with `manual_csv` as the reference
+implementation. Source of truth for the boundary is `ARCHITECTURE-SPINE.md`
+AD-5; the two fetch method names below are verbatim from AD-5 and must not
+drift.
 
 ## What the port is
 
@@ -17,10 +18,20 @@ produced its rows.
 interface SeriesDataSource {
   fetch_series_statuses(): Promise<SeriesStatusRow[]>;
   fetch_game_scores(): Promise<GameScoreRow[]>;
+  describeRun?(): AdapterRunReport; // optional, additive — Story 2.4
 }
 ```
 
 Definition: `supabase/scripts/pipeline/port.ts`.
+
+**`describeRun?()` is an optional third member** (`AdapterRunReport`: counts
+line, depth histogram, named-exclusion notes) that lets an adapter print
+what its parse saw before the runner plans anything. AD-5 as written names
+only the two fetch operations; it does not forbid an optional member, so
+this ships compliant, but amending the spine text to record the extension is
+an owner architecture act (Review Triage row 9 deferred it) — until then
+this paragraph is the only place the extension is contractually described.
+`manual_csv` has no report; a run with it prints none of those lines.
 
 ## Row shapes
 
@@ -56,14 +67,77 @@ exact pair; the runner groups, plans, and asserts before any write.
   Default: `manual_csv`.
 - Registry: `ADAPTER_REGISTRY` in `port.ts`, keyed by the AD-5 adapter list —
   `manual_csv | fantrax | nba_com`.
-- A recognised-but-unimplemented name (`fantrax`, `nba_com` until Story 2.4)
-  fails the start with `... is not implemented (Story 2.4)` — never a silent
-  fallback to `manual_csv`, because a silent fallback would leave Active
-  Series stale while looking healthy.
-- An unrecognised name fails against the registry with the known list.
+- Implemented since Story 2.4: `manual_csv` and `nba_com`. A flag the selected
+  adapter cannot use (`--csv=` with `nba_com`, `--season=` with `manual_csv`)
+  refuses the run — a silently discarded flag would let the operator believe
+  they steered it.
+- `fantrax` stays recognised-but-unimplemented, and its refusal message now
+  carries the Story 2.1 spike's actual rejection (Fantrax endpoints are
+  fantasy-scoped and never return a real NBA game score with home/away sides,
+  see `decision-2-1-q-4-data-source.md`) — a silent drop of the registry entry
+  would let a future session re-propose it as unexamined.
+- A recognised-but-unimplemented name or an unrecognised one fails the start —
+  never a silent fallback to `manual_csv`, because a silent fallback would
+  leave Active Series stale while looking healthy.
 
-Story 2.4 registers its automated adapter by adding a `create` entry; no
-runner logic changes.
+## Automated adapter: `nba_com` (Story 2.4)
+
+`supabase/scripts/pipeline/adapters/nbaCom.ts` — the route the Story 2.1 spike
+proved: the unkeyed `stats.nba.com/stats/leaguegamelog` feed
+(`PlayerOrTeam=T`, `SeasonType=Playoffs`, `Counter=1000`), fetched with the
+spike's six headers copied verbatim.
+
+- **Request count: exactly one per run.** Both port methods read the same
+  memoised parse; a run never fans out (the route is Cloudflare-fronted and
+  its rate limits are unmeasured). Tests pin `urls.length === 1`.
+- **Season: derived, not configured.** The season parameter comes from the
+  run's UTC date (`getUTCMonth() <= 5` → previous September–following May
+  season). `--season=<YYYY-YY>` overrides the derivation; it is a FETCH
+  PARAMETER only — no phase, group, or page derives from a date (AD-4).
+- **Selection rule: Game-7 shapes only.** A series enters the output iff its
+  games are exactly `{1..6}` decided 3–3 (pending birth) or exactly `{1..7}`
+  all decided (archive). 4-0/4-1/4-2 sweeps, in-flight series and pre-2003
+  best-of-5 shapes are excluded and COUNTED in the run report — that is AD-4's
+  product rule, and it discharges the era caveat for free. A game whose date
+  equals the run's UTC date is withheld (the feed has no final/unfinal flag;
+  those games belong to tomorrow's run) and named in the counts line.
+- **Round vocabulary: four canonical labels by chain depth.** No working unkeyed
+  endpoint returns a round name, so `adapters/rounds.ts` walks the
+  postseason in date order (`depth = 1 + max(deeper side's previous depth)`,
+  counting excluded series too) and maps depths 1..4 to `First Round`,
+  `Conference Semifinals`, `Conference Finals`, `NBA Finals` — labels
+  `getRoundImportance` already scores 1/2/3/4. A depth outside 1..4 is excluded
+  AND named with the histogram that produced it.
+- **Team identity is resolved, never copied.** Every id comes from the row's
+  `TEAM_ABBREVIATION` through the port's `deps.teamIdByAbbreviation` — the
+  same resolver `manual_csv` uses — because the sink's columns carry
+  `REFERENCES teams(id)`. The feed's numeric `TEAM_ID` is a foreign namespace
+  (`decision-2-1-q-4-data-source.md:104`'s claim that the two agree is
+  unsourced; the owner-run `scripts/probe-nba-com-adapter.mjs` measures it).
+  Consequence to remember operationally: **a feed carrying a team the `teams`
+  table lacks aborts the run naming the abbreviation and its `GAME_ID`, and
+  writes nothing** — that is the loud failure replacing a silent wrong-franchise
+  insert. `WL` is never read.
+- **Failure posture:** 25 s `AbortSignal.timeout`, three attempts,
+  `[1000, 4000]` ms backoff on 403/429/5xx or a body that is not the expected
+  `resultSets` shape; non-retryable statuses fail at once. Every terminal
+  message names the URL and reason and states that no `manual_csv` fallback
+  was taken.
+- **The archive is frozen (owner decision 2026-10-01, spec Decision 11):**
+  without `--season=` this adapter can only ever fetch the postseason derived
+  from the run date, so an archived year cannot enter the plan. Enforcement is
+  Story 2.3's own archive guard (`plan.ts:382-390`), untouched. With
+  `--season=` pointed at an archived year the guard decides: identical source →
+  skip, disagreeing source → non-zero abort naming the series, never a
+  rewrite. Note the two different messages a drill can meet: a year the table
+  holds as an unfinished **pending** series hits `plan.ts:377-379` ("the runner
+  never rewrites stored games") when the source's games 1–6 differ — that is
+  the stored-games guard, not the archived-outcome guard.
+
+`scripts/probe-nba-com-adapter.mjs` is the committed live leg (owner-run per
+Decision 12): it runs the SHIPPED adapter through a capturing fetch, prints
+the TEAM_ID ↔ abbreviation ↔ resolved-id triples, and cross-checks one Game 7
+against `boxscoretraditionalv2`.
 
 ## What the runner asserts before it writes (plan.ts)
 
@@ -174,14 +248,19 @@ slots, not venues".
 
 ```
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
+node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
+node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --season=2016-17 --dry-run
 ```
 
 Requires **Node ≥ 22.18** (also 23.6+; the repo develops on 24) — `run.ts` is
 a plain `.ts` file executed by Node's native type-stripping, with no build
 step and no loader flag. Nothing in the repo enforces it: `package.json` has
 no `engines` field, so on an older Node the first command fails at parse time
-rather than with a readable message. `--csv=<path>` points the adapter at a
-different file.
+rather than with a readable message. `--csv=<path>` points `manual_csv` at a
+different file; `--season=<YYYY-YY>` points `nba_com` at one postseason
+(the archive is frozen — a drill onto an archived year reaches the archive
+guard, never a rewrite). Each flag refuses the run when handed to the other
+adapter.
 
 `.env` supplies `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (owner-only;
 never committed). Drop `--dry-run` to apply. Exit 0 = plan applied (or

@@ -306,10 +306,12 @@ describe('runPipeline — apply, idempotency, dry-run', () => {
 
 describe('runPipeline — refusal rows of the matrix', () => {
   it('SERIES_SOURCE naming an unimplemented adapter refuses the start and never falls back', async () => {
+    // Story 2.4 implemented `nba_com`, so `fantrax` carries the recognised-
+    // but-unimplemented slot — with its rejection recorded, not a silence.
     let sinkBuilt = false;
     const errors = capture();
     const code = await runPipeline({
-      env: envWith({ SERIES_SOURCE: 'nba_com' }),
+      env: envWith({ SERIES_SOURCE: 'fantrax' }),
       argv: [],
       createSink: () => {
         sinkBuilt = true;
@@ -318,8 +320,26 @@ describe('runPipeline — refusal rows of the matrix', () => {
       logError: errors.log,
     });
     expect(code).toBe(2);
-    expect(errors.lines.join('\n')).toMatch(/nba_com.*not implemented \(Story 2\.4\)/s);
+    const text = errors.lines.join('\n');
+    expect(text).toMatch(/fantrax.*is a recognised adapter but is not implemented/s);
+    expect(text).toMatch(/rejected by the Story 2\.1 spike/);
     expect(sinkBuilt).toBe(false);
+  });
+
+  it('nba_com is now implemented: selection passes and the CSV-only floor stays default', async () => {
+    // The registry flip itself — no refusal at selection; the run proceeds to
+    // the env check with `nba_com` accepted (Story 2.4, Decision 7).
+    const errors = capture();
+    const code = await runPipeline({
+      env: {},
+      argv: ['--source=nba_com'],
+      createSink: () => new FakeSink(),
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    const text = errors.lines.join('\n');
+    expect(text).not.toMatch(/not implemented/);
+    expect(text).toMatch(/SUPABASE_URL/);
   });
 
   it('an unknown adapter name is rejected against the registry', async () => {

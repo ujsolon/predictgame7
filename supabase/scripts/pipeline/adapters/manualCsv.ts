@@ -199,6 +199,14 @@ export function parseManualCsv(
 
 /** The registry factory: eager read + validate, so a bad CSV fails the run before any write. */
 export function createManualCsvAdapter(deps: AdapterDeps): SeriesDataSource {
+  // Story 2.4, Decision 8: `csvPath` is CSV-only in the deps bag — every
+  // other adapter is handed a bag without it, so a missing path here is a
+  // wiring bug, not a user error. Fail loudly rather than reading `undefined`.
+  if (deps.csvPath === undefined) {
+    throw new ManualCsvError(
+      'manual_csv adapter received no csvPath — the runner resolves the CSV path only for this adapter; check the adapter selection',
+    );
+  }
   const text = deps.readFile(deps.csvPath);
   const parsed = parseManualCsv(text, deps.csvPath, deps.teamIdByAbbreviation);
   return {

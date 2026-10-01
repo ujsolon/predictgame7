@@ -17,6 +17,7 @@
  * `_bmad-output/implementation-artifacts/seriesdatasource-port.md`.
  */
 import { createManualCsvAdapter } from './adapters/manualCsv.ts';
+import { createNbaComAdapter } from './adapters/nbaCom.ts';
 
 /** One series as the source sees it: identity, display round, and whether game 7 has landed. */
 export interface SeriesStatusRow {
@@ -41,10 +42,28 @@ export interface GameScoreRow {
   away_score: number;
 }
 
-/** The port AD-5 names. Method names are frozen; Story 2.4's adapter implements the same two. */
+/**
+ * The run report an automated adapter can expose (Story 2.4): what the parse
+ * saw, printed by the runner BEFORE planning so an abort during planning
+ * still shows the counts and histogram that explain it. AD-5 names the two
+ * fetch operations as the contract; this member is optional and additive —
+ * `manual_csv` has no report and a run with it prints nothing extra.
+ */
+export interface AdapterRunReport {
+  /** e.g. "N series in feed, M Game-7 candidates (...)" — the selection is never silent. */
+  countsLine: string;
+  /** The derived depth histogram, rendered by the single shared `formatHistogram`. */
+  histogramLine: string;
+  /** Named exclusions (e.g. a chain depth the walk cannot explain). */
+  notes: string[];
+}
+
+/** The port AD-5 names. The two method names are frozen; every adapter implements them. */
 export interface SeriesDataSource {
   fetch_series_statuses(): Promise<SeriesStatusRow[]>;
   fetch_game_scores(): Promise<GameScoreRow[]>;
+  /** Optional run report — see `AdapterRunReport`. */
+  describeRun?(): AdapterRunReport;
 }
 
 export class AdapterSelectionError extends Error {}
@@ -52,35 +71,69 @@ export class AdapterSelectionError extends Error {}
 /** AD-5's adapter list; `manual_csv` is the default and the floor. */
 export const DEFAULT_ADAPTER_NAME = 'manual_csv';
 
+/** The minimal response view the feed parser consumes — real `fetch` satisfies it. */
+export interface FeedResponseLike {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
+
+export interface FeedRequestInit {
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}
+
+/** The injectable HTTP seam (Decision 8): tests never reach the network. */
+export type FeedFetch = (url: string, init: FeedRequestInit) => Promise<FeedResponseLike>;
+
 export interface AdapterDeps {
-  /** Path of the CSV the manual_csv adapter reads (flag `--csv=` or the default file). */
-  csvPath: string;
+  /**
+   * CSV-only (Story 2.4, Decision 8): the runner supplies it for `manual_csv`
+   * and for nothing else — an HTTP adapter must not be handed a path it
+   * cannot use.
+   */
+  csvPath?: string;
   readFile: (path: string) => string;
   /** Resolves `teams.abbreviation` (UNIQUE) to `teams.id`; undefined for a team the table does not hold. */
   teamIdByAbbreviation: (abbreviation: string) => number | undefined;
+  /** HTTP-adapter seam (Decision 8): injectable fetch; defaults to the global. Tests must inject one. */
+  fetch?: FeedFetch;
+  /** HTTP-adapter seam: the run's UTC clock, the season-derivation input. Defaults to wall time. */
+  now?: () => Date;
+  /** HTTP-adapter seam: the `--season=` override, undefined when the flag was not passed. */
+  seasonOverride?: string;
+  /** HTTP-adapter seam: retry backoff wait; defaults to `setTimeout`. Tests inject a recorder. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface AdapterEntry {
   implemented: boolean;
   /** Only implemented adapters carry a factory. */
   create?: (deps: AdapterDeps) => SeriesDataSource;
+  /** For recognised-but-unimplemented names: why this entry exists (rejection, not silence). */
+  rejection?: string;
 }
 
-function unimplementedEntry(): AdapterEntry {
-  return { implemented: false };
+function unimplementedEntry(rejection?: string): AdapterEntry {
+  return { implemented: false, ...(rejection ? { rejection } : {}) };
 }
 
 /**
- * The adapter registry keyed by `SERIES_SOURCE`. Story 2.4 registers its
- * automated adapter here; until then `fantrax` and `nba_com` are recognised
- * names that fail loudly — the runner never falls back to `manual_csv`
+ * The adapter registry keyed by `SERIES_SOURCE`. `manual_csv` is the
+ * guaranteed floor and stays the default; Story 2.4 added `nba_com` beside it
+ * (never replacing it). `fantrax` stays recognised-but-unimplemented with the
+ * Story 2.1 rejection recorded — a silent drop would let a future session
+ * re-propose it as unexamined. The runner never falls back to `manual_csv`
  * silently, because a silent fallback during the playoff window would leave
  * Active Series stale while looking healthy.
  */
 export const ADAPTER_REGISTRY: Record<string, AdapterEntry> = {
   manual_csv: { implemented: true, create: createManualCsvAdapter },
-  fantrax: unimplementedEntry(),
-  nba_com: unimplementedEntry(),
+  nba_com: { implemented: true, create: createNbaComAdapter },
+  fantrax: unimplementedEntry(
+    'it was rejected by the Story 2.1 spike: Fantrax endpoints are fantasy-scoped and return fantasy point totals and playoff ' +
+      'configuration, never a real NBA game score with home/away sides (see _bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md)',
+  ),
 };
 
 /**
@@ -98,8 +151,9 @@ export function assertAdapterImplemented(name: string): void {
     );
   }
   if (!entry.implemented) {
+    const reason = entry.rejection ? ` — ${entry.rejection}` : ' (Story 2.4)';
     throw new AdapterSelectionError(
-      `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented (Story 2.4). ` +
+      `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented${reason}. ` +
         'The runner never falls back silently — unset SERIES_SOURCE (or pass --source=manual_csv) to use the manual_csv floor.',
     );
   }

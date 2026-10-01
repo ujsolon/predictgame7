@@ -220,7 +220,7 @@ older than the pipeline are never reconciled or rewritten.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `supabase/scripts/pipeline/adapters/nbaCom.ts` (new) -- the adapter: one-request fetch with
+- [x] `supabase/scripts/pipeline/adapters/nbaCom.ts` (new) -- the adapter: one-request fetch with
       Decision 6's posture, game reconstruction ported from `probe-series-rebuild.mjs:29-46`, series
       grouping, Game-7-only selection, slots from game 1's home, `round` derivation, and the
       rejection messages naming `GAME_ID`. **Team identity is resolved, not copied: each row's
@@ -231,14 +231,14 @@ older than the pipeline are never reconciled or rewritten.
       `TEAM_ABBREVIATION` joins the required-column list because the parser reads it, and `WL` leaves it
       because nothing reads it — the list names what the adapter consumes, and an unconsumed requirement is
       a needless abort if the feed ever drops that column.
-- [ ] `supabase/scripts/pipeline/adapters/rounds.ts` (new, or inside `nbaCom.ts` if it stays under
+- [x] `supabase/scripts/pipeline/adapters/rounds.ts` (new, or inside `nbaCom.ts` if it stays under
       ~40 lines) -- the frozen canonical label list and the chain-depth derivation. Export the histogram
       formatter from here (or from `nbaCom.ts`) so `run.ts` renders the adapter's field by calling it rather
       than by keeping a second copy that can diverge.
-- [ ] `supabase/scripts/pipeline/port.ts` -- register `nba_com` as implemented; generalize
+- [x] `supabase/scripts/pipeline/port.ts` -- register `nba_com` as implemented; generalize
       `AdapterDeps` per Decision 8 (CSV-only fields, injectable `fetch`, season/date seam).
       `teamIdByAbbreviation` is already in the bag (:61) — reuse it, do not add a second id path.
-- [ ] `supabase/scripts/pipeline/run.ts` -- stop requiring CSV plumbing for non-CSV adapters; pass the
+- [x] `supabase/scripts/pipeline/run.ts` -- stop requiring CSV plumbing for non-CSV adapters; pass the
       new deps; add `--season=` to the flag set and the `unknownFlag` message, with its help text
       naming the freeze rule (Decision 11) so a drill onto an archived year reads as intentional;
       **refuse a flag that cannot apply to the selected adapter (`--csv=` with `nba_com`, `--season=` with
@@ -246,7 +246,7 @@ older than the pipeline are never reconciled or rewritten.
       `--dryrun` typo**; and print the adapter's report — counts line, histogram, notes — **before**
       `readCurrent()` and `planPipeline()`, so an abort during planning still shows the parse that explains
       it. `manual_csv` has no report; a run with it prints none of those lines and must not error for it.
-- [ ] `tests/pipeline/nba-com.test.ts` (new) -- the matrix rows above against an injected `fetch`
+- [x] `tests/pipeline/nba-com.test.ts` (new) -- the matrix rows above against an injected `fetch`
       (a synthetic fixture postseason built in the test file, zero network): pending 3–3 → six rows +
       null winner; seven-game → winner = game 7's winner; 4-0 / 4-2 / in-flight 2-1 / same-UTC-day
       excluded and counted; the `vs.` period and date-order game numbers pinned; the two-row merge;
@@ -263,7 +263,7 @@ older than the pipeline are never reconciled or rewritten.
       25 s timeout present on the signal, the `[1000, 4000]` backoff sequence rather than a call count); the
       notes line reaching stdout through `runPipeline`; `describeRun()` throwing before the feed resolved;
       and `manual_csv` reporting nothing extra.
-- [ ] `scripts/probe-nba-com-adapter.mjs` (new) -- the committed live leg for AC:369, **owner-run** per
+- [x] `scripts/probe-nba-com-adapter.mjs` (new) -- the committed live leg for AC:369, **owner-run** per
       Decision 12: unkeyed, read-only (no Supabase at all), exit 2 if it cannot run. **It runs the shipped
       adapter** — import `createNbaComAdapter` and hand it an injected `fetch` that captures the real
       response — rather than re-implementing the headers, URL, season math, merge or depth walk, so a PASS
@@ -273,13 +273,13 @@ older than the pipeline are never reconciled or rewritten.
       `decision-2-1-q-4-data-source.md:104` never made — the owner reads whether the two spaces agree)**,
       and cross-checks one Game 7 against `boxscoretraditionalv2`. Its usage text names
       `--season=2025-26` as the season that has completed playoff games today.
-- [ ] `_bmad-output/implementation-artifacts/seriesdatasource-port.md` -- document the `nba_com`
+- [x] `_bmad-output/implementation-artifacts/seriesdatasource-port.md` -- document the `nba_com`
       adapter beside `manual_csv`: request count, selection rule, round vocabulary, **that team identity is
       resolved through the port's abbreviation resolver and what that means when the feed carries a team the
       table lacks**, freeze rule, and that `fantrax` stays rejected. Say plainly that a `--season=` drill onto
       a year the table holds as an unfinished **pending** series hits `plan.ts:377-379` (never rewrites stored
       games), which is a different message from the archived-row guard.
-- [ ] `docs/CURRENT_DATA_MODEL.md`, `epic-2-context.md`, `deferred-work.md` -- record the
+- [x] `docs/CURRENT_DATA_MODEL.md`, `epic-2-context.md`, `deferred-work.md` -- record the
       frozen-archive decision (a) and its enforcement point; update the slots-vs-venues paragraph so it
       states the decision rather than the open question. In `epic-2-context.md`, mark that the route shipped
       here needs **no key**, so the keyed-provider sentence reads as Story 2.1's open item and not an
@@ -317,15 +317,153 @@ older than the pipeline are never reconciled or rewritten.
 
 ## Implementation Notes
 
-Loopback 1 reverted the first pass's code and docs (`## Spec Change Log` carries the KEEP list the
-re-derivation must preserve, and `## Review Triage Log` row 1 the finding that caused it). This section is
-rewritten by that pass: file-by-file what shipped, the verification run read bare, the mutation checks that
-were executed, and the Owner-handover. Nothing here yet describes the current tree.
+This is the loopback-1 re-derivation: the first pass was reverted because it copied the feed's `TEAM_ID`
+into `REFERENCES teams(id)` columns instead of resolving through the port's `teamIdByAbbreviation`. The
+KEEP list in `## Spec Change Log` (loopback 1) is preserved point by point — one memoised request behind
+both port methods, the six verbatim spike headers and a `URLSearchParams` URL, `deriveSeason` from the run's
+UTC date with `--season=` override and eager format rejection before any request, `' @ '` then `' vs. '` with
+the trailing period and an order-tolerant `(GAME_DATE, unordered pair)` merge, the chain-depth walk in its own
+module with the frozen four-label list and a depth outside 1..4 excluded **and named**, Decision 5's
+same-UTC-day filter applied before grouping, the 25 s/3-attempt/`[1000, 4000]` retry posture with every
+terminal message naming URL + status and saying no `manual_csv` fallback was taken, the test file's fixture
+discipline rebuilt to the `teams` seed id space, and `run.ts`'s report wiring plus the three docs' record of
+decision (a) — all re-derived from the amended Tasks, with team identity now **resolved, never copied**.
+
+**File-by-file, what ships:**
+
+- `supabase/scripts/pipeline/adapters/rounds.ts` (new) — `CANONICAL_ROUND_LABELS` (the frozen four),
+  `labelForDepth`, `walkChainDepth` (date-ordered postseason; `depth = 1 + max(prev(teamA) ?? 0,
+  prev(teamB) ?? 0)` over **all** series including excluded ones, so a skipped series still deepens its
+  successor; sorted by first game date, then a stable key), `histogramFromPlacements`, `formatHistogram`
+  (→ `{1:8, 2:4, 3:2, 4:1}`). Exported from here so `run.ts` renders the adapter's field by calling the
+  same formatter — one copy, no divergence.
+- `supabase/scripts/pipeline/adapters/nbaCom.ts` (new) — `NbaComError`; `NBA_COM_HEADERS` (the six spike
+  headers verbatim); `FETCH_TIMEOUT_MS = 25000`, `MAX_FEED_ATTEMPTS = 3`, `BACKOFF_MS = [1000, 4000]`;
+  `deriveSeason` (`getUTCMonth() <= 5` → `${y - 1}-${yy}`, else `${y}-${yy + 1}`);
+  `validateSeasonOverride` (pattern `/^\d{4}-\d{2}$/`, rejection message naming the freeze rule, thrown
+  before any request); `gameLogUrl` via `URLSearchParams`; `buildFeed` — one request, memoised, served to
+  both `fetch_series_statuses()` and `fetch_game_scores()`, with the `urls.length === 1` assertion behind
+  it; `createNbaComAdapter`. `REQUIRED_COLUMNS` is GAME_ID, GAME_DATE, MATCHUP, TEAM_ABBREVIATION, PTS —
+  `TEAM_ABBREVIATION` joined (the parser reads it), `WL` left (nothing reads it; an unconsumed requirement
+  is a needless abort if the feed drops the column). Selection: {1..6} at 3–3 → pending, {1..7} decided →
+  archive-eligible, everything else excluded and counted, same-UTC-day games filtered before grouping.
+  Slots: `team_a` = game 1's home team, year from GAME_DATE's calendar year, game numbers by date order
+  and never from a `GAME_ID` suffix. **Identity**: every emitted team id is
+  `deps.teamIdByAbbreviation(abbreviation)` — the same resolver `manual_csv` uses — and an abbreviation
+  the `teams` table lacks rejects the run naming both the abbreviation and the `GAME_ID`, with the message
+  saying "Refusing to substitute the feed's TEAM_ID". A `finalScore()` helper keeps the PTS validation
+  narrowing honest (non-finite/negative/non-number rejects naming game, date and the offending value).
+- `supabase/scripts/pipeline/port.ts` — `nba_com` registered as implemented; `AdapterRunReport` plus the
+  optional, additive `describeRun?(): AdapterRunReport` on the interface (AD-5 names two ops; shipping an
+  optional extra method stays compliant with the spine, and the text amendment is the owner's to make —
+  `## Review Triage Log` row 9 — which is why the port doc says so out loud); `FeedResponseLike` /
+  `FeedRequestInit` / `FeedFetch` types; `AdapterDeps` generalized per Decision 8 (`csvPath` moved to
+  CSV-only optional; injectable `fetch`, `now`, `seasonOverride`, `sleep`); `fantrax` stays
+  recognised-but-unimplemented carrying the Story 2.1 rejection verbatim in its reason.
+- `supabase/scripts/pipeline/run.ts` — CSV plumbing no longer required for non-CSV adapters; the new deps
+  are passed; `--season=` joins the flag set, the `unknownFlag` message and the help text (naming the
+  freeze rule per Decision 11); `ADAPTER_FLAGS = { manual_csv: ['csv'], nba_com: ['season'] }` refuses a
+  flag that cannot apply to the selected adapter **before** any env check, in the same voice the file
+  already uses for a `--dryrun` typo; the adapter's report — counts line, histogram, then every note —
+  prints **before** `sink.readCurrent()` and `planPipeline()`, so an abort during planning still shows the
+  parse that explains it; `manual_csv` has no report and prints none of those lines without erroring.
+- `supabase/scripts/pipeline/adapters/manualCsv.ts` — `deps.csvPath` is now optional in the bag, so the
+  adapter guards at construction: no `csvPath` → `ManualCsvError` naming the missing `--csv=`.
+- `tests/pipeline/nba-com.test.ts` (new) — 48 tests across six suites: the port rows and the
+  one-request-per-run assertion; selection and exclusion counts over a synthetic fixture postseason;
+  Decision 10's rounds (full 16-team / 15-series bracket → exactly `{1:8, 2:4, 3:2, 4:1}` with all 15
+  statuses emitted, each label verified against `getRoundImportance`'s branches, out-of-range depth
+  excluded and named with its histogram); shape-drift rejections (tie, self-match, impossible shape,
+  non-final PTS) naming `GAME_ID`; the request posture (headers verbatim, URL params, timeout signal,
+  403-then-success retry, backoff sleeps recorded, non-retryable failing at once, terminal message naming
+  URL + status + "no manual_csv fallback was taken", season derivation, `--season=` override and its eager
+  rejection); the runner legs through a `RecordingSink` (report lines reach stdout before planning,
+  exclusion notes reach stdout, misflagged runs refuse before env checks, archive-agree skips and
+  archive-disagree aborts with the freeze message pinned); `manual_csv`'s `csvPath` guard. All served by
+  an injected `fetch`, zero network, zero Supabase; fixture dates rolled by real `Date.UTC`, fixture ids
+  from the `teams` seed order, with a deliberately decoying `TEAM_ID` namespace
+  (`((SEED_IDS[abbr] * 7) % 30) + 1` — `BOS`→15 which is MEM's id, `PHI`→12 which is IND's id, so any
+  test that passed by consuming the feed's id would fail).
+- `tests/pipeline/run.test.ts` — the unimplemented-adapter test now driven by `fantrax` plus a new test
+  that `nba_com` passes selection.
+- `scripts/probe-nba-com-adapter.mjs` (new) — the owner-run live leg, outside every gate by design like the
+  Story 2.1 spike scripts. It imports the **shipped** adapter (`createNbaComAdapter`, `deriveSeason`,
+  `validateSeasonOverride`, `NBA_COM_HEADERS`) and builds `teamIdByAbbreviation` by parsing the 30
+  abbreviation rows from `supabase/migrations/00005_release_1_data_model.sql`'s `teams` seed, with a
+  30-count sanity check. Its injected fetch records
+  `urls.length === 1`, prints the PASS/FAIL line, passes `{ok, status, json}` to the adapter, and keeps
+  the raw `resultSets` to print the `TEAM_ID` ↔ abbreviation ↔ resolved `teams.id` triples per team with an
+  agree / differ / not-in-table verdict — the first measurement against
+  `decision-2-1-q-4-data-source.md:104`'s unsourced claim. It prints each series' derived round and each
+  game's scores from the adapter's own rows, then cross-checks the one Game 7 field-by-field against
+  `boxscoretraditionalv2` (`GameID, EndPeriod=10, EndRange=28800, RangeType=0, StartPeriod=0,
+  StartRange=0`, the spike-probed params, same headers, `AbortSignal.timeout(25000)`). Any unrunnable leg
+  exits 2 — including a season with no completed Game 7, which is why the usage line names
+  `node scripts/probe-nba-com-adapter.mjs --season=2025-26`.
+- `_bmad-output/implementation-artifacts/seriesdatasource-port.md` — intro now names Story 2.3 extended by
+  Story 2.4; the interface snippet shows `describeRun?()` marked optional/additive with the AD-5
+  amendment the owner owes; the selection section lists the implemented adapters, the flag-pairing refusal
+  and the recorded fantrax rejection; a new `## Automated adapter: nba_com (Story 2.4)` section records request
+  count, season derivation, selection rule, resolved identity and what an unknown abbreviation means, the
+  `WL`-never-read note, the failure posture, the freeze rule (with `plan.ts:377-379`'s pending-drill message
+  distinguished from `:382-390`'s archive-drill ones); operator usage gained the `--source=nba_com` lines.
+- `docs/CURRENT_DATA_MODEL.md` — the slots-not-venues section records **Resolved 2026-10-01 (Decision 11,
+  owner call 2A): archive frozen — option (a)**, enforced by fetch scope only, with `plan.ts:382-390`
+  unchanged as the guard that catches a deliberate drill.
+- `_bmad-output/implementation-artifacts/epic-2-context.md` — the slot-convention bullet records the freeze
+  decision; the keyed-provider bullet clarifies that the route which actually shipped needs no key at all;
+  the hazards bullet
+  names each inherited hazard now pinned by `tests/pipeline/nba-com.test.ts`, ending with the owner-run
+  probe deferral of the live legs.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — the Story 2.3 slots-vs-venues entry is marked
+  **RESOLVED 2026-10-01 by Story 2.4 (spec Decision 11, owner call 2A): option (a)**, with the enforcement
+  points and the three doc locations that now carry it.
+
+**Verification run, read bare:**
+
+- `npm run gate` → **exit 0**. Biome: `Checked 120 files. No fixes applied.` `tsc -b`: clean. Vitest:
+  `Test Files  19 passed (19)`, `Tests  253 passed (253)`. Vite build: `✓ built`.
+- `npx vitest run tests/pipeline` → 4 files / 97 tests passed, of which `tests/pipeline/nba-com.test.ts`
+  carries 48.
+- `node --check scripts/probe-nba-com-adapter.mjs` → clean parse.
+- `node --input-type=module -e "import('./supabase/scripts/pipeline/adapters/nbaCom.ts').then(m=>console.log(typeof m.createNbaComAdapter))"`
+  → `function`.
+- No command in this session reached the network or a Supabase instance; the probe was never run.
+
+**Mutation checks executed (each red in exactly the intended tests, then reverted; after the revert
+`npx vitest run tests/pipeline` → 97/97 and `npm run gate` → exit 0):**
+
+1. Emit a 4-2 series through the selection path → 1 test red: Decision 3's selection/exclusion test (the
+   plan's 3–3 assertion has no 4-2 series to certify).
+2. Drop the trailing period from the `' vs. '` split → 34 red: the split is the merge, so nearly every
+   fixture collapses; this is the sharpest pin in the file.
+3. Derive the season year from the feed's `SEASON_ID` instead of GAME_DATE's calendar year → 8 red,
+   including the calendar-year test that pins Decision 4.
+4. Let a same-UTC-day game through (skip Decision 5's filter) → 2 red: both certification tests — an
+   unfinished game makes a shape that cannot be certified.
+5. Take the team id from the feed's `TEAM_ID` instead of `deps.teamIdByAbbreviation` — **the mutation that
+   caused loopback 1** → 10 red, including the id-space test (`BOS` would resolve to MEM's id via the
+   decoy formula) and the unknown-abbreviation test (a copied id never looks up, so the loud rejection
+   disappears). This is the evidence that the second pass does not repeat the first.
+6. Delete `run.ts`'s report-notes loop → 1 red: the exclusion-notes-through-stdout runner test (counts and
+   histogram still print, so only the notes pin moves).
+
+**Owner handover (what is not closed by unit evidence):**
+
+- AC:369's live clause is the owner's (Decision 12). Run `node scripts/probe-nba-com-adapter.mjs
+  --season=2025-26` and paste its output into the block below. Until then this story's frontmatter `status`
+  stays `in-progress`, and no claim is made that the feed still answers the 2026-09-30 header posture — nor
+  that the live `TEAM_ID`s agree with `teams.id`. The probe answers `decision-2-1-q-4-data-source.md:104`;
+  that row stays marked unsourced until a measurement is cited.
+- Optional, also owner-run because it opens a production session:
+  `node supabase/scripts/pipeline/run.ts --source=nba_com --dry-run --season=2025-26 --env-file=.env` —
+  expect the report lines first, then a plan summary, then zero writes.
+- AD-5's port text still names exactly two operations; `describeRun?()` is additive and optional, and the
+  amendment (triage row 9) is the owner's call to make in the spine.
 
 **The story is not `done`.** Decision 12 makes AC:369's live clause the owner's, and the live leg has not
-been run: this session's policy refused the agent's outbound call to stats.nba.com. Until the output below
-exists, no claim is made that the feed still answers the 2026-09-30 header posture, and no claim is made
-about the feed's `TEAM_ID` space either.
+been run: this session's policy refused the agent's outbound call to stats.nba.com (the agent did not run
+the probe, not even its offline failure path).
 
 ### Live evidence (AC:369) — OWED, owner-run
 
@@ -385,6 +523,21 @@ about the feed's `TEAM_ID` space either.
   non-sequential `GAME_ID` suffixes (hazard 1), injected `fetch` only, zero Supabase — with the fixture id
   space **rebuilt to match the `teams` seed**. (9) `run.ts`'s report wiring and the three docs' record of
   decision (a): same content, re-derived from the amended Tasks.
+
+- 2026-10-01 (re-derivation build, loopback 1 executed): no frozen Decision, AC or Boundary changed, and no
+  KEEP item dropped — this entry records the build against the amended spec rather than a spec edit. All
+  eight Execution checkboxes ticked. The root-cause fix is present in code and pinned by tests: team identity
+  resolves through `deps.teamIdByAbbreviation` (the `manual_csv` resolver), `TEAM_ID` is consumed nowhere as
+  an id, and an unknown abbreviation aborts naming abbreviation + `GAME_ID`. Verification read bare in
+  `## Implementation Notes`: `npm run gate` exit 0 (Biome 120 files clean, `tsc -b` clean, 19 files / 253
+  tests, vite build ✓), `npx vitest run tests/pipeline` 4 files / 97 tests (48 in `nba-com.test.ts`),
+  `node --check` on the probe clean, module import printing `function`. All **six** mutation checks in
+  `## Verification` were executed and each reddened the intended tests before reverting (2: 34 tests, 5:
+  10 tests including the id-space and unknown-abbreviation pins), which is the evidence that loopback 1's
+  finding cannot silently return. Frontmatter `status` deliberately stays `in-progress`: AC:369's live clause
+  is the owner's (Decision 12) and the probe was never run — this session's policy refused the agent's
+  outbound call, so `decision-2-1-q-4-data-source.md:104` remains an unsourced claim awaiting measurement.
+  Step 04's second review pass on this diff is also outstanding (not runnable in the implementing session).
 
 ## Review Triage Log
 

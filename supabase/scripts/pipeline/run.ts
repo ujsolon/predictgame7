@@ -11,6 +11,13 @@
  *
  * Owner usage (the agent never runs this against production):
  *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
+ *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
+ *
+ * Story 2.4 additions: `--season=<YYYY-YY>` drills the nba_com adapter into
+ * one postseason (the archive is frozen — a drill onto an archived year
+ * reaches Story 2.3's archive guard, never a rewrite), a flag the selected
+ * adapter cannot use refuses the run, and an adapter that carries a run
+ * report (`describeRun`) prints it before planning.
  *
  * `.env` must supply SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the same
  * names the handle-contact function uses; NFR-S1 — never a `VITE_*` name,
@@ -24,8 +31,9 @@ import {
   createAdapterSource,
   DEFAULT_ADAPTER_NAME,
   type AdapterDeps,
+  type FeedFetch,
 } from './port.ts';
-import { groupSourceRows, planPipeline, type CurrentSeriesRow, type Plan, type SourceSeries } from './plan.ts';
+import { groupSourceRows, planPipeline, type CurrentSeriesRow, type Plan } from './plan.ts';
 import { createSupabaseSink, type PipelineSink, type SinkOptions } from './writer.ts';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +44,17 @@ export const ENV_SERVICE_ROLE_KEY = 'SUPABASE_SERVICE_ROLE_KEY';
 
 export class PipelineRunError extends Error {}
 
+/**
+ * Flags each adapter understands (Story 2.4, review triage row 6): passing a
+ * flag the selected adapter cannot use refuses the run. A silently discarded
+ * `--csv=` on an HTTP run is the same class of mistake this file already
+ * refuses for a `--dryrun` typo — the operator believes they steered the run.
+ */
+const ADAPTER_FLAGS: Record<string, string[]> = {
+  manual_csv: ['csv'],
+  nba_com: ['season'],
+};
+
 export interface RunDeps {
   env: Record<string, string | undefined>;
   argv: string[];
@@ -43,6 +62,10 @@ export interface RunDeps {
   readFile?: (path: string) => string;
   log?: (line: string) => void;
   logError?: (line: string) => void;
+  /** Adapter seams forwarded into `AdapterDeps` (tests; production uses the defaults). */
+  fetch?: FeedFetch;
+  now?: () => Date;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 function flagValue(argv: string[], name: string): string | undefined {
@@ -52,13 +75,13 @@ function flagValue(argv: string[], name: string): string | undefined {
 }
 
 /**
- * The first argument that is not one of the three supported flags. A typo like
+ * The first argument that is not one of the supported flags. A typo like
  * `--dry-run=true` or `--dryrun` must not read as "dry run requested and
  * silently ignored" — the whole point of the flag is that no write follows, so
  * an unrecognised flag refuses the run instead.
  */
 function unknownFlag(argv: string[]): string | undefined {
-  return argv.find((arg) => arg.startsWith('--') && arg !== '--dry-run' && !/^--(source|csv)=\S/.test(arg));
+  return argv.find((arg) => arg.startsWith('--') && arg !== '--dry-run' && !/^--(source|csv|season)=\S/.test(arg));
 }
 
 function requiredEnv(env: RunDeps['env'], name: string): string {
@@ -110,7 +133,9 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const stray = unknownFlag(argv);
     if (stray) {
       throw new PipelineRunError(
-        `unrecognised flag "${stray}" — supported: --dry-run, --source=<adapter>, --csv=<path>`,
+        `unrecognised flag "${stray}" — supported: --dry-run, --source=<adapter>, --csv=<path>, --season=<YYYY-YY> ` +
+          '(--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived ' +
+          'year reaches the runner\'s archive guard, never a rewrite)',
       );
     }
     const dryRun = argv.includes('--dry-run');
@@ -121,7 +146,28 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // but unimplemented name (Story 2.4's) refuses loudly, never silently
     // falling back to manual_csv.
     assertAdapterImplemented(sourceName);
-    const csvPath = flagValue(argv, 'csv') ?? DEFAULT_CSV_PATH;
+
+    // A flag the selected adapter cannot use refuses the run (ADAPTER_FLAGS):
+    // silently discarding `--csv=` on an nba_com run would let an operator
+    // believe a file steered a feed run that never read it, and vice versa —
+    // the same class of mistake the stray-flag guard above refuses for a
+    // `--dryrun` typo.
+    const csvArg = flagValue(argv, 'csv');
+    const seasonArg = flagValue(argv, 'season');
+    const passedFlags = [csvArg !== undefined ? 'csv' : undefined, seasonArg !== undefined ? 'season' : undefined].filter(
+      (name): name is string => name !== undefined,
+    );
+    const allowed = ADAPTER_FLAGS[sourceName] ?? [];
+    const misplaced = passedFlags.find((name) => !allowed.includes(name));
+    if (misplaced) {
+      throw new PipelineRunError(
+        `--${misplaced}= does not apply to adapter "${sourceName}" — refusing instead of silently discarding the flag. ` +
+          `Flags this adapter understands: ${allowed.length > 0 ? allowed.map((name) => `--${name}=`).join(', ') : 'none'}.`,
+      );
+    }
+    // Decision 8: the CSV path is resolved only for the adapter that can read
+    // a CSV; an HTTP adapter's deps bag carries no path it could misuse.
+    const csvPath = sourceName === 'manual_csv' ? (csvArg ?? DEFAULT_CSV_PATH) : undefined;
 
     const supabaseUrl = requiredEnv(deps.env, ENV_SUPABASE_URL);
     const serviceRoleKey = requiredEnv(deps.env, ENV_SERVICE_ROLE_KEY);
@@ -133,9 +179,30 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       csvPath,
       readFile,
       teamIdByAbbreviation: (abbreviation) => teamIds.get(abbreviation),
+      fetch: deps.fetch,
+      now: deps.now,
+      seasonOverride: seasonArg,
+      sleep: deps.sleep,
     };
 
-    const source = await loadSource(sourceName, adapterDeps);
+    const adapter = createAdapterSource(sourceName, adapterDeps);
+    const statuses = await adapter.fetch_series_statuses();
+    const gameScores = await adapter.fetch_game_scores();
+    const source = groupSourceRows(statuses, gameScores);
+
+    // The adapter's report prints BEFORE the table is read and the plan is
+    // computed, so an abort during planning still shows the parse that
+    // explains it (review triage row 3). `manual_csv` has no report — a run
+    // with it prints none of these lines and does not error for it.
+    if (adapter.describeRun) {
+      const report = adapter.describeRun();
+      log(report.countsLine);
+      log(report.histogramLine);
+      for (const note of report.notes) {
+        log(note);
+      }
+    }
+
     const current: CurrentSeriesRow[] = await sink.readCurrent();
     const plan = planPipeline(source, current);
 
@@ -175,13 +242,6 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     logError(`pipeline failed: ${message}`);
     return 2;
   }
-}
-
-async function loadSource(sourceName: string, adapterDeps: AdapterDeps): Promise<SourceSeries[]> {
-  const adapter = createAdapterSource(sourceName, adapterDeps);
-  const statuses = await adapter.fetch_series_statuses();
-  const scores = await adapter.fetch_game_scores();
-  return groupSourceRows(statuses, scores);
 }
 
 // Only auto-run when executed as the entry script (`node supabase/scripts/pipeline/run.ts …`);

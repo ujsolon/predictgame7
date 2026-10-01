@@ -99,6 +99,8 @@ The following legacy tables are no longer part of the active `public` schema and
 
 Measured on the live table 2026-09-30: in 177 of the 178 archived series, **every one of the seven score rows names the same team as `home_team_id`** — the series' `team_a_id`. The backfill came from that winner-oriented spreadsheet, so historical rows hold no real home/away information. Consequences the pipeline must respect: an adapter that supplies genuine venue data (Story 2.4's) cannot reconcile a historical series, and the runner's "never rewrites archived games" guard will refuse the attempt by design. `team_a` = game 1's home team is therefore true of the archive only because the archive wrote it that way.
 
+**Resolved 2026-10-01 (Story 2.4, Decision 11, owner call 2A): the archive is frozen — option (a).** No automated adapter re-ingests historical seasons; the venue/slot mismatch above stays as measured and is handled by never testing it, not by repairing it. Enforcement is by FETCH SCOPE, not a stored flag: the `nba_com` adapter asks for the one postseason derived from the run's UTC date (`--season=` overrides for drills), so an archived year never enters the plan by construction — and if a `--season=` drill is aimed at one anyway, Story 2.3's archive guard (`plan.ts:382-390`: identical source → skip, disagreeing source → non-zero abort naming the series) is the enforcement point and refuses the rewrite. The freeze is deliberately not derived from any stored date or timestamp (AD-4 forbids phase from dates). Series created from here on carry real venues — both adapters supply game-true home/away — so the table's venue/slot split has a hard boundary at the last archived year.
+
 ## Current app usage
 
 The current app and edge functions actively read from:
