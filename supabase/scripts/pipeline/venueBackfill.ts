@@ -504,6 +504,10 @@ export function matchSeasonFeedSeries(input: {
  * Map one raw feed code through the approved aliases. Used on the resolved side of a
  * match (the Game-7 home team), so a caller can require the answer to be one of the
  * matched row's own two slots — the same rule `parseVenuesCsv` enforces on input.
+ * Context-free by design: a code like `WAS` is both a 1970s Bullets alias (-> `WSB`)
+ * and a live seed abbreviation, so applying this AFTER a match can reinterpret a
+ * modern row. Deferred as P3-1 (`_bmad-output/implementation-artifacts/deferred-work.md`,
+ * Story 2.8 section; owner: Story 2.9) — NOT fixed here.
  */
 export function resolveFeedCode(code: string, aliases: readonly FeedAlias[]): { abbr: string; alias: FeedAlias | null } {
   const alias = aliases.find((candidate) => candidate.feed === code) ?? null;

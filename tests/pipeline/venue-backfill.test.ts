@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CURATED_CSV_PATH,
+  EXPECTED_GAME7_HOME_WINS,
   EXPECTED_TEAM_COUNT,
   FEED_ALIASES_CSV_PATH,
   LEAGUES,
@@ -133,6 +134,13 @@ describe('the committed curated file', () => {
   it('resolves every row to a distinct (year, unordered team pair) — the identity the migration joins on', () => {
     const keys = rows.map((r) => `${r.year}|${[r.teamA, r.teamB].sort().join('|')}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // Pass-4 review (verification-gap): the 117 checksum ran only inside 00016's
+  // frozen guard and the manual Docker rehearsal — flipping a curated venue kept
+  // all four gate steps green. This is the in-gate pin.
+  it(`holds the ${EXPECTED_GAME7_HOME_WINS} Game-7 home-win checksum the 00016 guard pins`, () => {
+    expect(curatedAssignments(committedRows).filter((v) => v.home === v.row.teamA)).toHaveLength(EXPECTED_GAME7_HOME_WINS);
   });
 });
 

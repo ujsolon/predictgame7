@@ -657,11 +657,11 @@ function main() {
           if (lines[i].startsWith(`${tuple},`) || lines[i].startsWith(`${tuple};`)) hits.push(i);
         }
         if (hits.length !== 1) {
-          throw new RehearsalFailure(`SELF-TEST tamper ${label}: expected exactly one VALUES line for "${tuple}", found ${hits.length}`);
+          throw new RehearsalFailure(`${tag} tamper ${label}: expected exactly one VALUES line for "${tuple}", found ${hits.length}`);
         }
         const tail = lines[hits[0]].slice(tuple.length);
         if (replacement === null) {
-          if (tail !== ',') throw new RehearsalFailure(`SELF-TEST tamper ${label}: refusing to drop the final tuple of a VALUES list`);
+          if (tail !== ',') throw new RehearsalFailure(`${tag} tamper ${label}: refusing to drop the final tuple of a VALUES list`);
           lines.splice(hits[0], 1);
         } else {
           lines[hits[0]] = `${replacement}${tail}`;

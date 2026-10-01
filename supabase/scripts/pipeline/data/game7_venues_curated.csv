@@ -30,15 +30,19 @@
 #   count. Curation route for game7_home_team (spec-2-8 D1/D7, owner-run): all 160 NBA/BAA
 #   values come from node scripts/probe-game7-venues.mjs over seasons 1946-47 -> 2025-26
 #   (each line prints the file:line to paste into). Three sweeps answered every overlapping
-#   row identically — 0 conflicts — and the era codes the feed prints (`CIN`, `STL`, `GOS`,
-#   `UTH`, `SAN`, `CHH`, `WAS` for a 1970s Bullets series, and the eight later ones) resolve
-#   through the owner-approved table game7_feed_aliases.csv under the two-pass matcher, so no
-#   row needed hand entry; basketball-reference.com stayed the spot-check route (D6). ABA rows
+#   row identically — 0 conflicts — and the era codes the feed prints resolve through the
+#   owner-approved table game7_feed_aliases.csv under the two-pass matcher, so no row needed
+#   hand entry; that table's 14 rows are the six first-named era codes (`CIN`, `STL`, `GOS`,
+#   `UTH`, `SAN`, `CHH`) plus the eight approved alongside or after them (`WAS`, `BOM`, `ROC`,
+#   `MNL`, `FTW`, `PHL`, `BLT`, `CAP` — `WAS`, `MNL`, `FTW`, `PHL` and `BLT` name franchises
+#   older than the six). basketball-reference.com stayed the spot-check route (D6). ABA rows
 #   stay blank by scope, never by omission.
 #   A curated row must satisfy the 117 Game-7 home-win checksum and the 160 population
 #   baked into 00016's guards -- a list with a wrong row does not land on it. If the live
 #   archive has grown past these 178 rows, append the newer series AND change the pinned
-#   constants in supabase/scripts/pipeline/venueBackfill.ts in the same commit (D5);
+#   constants in supabase/scripts/pipeline/venueBackfill.ts AND the pins in
+#   tests/pipeline/venue-backfill.test.ts (178/159/1/18, the 117 home-win checksum, the
+#   worksheet counts) in the same commit (D5);
 #   relaxing a guard is not the route.
 #
 # Do not hand-edit without re-running: node supabase/scripts/pipeline/venueBackfill.ts --check

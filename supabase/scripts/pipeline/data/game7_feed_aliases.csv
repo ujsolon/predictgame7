@@ -15,8 +15,11 @@
 #      rows no direct match claimed.
 #   3. After substitution, exactly one row may remain. Zero is unmatched; two or more is
 #      AMBIGUOUS and is never guessed — the probe prints it for you instead.
-# Rule 1 is what keeps `WAS` safe: the 2017 Celtics-Wizards row matches directly and is
-# never reinterpreted as the 1970s Bullets.
+# Rule 1 keeps the MATCH safe: the 2017 Celtics-Wizards row matches directly and is
+#   never reinterpreted as the 1970s Bullets. It does not cover the probe's POST-match
+#   use of resolveFeedCode on the home/winner codes — the context-free WAS->WSB
+#   collision there is deferred as P3-1 (see deferred-work.md, "Story 2.8 build +
+#   review" section); NOT fixed as of 2026-10-02.
 #
 # Columns: feed_abbr,teams_abbr,evidence
 #   feed_abbr  — the code the feed prints

@@ -327,9 +327,10 @@ async function runVenueProbe(seasonOverrideRaw) {
     console.log(`probe answers matching NO curated row: ${unmatchedProbeAnswers.length}`);
     for (const line of unmatchedProbeAnswers) console.log(`  ${line}`);
     console.log(
-      "  usually an era-code difference: the feed names a franchise one way (CIN, STL, WAS, GOS, UTH, SAN, CHH) " +
-        'while `teams` holds another (CNR, SLH, WSB, GSW, UTA, SAS). Neither archive growth nor a typo — ' +
-        'the pair is right and only the code differs. ' +
+      '  usually an era-code difference the approved alias table already maps — open ' +
+        'supabase/scripts/pipeline/data/game7_feed_aliases.csv (14 rows: CIN→CNR, STL→SLH, WAS→WSB, ' +
+        'GOS→GSW, UTH→UTA, CHH→CHA, SAN→SAS, BOM→SLB, ROC→ROR, MNL→MPL, FTW→FWP, PHL→PHI, BLT→BLB, ' +
+        'CAP→CPB). Neither archive growth nor a typo — the pair is right and only the code differs. ' +
         'If instead the feed answered a series the archive does not hold, reconcile against the live table BEFORE emitting: ' +
         "00016's league_backfill_complete guard aborts db push on any uncovered series.",
     );
