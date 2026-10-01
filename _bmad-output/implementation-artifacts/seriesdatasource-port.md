@@ -270,6 +270,15 @@ carry slots, not venues, so a future venue-correct adapter cannot reconcile
 them row-for-row. See `docs/CURRENT_DATA_MODEL.md` § "The archive carries
 slots, not venues".
 
+**The floor writes live playoff rows only and is not a backfill vehicle
+(Story 2.8, Call 1):** a `manual_csv` run against archived series aborts at
+`plan.ts:382-390` by design — that is the archive freeze working, not a defect
+to route around — which is why the curated Game-7 venues and the `league`
+column reach the database through migration `00016` instead, emitted by
+`supabase/scripts/pipeline/venueBackfill.ts` from the committed
+`data/game7_venues_curated.csv` (see
+`docs/CURRENT_DATA_MODEL.md` § "Story 2.8 status").
+
 ## Operator usage
 
 ```

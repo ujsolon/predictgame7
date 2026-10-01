@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-25-2026 09:38
-last_updated: 10-01-2026 13:58
+last_updated: 10-01-2026 15:10
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -49,7 +49,11 @@ development_status:
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: done
   2-4-automated-adapter-per-the-spike-decision: review
-  2-8-archive-league-identity-and-game7-venue-backfill: backlog
+  # 2-8 ends 'review' = MACHINERY-COMPLETE / VENUE-BLOCKED (spec-2-8 D2): the curated CSV,
+  # the 00016 generator (refuses to emit while the 160 NBA/BAA venues are blank), the probe
+  # and the rehearsal self-test are committed; 00016 itself lands only with the owner's
+  # curated venues, so 2-9 and 2-5 stay blocked behind that data commit.
+  2-8-archive-league-identity-and-game7-venue-backfill: review
   2-9-league-chip-and-filter-on-the-archive-surface: backlog
   2-5-insights-cache-refresh: backlog
   2-6-scheduled-workflows-failure-notification-sm-4: backlog

@@ -1,0 +1,352 @@
+// Story 2.8 — the venue-backfill generator: curated-CSV parsing, the
+// refuse-to-emit gate, the three-case orientation rule, the deterministic
+// self-test assignment, and the CSV ↔ migration --check contract.
+// Pure-function tests (no Docker, no network, no database): the throwaway
+// rehearsal (scripts/rehearse-migration-00014.mjs section 5) is what proves
+// the emitted SQL itself.
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+import {
+  CURATED_CSV_PATH,
+  LEAGUES,
+  MIGRATION_FILENAME,
+  type VenueRow,
+  VenueBackfillError,
+  blankVenueRows,
+  curatedAssignments,
+  firstDriftLine,
+  orientationDecision,
+  pairMatches,
+  parseVenuesCsv,
+  refusalReport,
+  renderFixtureSeed,
+  renderMigration,
+  runVenueBackfillCli,
+  syntheticAssignments,
+} from '../../supabase/scripts/pipeline/venueBackfill.ts';
+
+const HEADER = 'year,team_a,team_b,league,game7_home_team';
+
+function csv(...rows: string[]): string {
+  return [HEADER, ...rows].join('\n');
+}
+
+function fullAssignments(count: number): string {
+  // 160 NBA/BAA rows need not be the real archive rows for the assignment
+  // rule: the generator only counts them and splits them in file order.
+  return csv(...Array.from({ length: count }, (_, i) => `${1900 + i},BOS,CHI,NBA,`));
+}
+
+describe('parseVenuesCsv — the curated row shape', () => {
+  it('reads the five columns, keeping the blank venue as an empty string', () => {
+    const rows = parseVenuesCsv(csv('2016,CLE,GSW,NBA,CLE', '1970,IND,LOS,ABA,'), 'curated.csv');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ line: 2, year: 2016, teamA: 'CLE', teamB: 'GSW', league: 'NBA', home: 'CLE' });
+    expect(rows[1]).toMatchObject({ line: 3, league: 'ABA', home: '' });
+  });
+
+  it('treats # lines and blank lines as comments, like the manualCsv convention', () => {
+    const text = `# provenance\n\n${HEADER}\n# another comment\n2016,CLE,GSW,NBA,\n`;
+    const rows = parseVenuesCsv(text, 'curated.csv');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].line).toBe(5);
+  });
+
+  it('rejects a wrong column count, a wrong header, and a malformed field — each naming the row', () => {
+    expect(() => parseVenuesCsv('2016,CLE,GSW,NBA\n', 'c.csv')).toThrowError(/c\.csv:1: expected 5 columns/s);
+    expect(() => parseVenuesCsv('year,team_a,team_b,league,home\n2016,CLE,GSW,NBA,\n', 'c.csv')).toThrowError(
+      /c\.csv:1: header column "home" should be "game7_home_team"/,
+    );
+    expect(() => parseVenuesCsv(csv('TWENTY,CLE,GSW,NBA,'), 'c.csv')).toThrowError(/"year" must be a non-negative integer/);
+    expect(() => parseVenuesCsv(csv('2016,CLE,GS,NBA,'), 'c.csv')).toThrowError(/"team_b" must be a three-letter teams\.abbreviation/);
+    expect(() => parseVenuesCsv(csv('2016,CLE,CLE,NBA,'), 'c.csv')).toThrowError(/cannot pair a team with itself/);
+  });
+
+  it('keeps league to the three values 00016 CHECKs', () => {
+    expect(LEAGUES).toEqual(['NBA', 'BAA', 'ABA']);
+    expect(() => parseVenuesCsv(csv('2016,CLE,GSW,ABL,'), 'c.csv')).toThrowError(/"league" must be one of NBA\/BAA\/ABA/);
+  });
+
+  it('rejects a curated home that is neither slot of its own row', () => {
+    expect(() => parseVenuesCsv(csv('2016,CLE,GSW,NBA,LAL'), 'c.csv')).toThrowError(
+      /"game7_home_team" "LAL" is neither team_a "CLE" nor team_b "GSW"/,
+    );
+  });
+
+  it('rejects a filled ABA venue — the 18 ABA rows are out of scope and blank is their legal shape', () => {
+    expect(() => parseVenuesCsv(csv('1970,IND,LOS,ABA,IND'), 'c.csv')).toThrowError(/out of venue scope \(Call 2\)/);
+  });
+
+  it('rejects two rows resolving to the same (year, unordered team pair) — including a slot-reversed twin', () => {
+    expect(() => parseVenuesCsv(csv('2016,CLE,GSW,NBA,', '2016,GSW,CLE,NBA,'), 'c.csv')).toThrowError(VenueBackfillError);
+    expect(() => parseVenuesCsv(csv('2016,CLE,GSW,NBA,', '2016,GSW,CLE,NBA,'), 'c.csv')).toThrowError(
+      /same \(year, unordered team pair\) as c\.csv:2/,
+    );
+  });
+});
+
+describe('the committed curated file', () => {
+  const rows = parseVenuesCsv(readFileSync(CURATED_CSV_PATH, 'utf8'), 'game7_venues_curated.csv');
+
+  it('carries one row per archived series: 178 total, 160 NBA/BAA, 18 ABA, 1 BAA', () => {
+    expect(rows).toHaveLength(178);
+    expect(rows.filter((r) => r.league === 'NBA')).toHaveLength(159);
+    expect(rows.filter((r) => r.league === 'BAA')).toHaveLength(1);
+    expect(rows.filter((r) => r.league === 'ABA')).toHaveLength(18);
+    // The ABA blanks are a permanent rule (Call 2); the NBA/BAA blanks are
+    // this session's state and NOT asserted here — the refusal gate is the
+    // instrument for that, tested below with fixtures and run live via the CLI.
+    expect(rows.filter((r) => r.league === 'ABA' && r.home !== '')).toHaveLength(0);
+  });
+
+  it('resolves every row to a distinct (year, unordered team pair) — the identity the migration joins on', () => {
+    const keys = rows.map((r) => `${r.year}|${[r.teamA, r.teamB].sort().join('|')}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('the refuse-to-emit gate (spec-2-8 D2)', () => {
+  it('names the count while any NBA/BAA venue is blank — the gap is an instrument, not a comment', () => {
+    const rows = parseVenuesCsv(csv('2016,CLE,GSW,NBA,', '2017,GSW,CLE,NBA,', '1970,IND,LOS,ABA,'), 'c.csv');
+    const report = refusalReport(rows, 'c.csv');
+    expect(report).not.toBeNull();
+    expect(report).toContain('refuses to emit: 2 NBA/BAA row(s) carry a blank game7_home_team');
+    expect(report).toContain('c.csv:2');
+    expect(report).toContain('c.csv:3');
+  });
+
+  it('goes quiet (null) once every NBA/BAA venue is curated — and the 18 ABA blanks never count', () => {
+    const rows = parseVenuesCsv(csv('2016,CLE,GSW,NBA,CLE', '1970,IND,LOS,ABA,'), 'c.csv');
+    expect(refusalReport(rows, 'c.csv')).toBeNull();
+    expect(blankVenueRows(rows)).toHaveLength(0);
+  });
+
+  it('the committed file trips the gate this session: the CLI exits non-zero and writes no migration', () => {
+    const written: string[] = [];
+    const result = runVenueBackfillCli([], {
+      readFile: (path) => readFileSync(path, 'utf8'),
+      writeFile: (path) => written.push(path),
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.messages.join('\n')).toContain('refuses to emit: 160 NBA/BAA row(s)');
+    expect(written).toEqual([]);
+  });
+});
+
+describe('pair resolution and the three-case orientation rule', () => {
+  it('matches the unordered team pair at the right year, in either slot order, never on round', () => {
+    const curated = { year: 2016, teamA: 'CLE', teamB: 'GSW' };
+    expect(pairMatches(curated, { year: 2016, teamA: 'CLE', teamB: 'GSW' })).toBe(true);
+    expect(pairMatches(curated, { year: 2016, teamA: 'GSW', teamB: 'CLE' })).toBe(true);
+    expect(pairMatches(curated, { year: 2017, teamA: 'CLE', teamB: 'GSW' })).toBe(false);
+    expect(pairMatches(curated, { year: 2016, teamA: 'CLE', teamB: 'OKC' })).toBe(false);
+  });
+
+  it('keep / swap / conflict — case 3 never overwrites silently (the 178th-series protection)', () => {
+    expect(orientationDecision('CLE', 'CLE', 'CLE')).toBe('keep');
+    expect(orientationDecision('CLE', 'GSW', 'CLE')).toBe('swap');
+    expect(orientationDecision('GSW', 'GSW', 'CLE')).toBe('keep');
+    // stored home is neither the canonical team_a state nor the curated value:
+    expect(orientationDecision('GSW', 'CLE', 'CLE')).toBe('conflict');
+  });
+});
+
+describe('the deterministic self-test assignment (spec-2-8 D2)', () => {
+  it('splits the first 117 NBA/BAA rows to keep and the last 43 to swap, deterministically', () => {
+    const rows = parseVenuesCsv(fullAssignments(160), 'c.csv');
+    const venues = syntheticAssignments(rows);
+    expect(venues).toHaveLength(160);
+    expect(venues.filter((v) => v.home === v.row.teamA)).toHaveLength(117);
+    expect(venues.filter((v) => v.home === v.row.teamB)).toHaveLength(43);
+    expect(venues.map((v) => v.home)).toEqual(syntheticAssignments(rows).map((v) => v.home));
+    // ABA rows carry no venue assignment at all — their game-7 rows stay archived.
+    expect(venues.some((v) => v.row.league === 'ABA')).toBe(false);
+  });
+
+  it('refuses a population that is not the pinned 160 — the self-test census depends on it', () => {
+    expect(() => syntheticAssignments(parseVenuesCsv(fullAssignments(159), 'c.csv'))).toThrowError(
+      /exactly 160 NBA\/BAA rows .* got 159/,
+    );
+  });
+
+  it('the curated assignment mode takes every NBA/BAA row with its real venue', () => {
+    const rows = parseVenuesCsv(csv('2016,CLE,GSW,NBA,GSW', '1970,IND,LOS,ABA,'), 'c.csv');
+    expect(curatedAssignments(rows)).toEqual([{ row: rows[0], home: 'GSW' }]);
+  });
+});
+
+describe('renderMigration — the single emitted copy of 00016', () => {
+  const rows = parseVenuesCsv(fullAssignments(160) + '\n1970,IND,LOS,ABA,\n1971,IND,LOS,ABA,', 'c.csv');
+  // (fullAssignments has no ABA rows; add two so the render exercises both lists.)
+  const venues = syntheticAssignments(rows);
+  const text = renderMigration(rows, venues, { selfTest: true });
+
+  it('applies the schema sequence in the order the spec freezes: add → backfill → NOT NULL → DEFAULT → CHECK', () => {
+    const at = (needle: string) => text.indexOf(needle);
+    expect(at('ALTER TABLE public.series ADD COLUMN league text')).toBeGreaterThanOrEqual(0);
+    expect(at('SET league = c.league')).toBeGreaterThan(at('ADD COLUMN league text'));
+    expect(at('ALTER COLUMN league SET NOT NULL')).toBeGreaterThan(at('SET league = c.league'));
+    expect(at("ALTER COLUMN league SET DEFAULT 'NBA'")).toBeGreaterThan(at('ALTER COLUMN league SET NOT NULL'));
+    expect(at("ADD CONSTRAINT series_league_check CHECK (league IN ('NBA', 'BAA', 'ABA'))")).toBeGreaterThan(
+      at("ALTER COLUMN league SET DEFAULT 'NBA'"),
+    );
+  });
+
+  it('carries every guard the rehearsal tampers, named for its message', () => {
+    for (const guard of [
+      'league_row_match',
+      'league_backfill_complete',
+      'aba_row_census',
+      'venue_row_match',
+      'venue_coverage',
+      'orientation_conflict',
+      'game7_home_win_census',
+      'row_winner_consistency',
+      'series_winner_game7_consistency',
+    ]) {
+      expect(text).toContain(`00016 guard ${guard}`);
+    }
+  });
+
+  it('never touches a non-game-7 row and never writes winner_team_id', () => {
+    // Comments say the opposite to explain the rule; the CODE must not.
+    const code = text
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n');
+    expect(code).not.toContain('game_number <> 7');
+    for (const statement of code.split(';')) {
+      if (statement.includes('UPDATE public.series_game_scores')) {
+        expect(statement).toContain('g.game_number = 7');
+      }
+    }
+    expect(code).not.toMatch(/\bSET\b[^;]{0,300}?winner_team_id\s*=/);
+    expect(code).not.toContain('series.status');
+  });
+
+  it('embeds one league tuple per curated row and one venue tuple per NBA/BAA row', () => {
+    const leagueSection = text.slice(text.indexOf('INSERT INTO curated_league'), text.indexOf('INSERT INTO curated_venue'));
+    const venueSection = text.slice(
+      text.indexOf('INSERT INTO curated_venue'),
+      text.indexOf('ALTER TABLE public.series ADD COLUMN'),
+    );
+    expect(leagueSection.match(/^ {2}\(\d+, '[A-Z]{3}', '[A-Z]{3}', '(?:NBA|BAA|ABA)'\)[,;]$/gm)).toHaveLength(rows.length);
+    expect(venueSection.match(/^ {2}\(\d+, '[A-Z]{3}', '[A-Z]{3}', '[A-Z]{3}'\)[,;]$/gm)).toHaveLength(venues.length);
+  });
+
+  it('is byte-stable across renders (the --check contract needs determinism)', () => {
+    expect(renderMigration(rows, syntheticAssignments(rows), { selfTest: true })).toBe(text);
+  });
+
+  it('banners the self-test rendering so a temp copy can never read as the real migration', () => {
+    expect(text).toContain('SELF-TEST RENDERING — NOT FOR supabase/migrations/');
+    expect(renderMigration(rows, venues, { selfTest: false })).not.toContain('SELF-TEST RENDERING');
+  });
+});
+
+describe('renderFixtureSeed — the 178 x 7 fixture the guards need', () => {
+  const rows = parseVenuesCsv(fullAssignments(160) + '\n1970,IND,LOS,ABA,', 'c.csv');
+  const seed = renderFixtureSeed(rows);
+
+  it('clears scores before series (the FK direction) and re-seeds the full archive shape', () => {
+    // 'DELETE FROM public.series;' with the semicolon: the bare text is also a
+    // prefix of the scores DELETE, and an index compare that matches both is 430 < 430.
+    expect(seed.indexOf('DELETE FROM public.series_game_scores')).toBeLessThan(seed.indexOf('DELETE FROM public.series;'));
+    expect(seed.match(/^ {2}\(\d{4}, '/gm)).toHaveLength(rows.length);
+    expect(seed).toContain('CROSS JOIN (VALUES (1), (2), (3), (4), (5), (6), (7))');
+    expect(seed).toContain('SELF-TEST fixture archive');
+  });
+});
+
+describe('firstDriftLine and the --check contract', () => {
+  it('returns null on byte agreement and the first differing line otherwise', () => {
+    expect(firstDriftLine('a\nb\nc', 'a\nb\nc')).toBeNull();
+    expect(firstDriftLine('a\nb\nc', 'a\nX\nc')).toBe(2);
+    expect(firstDriftLine('a\nb', 'a\nb\nc')).toBe(3);
+  });
+
+  it('--check on a complete CSV without an emitted migration exits non-zero naming the missing file', () => {
+    const complete = csv('2016,CLE,GSW,NBA,CLE', '2017,GSW,CLE,NBA,CLE');
+    const result = runVenueBackfillCli(['--check', '--csv=c.csv'], {
+      readFile: (path) => {
+        if (path === 'c.csv') return complete;
+        throw new Error(`no such file: ${path}`);
+      },
+      writeFile: () => {
+        throw new Error('--check must not write');
+      },
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.messages.join('\n')).toContain('--check:');
+    expect(result.messages.join('\n')).toContain(MIGRATION_FILENAME);
+    expect(result.messages.join('\n')).toContain('does not exist');
+  });
+
+  it('--check catches a hand-edit of the emitted migration in either direction, naming the line', () => {
+    const complete = csv('2016,CLE,GSW,NBA,CLE', '2017,GSW,CLE,NBA,CLE');
+    const rows: VenueRow[] = parseVenuesCsv(complete, 'c.csv');
+    const rendered = renderMigration(rows, curatedAssignments(rows), { selfTest: false });
+    const edited = rendered.replace('SET DEFAULT', 'SET  DEFAULT');
+    const result = runVenueBackfillCli(['--check', '--csv=c.csv'], {
+      readFile: (path) =>
+        path === 'c.csv' ? complete : path.endsWith(MIGRATION_FILENAME) ? edited : (() => { throw new Error(`unexpected read ${path}`); })(),
+      writeFile: () => {
+        throw new Error('--check must not write');
+      },
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.messages.join('\n')).toMatch(/--check FAILED: .* disagree at line \d+/);
+  });
+
+  it('the emit path writes exactly the rendered migration once curation is complete', () => {
+    const complete = csv('2016,CLE,GSW,NBA,CLE', '2017,GSW,CLE,NBA,CLE');
+    const rows = parseVenuesCsv(complete, 'c.csv');
+    const written = new Map<string, string>();
+    const result = runVenueBackfillCli(['--csv=c.csv'], {
+      readFile: (path) => (path === 'c.csv' ? complete : (() => { throw new Error(`unexpected read ${path}`); })()),
+      writeFile: (path, data) => written.set(path, data),
+    });
+    expect(result.exitCode).toBe(0);
+    expect([...written.keys()]).toHaveLength(1);
+    const targetPath = [...written.keys()][0];
+    expect(targetPath.endsWith(MIGRATION_FILENAME)).toBe(true);
+    expect(targetPath.replace(/\\/g, '/')).toContain('/supabase/migrations/');
+    expect([...written.values()][0]).toBe(renderMigration(rows, curatedAssignments(rows), { selfTest: false }));
+  });
+});
+
+describe('the self-test CLI path (what the rehearsal drives)', () => {
+  it('emits the synthetic rendering and the fixture seed to the given paths — never into supabase/migrations/', () => {
+    const written = new Map<string, string>();
+    const io = {
+      readFile: (path: string) => (path === 'c.csv' ? fullAssignments(160) + '\n1970,IND,LOS,ABA,' : (() => { throw new Error(`unexpected read ${path}`); })()),
+      writeFile: (path: string, data: string) => written.set(path, data),
+    };
+    const result = runVenueBackfillCli(
+      ['--csv=c.csv', '--self-test-migration=/tmp/00016.sql', '--self-test-fixture=/tmp/fixture.sql'],
+      io,
+    );
+    expect(result.exitCode).toBe(0);
+    expect([...written.keys()]).toEqual(['/tmp/00016.sql', '/tmp/fixture.sql']);
+    expect(result.messages.join('\n')).toContain('SELF-TEST generated');
+    expect(result.messages.join('\n')).toContain('117 keep (home = team_a) / 43 swap (home = team_b)');
+
+    const refused = runVenueBackfillCli(
+      ['--csv=c.csv', '--self-test-migration=supabase/migrations/00016_archive_league_identity_and_game7_venues.sql', '--self-test-fixture=/tmp/fixture.sql'],
+      io,
+    );
+    expect(refused.exitCode).toBe(2);
+    expect(refused.messages.join('\n')).toContain('must never land in');
+  });
+
+  it('the real emission stays refused while the committed venues are blank, even via explicit flags', () => {
+    const result = runVenueBackfillCli([], {
+      readFile: (path) => readFileSync(path, 'utf8'),
+      writeFile: () => {
+        throw new Error('emit must not write while curation is incomplete');
+      },
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.messages.join('\n')).toContain('no migration written');
+  });
+});
