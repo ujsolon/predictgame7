@@ -360,7 +360,10 @@ async function runVenueProbe(seasonOverrideRaw) {
   if (failures.length > 0) {
     console.error(`\nPROBE INCOMPLETE — ${failures.length} season(s) could not be answered: ${failures.map((f) => f.split(':')[0]).join(', ')}`);
     for (const failure of failures) console.error(`  ${failure}`);
-    console.error('Uncovered rows (the pre-1993 block included) are hand-entered by the owner from a reference (spec-2-8 D1).');
+    console.error(
+      'Rows still blank are resolved by approving the proposals above into data/game7_feed_aliases.csv and re-running; ' +
+        'run `node supabase/scripts/pipeline/venueBackfill.ts --worksheet` for the residue that is genuinely unanswerable here.',
+    );
     process.exitCode = 2;
     return;
   }
