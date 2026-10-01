@@ -13,13 +13,24 @@
 //
 //   year,team_a,team_b,game7_home_team
 //
-// Printed team_a/team_b follow the CURATED file's convention, winner-first
-// (team_a = series winner, same as docs/NBASeriesResults.xlsx and 00007's
-// slots) — so the fourth field can be pasted straight into the matching row.
-// Matching into the curated file is by (year, UNORDERED team pair) either
-// way, and only the home abbreviation travels; the adapter's own slots
-// follow game-1-home and are not what is printed. It writes NOTHING: no
+// The three printed fields come from the CURATED row itself, not from the feed's
+// slot order: the matcher returns the archive row a season resolves to, and that
+// row's own `team_a`/`team_b` are printed, so the line you read is the line you
+// edit. Where the feed's winner disagrees with the curated row's winner-first
+// slot, that is reported separately as a winner inversion — resolution is by
+// unordered pair, so a venue still lands on the right row. It writes NOTHING: no
 // file, no database, no environment read.
+//
+// Era codes resolve through one approved table:
+// supabase/scripts/pipeline/data/game7_feed_aliases.csv (`feed_abbr,teams_abbr,
+// evidence`). The feed names some franchises by a code `teams` does not hold —
+// CIN, STL, GOS, UTH, SAN, CHH, and WAS for a 1970s Bullets series — and the
+// depth drill of 2026-10-01 showed the archive identifies them: the year matches
+// and one side matches a curated slot exactly. An alias may fire only when the
+// direct pass matched nothing, only against rows no direct match claimed, and only
+// to one surviving row; otherwise the code is printed as a proposal for the owner
+// to verify and never applied. Those rules live in venueBackfill.ts under tests,
+// because this leg runs only on the owner's machine (pass 2, P2-12/VG2-3).
 //
 // The feed posture is the shipped adapter's, not a re-implementation (the
 // same triage rule Story 2.4 learned): the probe imports `createNbaComAdapter`
@@ -120,6 +131,21 @@ async function runVenueProbe(seasonOverrideRaw) {
     return feedOnlyIds.get(abbr);
   };
   const nameOf = (id) => idToAbbr.get(id) ?? `feed:${feedOnlyAbbr.get(id) ?? `id${id}`}`;
+  // Raw code space for the matcher: a seed abbreviation stays itself, a feed-only
+  // code stays the feed's own string, so `matchSeasonFeedSeries` can decide whether
+  // an approved alias resolves it.
+  const codeOf = (id) => idToAbbr.get(id) ?? feedOnlyAbbr.get(id) ?? `id${id}`;
+
+  const aliasCsvRel = '../supabase/scripts/pipeline/data/game7_feed_aliases.csv';
+  let feedAliases;
+  try {
+    feedAliases = generator.parseFeedAliases(await readFileSafe(aliasCsvRel), 'game7_feed_aliases.csv', seed);
+  } catch (error) {
+    throw new Error(
+      `the approved alias table is unreadable (${aliasCsvRel.replace(/^\.\.\//, '')}): ${error.message} — ` +
+        'refusing to run a curation pass that would silently treat every era code as unknown',
+    );
+  }
 
   console.log('story 2.8 venue probe — shipped nba_com adapter, season by season (read-only, zero Supabase, writes nothing)');
   console.log(`seasons asked: ${selected.length} (${selected[0]} → ${selected[selected.length - 1]})`);
@@ -132,13 +158,14 @@ async function runVenueProbe(seasonOverrideRaw) {
   const curatedCsvRel = '../supabase/scripts/pipeline/data/game7_venues_curated.csv';
   const curatedRows = generator.parseVenuesCsv(await readFileSafe(curatedCsvRel), 'game7_venues_curated.csv');
   const pairKey = (year, a, b) => `${year}|${[a, b].sort().join('|')}`;
-  const curatedByKey = new Map(curatedRows.map((row) => [pairKey(row.year, row.teamA, row.teamB), row]));
   const nbaBaaByCalendarYear = new Map();
   for (const row of curatedRows) {
     if (generator.isNbaBaa(row)) nbaBaaByCalendarYear.set(row.year, (nbaBaaByCalendarYear.get(row.year) ?? 0) + 1);
   }
   const answeredKeys = new Set();
   const unmatchedProbeAnswers = [];
+  const aliasProposals = [];
+  const winnerInversions = [];
   const feedOnlyCodes = new Set();
 
   const failures = [];
@@ -193,6 +220,11 @@ async function runVenueProbe(seasonOverrideRaw) {
         `\n=== ${season} — ${report.countsLine} — ${completed.length} completed Game-7 series` +
           (outcome === 'no-game7' ? `; calendar ${calendarYear} holds no curated NBA/BAA Game 7 either — agrees` : ''),
       );
+      // Resolve the season in raw-code space. The two-pass rule that decides whether
+      // an approved alias may rename a franchise lives in the tested module, because
+      // this leg only runs on the owner's machine and nothing here can be verified by
+      // executing it (pass 2, P2-12/VG2-3).
+      const resolved = [];
       for (const status of completed) {
         const game7 = scores.find(
           (g) =>
@@ -206,33 +238,63 @@ async function runVenueProbe(seasonOverrideRaw) {
           failures.push(`${season}: series ${status.year} pair resolved with a winner but no game-7 row in the same parse`);
           continue;
         }
-        const home = idToAbbr.get(game7.home_team_id);
-        if (home === undefined) {
-          const raw = feedOnlyAbbr.get(game7.home_team_id) ?? `id ${game7.home_team_id}`;
+        resolved.push({
+          codeA: codeOf(status.team_a_id),
+          codeB: codeOf(status.team_b_id),
+          homeCode: codeOf(game7.home_team_id),
+          winnerCode: codeOf(status.winner_team_id),
+        });
+      }
+
+      const { matched, unmatched } = generator.matchSeasonFeedSeries({
+        year: calendarYear,
+        series: resolved,
+        curated: curatedRows,
+        aliases: feedAliases,
+      });
+
+      for (const m of matched) {
+        const home = generator.resolveFeedCode(m.series.homeCode, feedAliases).abbr;
+        if (home !== m.row.teamA && home !== m.row.teamB) {
           unmatchedProbeAnswers.push(
-            `${status.year} ${nameOf(status.team_a_id)} vs ${nameOf(status.team_b_id)} — Game 7 hosted by feed code "${raw}", which the teams table does not hold: not pasteable, and this season's other answers still stand`,
+            `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — Game 7 home resolved to "${home}", which is not one of that row's two slots: refusing to print a paste target`,
           );
           continue;
         }
-        // winner-first is the CURATED file's convention; the adapter's slots
-        // follow game-1-home. Say which is which so the paste target is never a guess.
-        // nameOf() keeps a feed-only code visible and unmatchable rather than
-        // printing "undefined" into a line the owner might paste from.
-        const winner = nameOf(status.winner_team_id);
-        const loser = winner === nameOf(status.team_a_id) ? nameOf(status.team_b_id) : nameOf(status.team_a_id);
-        // The paste target travels with the answer (review pass 2, P2-5): the
-        // line the owner must edit, not a row they hunt for by eye. Matching is
-        // still (year, unordered pair), so the number is a convenience, never a
-        // key — a curated row moved between runs shows up as a mismatch here.
-        const key = pairKey(status.year, winner, loser);
-        const targetRow = curatedByKey.get(key);
-        console.log(`${status.year},${winner},${loser},${home}${targetRow ? `\t# paste into ${curatedCsvRel.replace(/^\.\.\//, '')}:${targetRow.line}` : ''}`);
+        // Print the CURATED row's own shape, so the line you paste into and the line
+        // printed agree slot for slot. What the feed's slots were is reported
+        // separately, as a winner inversion.
+        const via = m.via === 'direct' ? '' : `  [via alias ${m.via.feed}->${m.via.teams}]`;
+        console.log(`${m.row.year},${m.row.teamA},${m.row.teamB},${home}\t# paste into ${curatedCsvRel.replace(/^\.\.\//, '')}:${m.row.line}${via}`);
         printed += 1;
-        if (curatedByKey.has(key)) {
-          answeredKeys.add(key);
-        } else {
-          unmatchedProbeAnswers.push(`${status.year},${winner},${loser} — no curated row holds this (year, unordered pair)`);
+        answeredKeys.add(pairKey(m.row.year, m.row.teamA, m.row.teamB));
+
+        const feedWinner = generator.resolveFeedCode(m.series.winnerCode, feedAliases).abbr;
+        if (feedWinner === m.row.teamB) {
+          winnerInversions.push(
+            `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — the feed says ${feedWinner} won this series, while the curated row holds ${m.row.teamA} in the winner-first slot. Resolution is by UNORDERED pair so the venue still lands on the right row; this is a provenance question about the row, not a blocker.`,
+          );
         }
+      }
+
+      for (const u of unmatched) {
+        const unknown = [u.series.codeA, u.series.codeB].find((code) => !seed.has(code));
+        const known = [u.series.codeA, u.series.codeB].find((code) => seed.has(code));
+        if (unknown !== undefined && known !== undefined && u.candidates.length === 1) {
+          const row = u.candidates[0];
+          const target = row.teamA === known ? row.teamB : row.teamA;
+          aliasProposals.push(
+            `${unknown},${target},${season} game 7 ${u.series.codeA} vs ${u.series.codeB} resolves to curated row ${row.year} ${row.teamA} vs ${row.teamB} (csv:${row.line}) — the only unclaimed row for that year holding ${known}. Verify against a reference before approving; one code may name only one franchise.`,
+          );
+          continue;
+        }
+        unmatchedProbeAnswers.push(
+          `${calendarYear} ${u.series.codeA} vs ${u.series.codeB} — no approved alias resolves this pair${
+            u.candidates.length === 0
+              ? ' and the archive holds no unclaimed row for it: either the feed answered a series the archive never stored, or both sides are unmapped'
+              : ` — ${u.candidates.length} curated rows are still standing: ${u.candidates.map((c) => `${c.teamA}/${c.teamB} (csv:${c.line})`).join(', ')}. Not resolved by preference.`
+          }`,
+        );
       }
       for (const note of report.notes) console.log(`note: ${note}`);
     } catch (error) {
@@ -275,6 +337,20 @@ async function runVenueProbe(seasonOverrideRaw) {
     // archive simply never stored, instead of losing a whole season's answers.
     console.log(`\nfeed abbreviations the teams table does not hold: ${[...feedOnlyCodes].sort().join(', ')}`);
     console.log('  (these rows cannot be pasted anywhere — the archive never stored that franchise under any slot)');
+  }
+
+  if (aliasProposals.length > 0) {
+    // Proposals, never applications: each of these is one unknown code with exactly
+    // one surviving curated row for its year. The owner verifies and pastes the line
+    // into supabase/scripts/pipeline/data/game7_feed_aliases.csv; the next run resolves
+    // it and prints the paste target.
+    console.log(`\n# proposed alias rows (${aliasProposals.length}) — verify each, then append to data/game7_feed_aliases.csv as feed_abbr,teams_abbr,evidence:`);
+    for (const proposal of aliasProposals) console.log(`# ${proposal}`);
+  }
+
+  if (winnerInversions.length > 0) {
+    console.log(`\n# curated slot order disagrees with the feed's winner (${winnerInversions.length})`);
+    for (const inversion of winnerInversions) console.log(`# ${inversion}`);
   }
 
   if (failures.length > 0) {

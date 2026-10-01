@@ -50,6 +50,7 @@ import { fileURLToPath } from 'node:url';
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 export const CURATED_CSV_PATH = join(moduleDir, 'data', 'game7_venues_curated.csv');
+export const FEED_ALIASES_CSV_PATH = join(moduleDir, 'data', 'game7_feed_aliases.csv');
 export const MIGRATION_FILENAME = '00016_archive_league_identity_and_game7_venues.sql';
 const MIGRATIONS_DIR = resolve(moduleDir, '..', '..', 'migrations');
 
@@ -109,6 +110,22 @@ function splitCsvLine(line: string, ref: string): string[] {
     );
   }
   return fields;
+}
+
+/**
+ * Three columns, with the last one allowed to contain commas: an evidence line reads
+ * as English prose ("… claimed 1988 LAL vs DAL (csv:112) and …, leaving UTA …"), and a
+ * splitter that counted commas would reject the very documentation this table exists
+ * to carry. `splitCsvLine` is deliberately NOT reused — it is pinned to the curated
+ * file's five columns.
+ */
+function splitAliasLine(line: string, ref: string): string[] {
+  const first = line.indexOf(',');
+  const second = first === -1 ? -1 : line.indexOf(',', first + 1);
+  if (first === -1 || second === -1) {
+    throw new VenueBackfillError(`${ref}: expected ${ALIAS_COLUMNS.join(', ')} — got "${line}"`);
+  }
+  return [line.slice(0, first).trim(), line.slice(first + 1, second).trim(), line.slice(second + 1).trim()];
 }
 
 function fail(ref: string, message: string): never {
@@ -266,6 +283,210 @@ export const SEASON_OUTCOME_MEANING: Record<SeasonOutcome, string> = {
   'missing-game7': 'the feed answered the season but no series reached Game 7, while the curated file holds NBA/BAA Game 7s for that calendar year — a real disagreement to resolve, not a gap to fill by hand',
   'no-game7': 'no series reached Game 7 and the archive holds none for that year either — corroborating, not a failure',
 };
+
+/** One approved row of `data/game7_feed_aliases.csv`. */
+export interface FeedAlias {
+  line: number;
+  /** The code the feed prints. */
+  feed: string;
+  /** The abbreviation `teams` holds, and the archive speaks. */
+  teams: string;
+  evidence: string;
+}
+
+/** A season's Game-7 series as raw feed codes — a code the seed lacks stays a code. */
+export interface FeedSeriesPair {
+  codeA: string;
+  codeB: string;
+}
+
+export interface MatchedSeries {
+  series: FeedSeriesPair;
+  row: VenueRow;
+  /** `'direct'`, or the alias that made the pair resolve. */
+  via: 'direct' | FeedAlias;
+}
+
+export interface UnmatchedSeries {
+  series: FeedSeriesPair;
+  reason: 'no-alias';
+  /** The curated rows this season leaves standing on one known side — what an alias would have to pick between. */
+  candidates: VenueRow[];
+}
+
+const ALIAS_COLUMNS = ['feed_abbr', 'teams_abbr', 'evidence'];
+
+/**
+ * Parse and validate the owner-approved alias table. A mapping whose target is not
+ * in the `teams` seed is refused — that is the whole vocabulary `00016` resolves
+ * through, so an alias pointing outside it could never be written. Two rows naming
+ * the same feed code is also refused: one code meaning two franchises is precisely
+ * the ambiguity this table exists to remove, not to reintroduce.
+ */
+export function parseFeedAliases(csvText: string, sourceName: string, seed: ReadonlyMap<string, number>): FeedAlias[] {
+  const aliases: FeedAlias[] = [];
+  const seen = new Map<string, number>();
+  let headerSeen = false;
+
+  const lines = csvText.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index].trim();
+    const lineNo = index + 1;
+    if (line === '' || line.startsWith('#')) continue;
+
+    const ref = rowRef(sourceName, lineNo);
+    const cells = splitAliasLine(line, ref);
+    if (!headerSeen) {
+      const mismatch = cells.findIndex((cell, position) => cell.toLowerCase() !== ALIAS_COLUMNS[position]?.toLowerCase());
+      if (mismatch !== -1) {
+        throw new VenueBackfillError(
+          `${ref}: header must be exactly ${ALIAS_COLUMNS.join(', ')} — got "${line}"`,
+        );
+      }
+      headerSeen = true;
+      continue;
+    }
+
+    const [feed, teams, evidence] = cells;
+    for (const [column, value] of [
+      ['feed_abbr', feed],
+      ['teams_abbr', teams],
+    ] as const) {
+      if (!ABBREVIATION_PATTERN.test(value)) {
+        throw new VenueBackfillError(`${ref}: "${column}" must be a three-letter abbreviation, got "${value}"`);
+      }
+    }
+    if (evidence === '') {
+      throw new VenueBackfillError(`${ref}: an alias with no evidence line is unauditable — name the season, the opposing side and the curated row it resolves to`);
+    }
+    if (!seed.has(teams)) {
+      throw new VenueBackfillError(
+        `${ref}: alias target "${teams}" is not in the teams seed — 00016 resolves abbreviations through that table, so this alias could never be written`,
+      );
+    }
+    const previous = seen.get(feed);
+    if (previous !== undefined) {
+      throw new VenueBackfillError(
+        `${ref}: feed code "${feed}" is already aliased at ${rowRef(sourceName, previous)} — one feed code may not name two franchises`,
+      );
+    }
+    seen.set(feed, lineNo);
+    if (feed === teams) {
+      throw new VenueBackfillError(`${ref}: alias "${feed}" → "${teams}" maps a code to itself — it can never fire, so it is noise in an audited table`);
+    }
+    aliases.push({ line: lineNo, feed, teams, evidence });
+  }
+
+  if (!headerSeen) {
+    throw new VenueBackfillError(`${sourceName}: no header row found — expected ${ALIAS_COLUMNS.join(',')}`);
+  }
+  return aliases;
+}
+
+function slotPairMatches(row: VenueRow, a: string, b: string): boolean {
+  return (row.teamA === a && row.teamB === b) || (row.teamA === b && row.teamB === a);
+}
+
+/**
+ * Resolve one season's Game-7 series against the curated rows by (year, unordered
+ * pair), with approved aliases allowed to close a naming gap — and allowed to do it
+ * in exactly one way.
+ *
+ * The ordering is the safety property, and it is why this lives in the tested module
+ * rather than in the probe's print loop:
+ *
+ * 1. **Direct pass first, over the whole season.** A pair that matches a curated row
+ *    without substitution wins outright and *claims* that row. This is what keeps
+ *    `WAS → WSB` harmless: the 2017 Celtics-Wizards row matches directly and is
+ *    claimed before any alias is consulted, so it is never re-read as the 1970s
+ *    Bullets.
+ * 2. **Alias pass only on what the direct pass could not match, and only against
+ *    rows no direct match claimed.** The 1988 case is why claiming matters: `LAL/UTH`
+ *    is ambiguous until the direct matches take `LAL vs DAL` and `LAL vs DET`, which
+ *    leaves `LAL vs UTA` as the one row that can be standing.
+ * 3. **One surviving row or no answer.** Zero is unmatched, and its candidate rows
+ *    are returned so the owner can see what an alias would have to claim. Two is not
+ *    a choice to make — it means pair-uniqueness or one-alias-per-code has broken, so
+ *    it raises.
+ * 4. **One substitution per series.** Every observed case needed exactly one (the
+ *    opposing side always matched directly). A pair that needs *two* unknown codes
+ *    mapped before it resolves is left unmatched rather than believed, because then
+ *    the answer would rest on two unverified codes at once.
+ */
+export function matchSeasonFeedSeries(input: {
+  year: number;
+  series: readonly FeedSeriesPair[];
+  curated: readonly VenueRow[];
+  aliases: readonly FeedAlias[];
+}): { matched: MatchedSeries[]; unmatched: UnmatchedSeries[] } {
+  const rowsForYear = input.curated.filter((row) => row.year === input.year);
+  const claimed = new Set<number>();
+  const matched: MatchedSeries[] = [];
+  const pending: FeedSeriesPair[] = [];
+
+  for (const series of input.series) {
+    const direct = rowsForYear.find((row) => !claimed.has(row.line) && slotPairMatches(row, series.codeA, series.codeB));
+    if (direct === undefined) {
+      pending.push(series);
+      continue;
+    }
+    claimed.add(direct.line);
+    matched.push({ series, row: direct, via: 'direct' });
+  }
+
+  const unmatched: UnmatchedSeries[] = [];
+  for (const series of pending) {
+    const reachable = new Map<number, { row: VenueRow; alias: FeedAlias }>();
+    for (const alias of input.aliases) {
+      const a = series.codeA === alias.feed ? alias.teams : series.codeA;
+      const b = series.codeB === alias.feed ? alias.teams : series.codeB;
+      if (a === series.codeA && b === series.codeB) continue;
+      const row = rowsForYear.find((candidate) => !claimed.has(candidate.line) && slotPairMatches(candidate, a, b));
+      if (row !== undefined) reachable.set(row.line, { row, alias });
+    }
+
+    if (reachable.size === 1) {
+      const [hit] = [...reachable.values()];
+      claimed.add(hit.row.line);
+      matched.push({ series, row: hit.row, via: hit.alias });
+      continue;
+    }
+    if (reachable.size > 1) {
+      // Not a judgement call — an invariant broke. `parseVenuesCsv` rejects two
+      // curated rows on the same (year, unordered pair) and `parseFeedAliases`
+      // rejects two aliases for one feed code, so exactly one row can become
+      // reachable per series. Reaching this line means one of those two rules
+      // no longer holds, so it is raised rather than resolved by preference.
+      const detail = [...reachable.values()]
+        .map((value) => `${value.row.year} ${value.row.teamA}/${value.row.teamB} via ${value.alias.feed}->${value.alias.teams}`)
+        .join('; ');
+      throw new VenueBackfillError(
+        `alias resolution is not single-valued for series ${input.year} ${series.codeA}/${series.codeB}: ${detail} — ` +
+          'one curated row per (year, pair) and one alias per feed code are the guarantees this rests on',
+      );
+    }
+    // Nothing resolved it. Report the rows this season leaves standing that share at
+    // least one side with the series — that list is the proposal an owner can approve
+    // or reject, and an empty list means the archive genuinely does not hold this pair.
+    const candidates = rowsForYear.filter(
+      (row) => !claimed.has(row.line) && (row.teamA === series.codeA || row.teamB === series.codeA || row.teamA === series.codeB || row.teamB === series.codeB),
+    );
+    unmatched.push({ series, reason: 'no-alias', candidates });
+  }
+
+  return { matched, unmatched };
+}
+
+/**
+ * Map one raw feed code through the approved aliases. Used on the resolved side of a
+ * match (the Game-7 home team), so a caller can require the answer to be one of the
+ * matched row's own two slots — the same rule `parseVenuesCsv` enforces on input.
+ */
+export function resolveFeedCode(code: string, aliases: readonly FeedAlias[]): { abbr: string; alias: FeedAlias | null } {
+  const alias = aliases.find((candidate) => candidate.feed === code) ?? null;
+  return { abbr: alias === null ? code : alias.teams, alias };
+}
+
 
 /**
  * The hand-entry worksheet for the rows no feed answers (spec-2-8 D6: the 62

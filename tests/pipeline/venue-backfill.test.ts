@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CURATED_CSV_PATH,
   EXPECTED_TEAM_COUNT,
+  FEED_ALIASES_CSV_PATH,
   LEAGUES,
   MIGRATION_FILENAME,
   SEASON_OUTCOME_MEANING,
@@ -27,18 +28,25 @@ import {
   classifySeason,
   curatedAssignments,
   firstDriftLine,
+  matchSeasonFeedSeries,
   normalizeEol,
   orientationDecision,
   pairMatches,
+  parseFeedAliases,
   parseTeamsSeed,
   parseVenuesCsv,
   refusalReport,
   renderFixtureSeed,
   renderMigration,
   renderWorksheet,
+  resolveFeedCode,
   runVenueBackfillCli,
   syntheticAssignments,
 } from '../../supabase/scripts/pipeline/venueBackfill.ts';
+
+const TEAMS_SEED_TEXT =
+  readFileSync(new URL('../../supabase/migrations/00005_release_1_data_model.sql', import.meta.url), 'utf8') +
+  readFileSync(new URL('../../supabase/migrations/00007_backfill_missing_historical_series.sql', import.meta.url), 'utf8');
 
 const HEADER = 'year,team_a,team_b,league,game7_home_team';
 
@@ -575,5 +583,161 @@ describe('renderWorksheet and --worksheet — the hand-entry route for rows no f
     const result = runVenueBackfillCli(['--worksheet', '--check'], { readFile: () => csv('1948,PHW,SLB,BAA,'), writeFile: () => {} });
     expect(result.exitCode).toBe(2);
     expect(result.messages.join('\n')).toContain('read-only report');
+  });
+});
+
+describe('the era-code alias table and the two-pass season matcher (curation option A)', () => {
+  // Every case below is a series the OWNER's 2026-10-01 drills actually printed, so
+  // these are reconstructions of observed data, not invented shapes: 1962-63 (CIN,
+  // STL), 1975-76 (WAS, GOS) and 1987-88 (UTH, with LAL in three series at once).
+  const aliases = parseFeedAliases(
+    readFileSync(FEED_ALIASES_CSV_PATH, 'utf8'),
+    'game7_feed_aliases.csv',
+    parseTeamsSeed(TEAMS_SEED_TEXT, '00005 + 00007 teams seed'),
+  );
+
+  function curated(...rows: string[]): VenueRow[] {
+    return parseVenuesCsv(csv(...rows), 'fixture.csv');
+  }
+
+  it('the committed table holds the five evidenced mappings, each pointing into the teams seed', () => {
+    const seed = parseTeamsSeed(TEAMS_SEED_TEXT, 'seed');
+    expect(aliases.map((alias) => alias.feed).sort()).toEqual(['CIN', 'GOS', 'STL', 'UTH', 'WAS']);
+    for (const alias of aliases) {
+      expect(seed.has(alias.teams)).toBe(true);
+      expect(alias.evidence).toContain('csv:');
+    }
+  });
+
+  it('refuses an alias whose target the teams table does not hold', () => {
+    expect(() => parseFeedAliases('feed_abbr,teams_abbr,evidence\nCIN,CHH,made up', 'a.csv', new Map([['BOS', 1]]))).toThrowError(
+      /alias target "CHH" is not in the teams seed/,
+    );
+  });
+
+  it('refuses one feed code naming two franchises, an identity mapping, and an unevidenced row', () => {
+    const seed = new Map([['BOS', 1], ['CHI', 2], ['CIN', 3]]);
+    expect(() =>
+      parseFeedAliases('feed_abbr,teams_abbr,evidence\nCIN,BOS,x\nCIN,CHI,y', 'a.csv', seed),
+    ).toThrowError(/already aliased/);
+    expect(() => parseFeedAliases('feed_abbr,teams_abbr,evidence\nBOS,BOS,x', 'a.csv', seed)).toThrowError(/maps a code to itself/);
+    expect(() => parseFeedAliases('feed_abbr,teams_abbr,evidence\nCIN,BOS,', 'a.csv', seed)).toThrowError(/no evidence line/);
+    expect(() => parseFeedAliases('feed,teams,evidence\nCIN,BOS,x', 'a.csv', seed)).toThrowError(/header must be exactly/);
+  });
+
+  it('1962-63: both Game 7s resolve through aliases onto the only rows their opposing side leaves', () => {
+    const rows = curated('1963,BOS,CNR,NBA,', '1963,LAL,SLH,NBA,');
+    const { matched, unmatched } = matchSeasonFeedSeries({
+      year: 1963,
+      series: [{ codeA: 'BOS', codeB: 'CIN' }, { codeA: 'LAL', codeB: 'STL' }],
+      curated: rows,
+      aliases,
+    });
+    expect(unmatched).toEqual([]);
+    expect(matched.map((m) => [m.row.teamA, m.row.teamB, (m.via as { feed: string }).feed])).toEqual([
+      ['BOS', 'CNR', 'CIN'],
+      ['LAL', 'SLH', 'STL'],
+    ]);
+  });
+
+  it('1975-76: the home team can be the aliased side, and resolveFeedCode carries it', () => {
+    const rows = curated('1976,PHX,GSW,NBA,', '1976,CLE,WSB,NBA,');
+    const { matched } = matchSeasonFeedSeries({
+      year: 1976,
+      series: [{ codeA: 'PHX', codeB: 'GOS' }, { codeA: 'CLE', codeB: 'WAS' }],
+      curated: rows,
+      aliases,
+    });
+    expect(matched.map((m) => m.row.line)).toEqual([2, 3]);
+    // The home side is the aliased code here, so resolution has to carry it into the
+    // matched row's own vocabulary — and the row's slots are what the parser accepts.
+    expect(resolveFeedCode('GOS', aliases).abbr).toBe('GSW');
+    expect(resolveFeedCode('GOS', aliases).alias).toMatchObject({ feed: 'GOS', teams: 'GSW' });
+  });
+
+  it('1987-88: the alias pass runs after the WHOLE direct pass, so three LAL series disambiguate', () => {
+    const rows = curated('1988,LAL,DAL,NBA,', '1988,LAL,DET,NBA,', '1988,LAL,UTA,NBA,', '1988,BOS,ATL,NBA,');
+    // UTH listed FIRST — the order the feed happens to print in must not decide which
+    // row it lands on. Claiming is what makes `LAL/UTH` resolvable at all.
+    const { matched, unmatched } = matchSeasonFeedSeries({
+      year: 1988,
+      series: [
+        { codeA: 'LAL', codeB: 'UTH' },
+        { codeA: 'LAL', codeB: 'DAL' },
+        { codeA: 'LAL', codeB: 'DET' },
+        { codeA: 'BOS', codeB: 'ATL' },
+      ],
+      curated: rows,
+      aliases,
+    });
+    expect(unmatched).toEqual([]);
+    // rows: line 2 = LAL/DAL, 3 = LAL/DET, 4 = LAL/UTA, 5 = BOS/ATL
+    expect(matched.filter((m) => m.via === 'direct').map((m) => m.row.line)).toEqual([2, 3, 5]);
+    const aliased = matched.find((m) => m.via !== 'direct');
+    expect(aliased?.row.line).toBe(4);
+    expect(aliased?.row.teamB).toBe('UTA');
+  });
+
+  it('a code that also exists in the seed is never reinterpreted when it matches directly (WAS 2017)', () => {
+    const rows = curated('2017,BOS,WAS,NBA,', '1976,CLE,WSB,NBA,');
+    const { matched } = matchSeasonFeedSeries({
+      year: 2017,
+      series: [{ codeA: 'BOS', codeB: 'WAS' }],
+      curated: rows,
+      aliases,
+    });
+    expect(matched).toHaveLength(1);
+    expect(matched[0].via).toBe('direct');
+    expect(matched[0].row.line).toBe(2);
+  });
+
+  it('an unresolvable series is reported with the rows an alias would have to choose between', () => {
+    const rows = curated('1963,BOS,CNR,NBA,', '1963,LAL,SLH,NBA,');
+    const { matched, unmatched } = matchSeasonFeedSeries({
+      year: 1963,
+      series: [{ codeA: 'BOS', codeB: 'ZZQ' }],
+      curated: rows,
+      aliases,
+    });
+    expect(matched).toEqual([]);
+    expect(unmatched).toHaveLength(1);
+    expect(unmatched[0].reason).toBe('no-alias');
+    expect(unmatched[0].candidates.map((row) => row.teamB)).toEqual(['CNR']);
+  });
+
+  it('a pair needing TWO substitutions is left unmatched rather than believed', () => {
+    const twoAliases = parseFeedAliases(
+      'feed_abbr,teams_abbr,evidence\nCHH,CHI,evidence one\nDXX,DAL,evidence two',
+      'a.csv',
+      new Map([['CHI', 1], ['DAL', 2]]),
+    );
+    const rows = curated('1970,CHI,DAL,NBA,');
+    const { matched, unmatched } = matchSeasonFeedSeries({
+      year: 1970,
+      series: [{ codeA: 'CHH', codeB: 'DXX' }],
+      curated: rows,
+      aliases: twoAliases,
+    });
+    expect(matched).toEqual([]);
+    expect(unmatched[0].reason).toBe('no-alias');
+  });
+
+  it('raises instead of choosing if one series becomes reachable through two rows — the invariants that make it single-valued broke', () => {
+    // Reachable-through-two needs both aliases to claim the same series, which can
+    // only happen if a curated row itself carries an unmapped code — i.e. the
+    // one-row-per-(year,pair) guarantee has already been violated elsewhere. The
+    // matcher must refuse to pick, not rank.
+    const crossAliases = parseFeedAliases(
+      'feed_abbr,teams_abbr,evidence\nCHH,CHI,evidence one\nDXX,DAL,evidence two',
+      'a.csv',
+      new Map([['CHI', 1], ['DAL', 2]]),
+    );
+    const broken: VenueRow[] = [
+      { line: 2, year: 1970, teamA: 'CHI', teamB: 'DXX', league: 'NBA', home: '' },
+      { line: 3, year: 1970, teamA: 'CHH', teamB: 'DAL', league: 'NBA', home: '' },
+    ];
+    expect(() =>
+      matchSeasonFeedSeries({ year: 1970, series: [{ codeA: 'CHH', codeB: 'DXX' }], curated: broken, aliases: crossAliases }),
+    ).toThrowError(/alias resolution is not single-valued/);
   });
 });

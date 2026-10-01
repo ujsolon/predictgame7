@@ -12,7 +12,8 @@
 # the pattern covers every file in supabase/migrations/, and attributes bind at
 # checkout, so `git ls-files --eol` still reports the pre-2.8 migrations as
 # w/crlf until someone renormalizes (that renormalize will show as whole-file
-# EOL churn in 14 migrations this story never touches). The curated CSV is
-# listed because it is the generator's source of truth.
+# EOL churn in 14 migrations this story never touches). The two data CSVs are
+# listed because they are the generator's and the probe's input vocabulary.
 supabase/migrations/*.sql text eol=lf
 supabase/scripts/pipeline/data/game7_venues_curated.csv text eol=lf
+supabase/scripts/pipeline/data/game7_feed_aliases.csv text eol=lf

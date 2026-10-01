@@ -1,0 +1,35 @@
+# game7_feed_aliases.csv — Story 2.8 (curation route, option A): era-code aliases for
+#   the nba.com `leaguegamelog` feed, approved by the owner before they are used.
+#
+# Why this file exists. The feed names some franchises by a code this repo's `teams`
+#   table does not hold — `CIN`, `STL`, `GOS`, `UTH`, `WAS` for a 1970s Bullets series,
+#   `SAN`, `CHH`. The depth drill of 2026-10-01 proved the feed itself answers seasons
+#   back to 1962-63, so those rows are a NAMING gap, not missing data: the year matches,
+#   one side of the pair matches a curated slot exactly, and the unmapped code occupies
+#   the other slot. Aliasing closes it without a second source.
+#
+# How an alias is allowed to fire (enforced in venueBackfill.ts, tested):
+#   1. Direct matching happens first, over every series in the season. A pair that
+#      matches a curated row without substitution wins, and claims that row.
+#   2. An alias is consulted only for a series that matched NOTHING, and only against
+#      rows no direct match claimed.
+#   3. After substitution, exactly one row may remain. Zero is unmatched; two or more is
+#      AMBIGUOUS and is never guessed — the probe prints it for you instead.
+# Rule 1 is what keeps `WAS` safe: the 2017 Celtics-Wizards row matches directly and is
+# never reinterpreted as the 1970s Bullets.
+#
+# Columns: feed_abbr,teams_abbr,evidence
+#   feed_abbr  — the code the feed prints
+#   teams_abbr — the abbreviation the archive holds (must be one of the 59 in 00005+00007)
+#   evidence   — the season, the opposing side, and the curated row it resolves to
+#
+# Audited by the owner on 2026-10-01; each row is derived from that day's probe output
+# (scripts/probe-game7-venues.mjs --season=…), quoted verbatim in the evidence column.
+# Nothing here is a guess about franchise history: every mapping is the only curated row
+# for that year that the opposing side leaves standing.
+feed_abbr,teams_abbr,evidence
+CIN,CNR,1962-63 game 7 BOS vs CIN resolves to curated row 1963 BOS vs CNR (csv:51) — opposing side BOS matches and CNR is the only unclaimed 1963 row holding it
+STL,SLH,1962-63 game 7 LAL vs STL resolves to curated row 1963 LAL vs SLH (csv:52) — opposing side LAL matches and SLH is the only unclaimed 1963 row holding it
+WAS,WSB,1975-76 game 7 CLE vs WAS resolves to curated row 1976 CLE vs WSB (csv:88) — opposing side CLE matches; no 1976 curated row holds WAS, so the direct pass cannot claim it
+GOS,GSW,1975-76 game 7 GOS vs PHX resolves to curated row 1976 PHX vs GSW (csv:91) — opposing side PHX matches and GSW is the only unclaimed 1976 row holding it; this is also the row whose HOME side is the aliased code
+UTH,UTA,1987-88 game 7 LAL vs UTH resolves to curated row 1988 LAL vs UTA (csv:114) — the direct pass already claimed 1988 LAL vs DAL (csv:112) and 1988 LAL vs DET (csv:113), leaving UTA as the only unclaimed 1988 row with LAL
