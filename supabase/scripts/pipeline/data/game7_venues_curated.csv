@@ -9,10 +9,10 @@
 #   team_b           — teams.abbreviation of the series loser
 #   league           — NBA / BAA / ABA (the three values 00016 CHECKs; the column the
 #                      retired spreadsheet loader dropped, restored from the committed sheet)
-#   game7_home_team  — teams.abbreviation of the real Game 7 home team. BLANK on every
-#                      NBA/BAA row until owner curation lands (spec-2-8 D2): the generator
-#                      refuses to emit 00016 while any of these 160 rows is blank, so the
-#                      missing data is a non-zero exit, not a comment. Blank is legal on
+#   game7_home_team  — teams.abbreviation of the real Game 7 home team. FILLED on all 160
+#                      NBA/BAA rows (owner curation completed 2026-10-02, spec-2-8 D1/D7); the
+#                      generator refuses to emit 00016 if any of them is blanked again, so a
+#                      missing venue is a non-zero exit, not a comment. Blank is legal on
 #                      the 18 ABA rows only — the ABA game-7 rows stay as archived (Call 2).
 #
 # Provenance of the four derived columns (177 of the 178 rows): docs/NBASeriesResults.xlsx,
@@ -27,11 +27,14 @@
 #   it. Resolution in 00016 is by UNORDERED pair, so the slot order never carried a
 #   venue to the wrong series.)
 # Census: 159 NBA + 1 BAA + 18 ABA = 178 rows; 160 NBA/BAA Game 7s = nba.com's published
-#   count. game7_home_team curation route (spec-2-8 D1/D6, owner-run): 98 of the 160 rows
-#   are in calendar years >= 1993 and answered by node scripts/probe-game7-venues.mjs
-#   (seasons 1992-93 -> 2025-26; each line prints the file:line to paste into); the
-#   remaining 62 (1948-1992, including the single BAA row) are hand-entered from
-#   basketball-reference.com. ABA rows stay blank by scope, never by omission.
+#   count. Curation route for game7_home_team (spec-2-8 D1/D7, owner-run): all 160 NBA/BAA
+#   values come from node scripts/probe-game7-venues.mjs over seasons 1946-47 -> 2025-26
+#   (each line prints the file:line to paste into). Three sweeps answered every overlapping
+#   row identically — 0 conflicts — and the era codes the feed prints (`CIN`, `STL`, `GOS`,
+#   `UTH`, `SAN`, `CHH`, `WAS` for a 1970s Bullets series, and the eight later ones) resolve
+#   through the owner-approved table game7_feed_aliases.csv under the two-pass matcher, so no
+#   row needed hand entry; basketball-reference.com stayed the spot-check route (D6). ABA rows
+#   stay blank by scope, never by omission.
 #   A curated row must satisfy the 117 Game-7 home-win checksum and the 160 population
 #   baked into 00016's guards -- a list with a wrong row does not land on it. If the live
 #   archive has grown past these 178 rows, append the newer series AND change the pinned
@@ -40,25 +43,25 @@
 #
 # Do not hand-edit without re-running: node supabase/scripts/pipeline/venueBackfill.ts --check
 year,team_a,team_b,league,game7_home_team
-1948,PHW,SLB,BAA,
-1951,ROR,NYK,NBA,
-1952,MPL,NYK,NBA,
-1954,MPL,SYR,NBA,
-1955,SYR,FWP,NBA,
+1948,PHW,SLB,BAA,SLB
+1951,ROR,NYK,NBA,ROR
+1952,MPL,NYK,NBA,MPL
+1954,MPL,SYR,NBA,MPL
+1955,SYR,FWP,NBA,SYR
 1957,BOS,SLH,NBA,BOS
 1959,BOS,SYR,NBA,BOS
 1960,BOS,SLH,NBA,BOS
-1960,SLH,MPL,NBA,
+1960,SLH,MPL,NBA,SLH
 1961,SLH,LAL,NBA,SLH
 1962,BOS,LAL,NBA,BOS
 1962,BOS,PHW,NBA,BOS
 1963,BOS,CNR,NBA,BOS
 1963,LAL,SLH,NBA,LAL
 1964,SFW,SLH,NBA,SFW
-1965,BOS,PHI,NBA,
+1965,BOS,PHI,NBA,BOS
 1966,BOS,LAL,NBA,BOS
 1966,LAL,SLH,NBA,LAL
-1968,BOS,PHI,NBA,
+1968,BOS,PHI,NBA,PHI
 1969,BOS,LAL,NBA,LAL
 1969,IND,KEN,ABA,
 1969,MFL,MNP,ABA,
@@ -67,10 +70,10 @@ year,team_a,team_b,league,game7_home_team
 1970,DNR,WSC,ABA,
 1970,KEN,NYN,ABA,
 1970,LAL,PHX,NBA,LAL
-1970,NYK,BLB,NBA,
+1970,NYK,BLB,NBA,NYK
 1970,NYK,LAL,NBA,NYK
-1971,BLB,NYK,NBA,
-1971,BLB,PHI,NBA,
+1971,BLB,NYK,NBA,NYK
+1971,BLB,PHI,NBA,BLB
 1971,LAL,CHI,NBA,LAL
 1971,UTS,IND,ABA,
 1971,UTS,KEN,ABA,
@@ -84,7 +87,7 @@ year,team_a,team_b,league,game7_home_team
 1974,BOS,MIL,NBA,MIL
 1974,CHI,DET,NBA,CHI
 1974,IND,SAS,ABA,
-1974,NYK,CPB,NBA,
+1974,NYK,CPB,NBA,NYK
 1974,UTS,IND,ABA,
 1975,GSW,CHI,NBA,GSW
 1975,IND,DEN,ABA,
@@ -94,22 +97,22 @@ year,team_a,team_b,league,game7_home_team
 1976,NYN,SAS,ABA,
 1976,PHX,GSW,NBA,GSW
 1977,LAL,GSW,NBA,LAL
-1977,PHI,BOS,NBA,
+1977,PHI,BOS,NBA,PHI
 1978,DEN,MIL,NBA,DEN
 1978,WSB,SEA,NBA,SEA
-1979,SAS,PHI,NBA,
+1979,SAS,PHI,NBA,SAS
 1979,SEA,PHX,NBA,SEA
 1979,WSB,ATL,NBA,WSB
-1979,WSB,SAS,NBA,
+1979,WSB,SAS,NBA,WSB
 1980,SEA,MIL,NBA,SEA
-1981,BOS,PHI,NBA,
-1981,HOU,SAS,NBA,
+1981,BOS,PHI,NBA,BOS
+1981,HOU,SAS,NBA,SAS
 1981,KCK,PHX,NBA,PHX
-1981,PHI,MIL,NBA,
-1982,PHI,BOS,NBA,
+1981,PHI,MIL,NBA,PHI
+1982,PHI,BOS,NBA,BOS
 1984,BOS,LAL,NBA,BOS
 1984,BOS,NYK,NBA,BOS
-1986,MIL,PHI,NBA,
+1986,MIL,PHI,NBA,MIL
 1987,BOS,DET,NBA,BOS
 1987,BOS,MIL,NBA,BOS
 1988,BOS,ATL,NBA,BOS
@@ -117,7 +120,7 @@ year,team_a,team_b,league,game7_home_team
 1988,LAL,DET,NBA,LAL
 1988,LAL,UTA,NBA,LAL
 1990,DET,CHI,NBA,DET
-1990,POR,SAS,NBA,
+1990,POR,SAS,NBA,POR
 1992,CHI,NYK,NBA,CHI
 1992,CLE,BOS,NBA,CLE
 1993,PHX,SEA,NBA,PHX

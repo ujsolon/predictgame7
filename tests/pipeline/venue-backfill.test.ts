@@ -495,15 +495,26 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
     expect(refused.messages.join('\n')).toContain('must never land in');
   });
 
-  it('the real emission stays refused while the committed venues are blank, even via explicit flags', { skip: committedBlanks.length === 0 }, () => {
+  it('the committed migration is exactly what the generator renders from the committed CSV', () => {
+    // The byte-level form of "the generator owns the single copy", and the
+    // inversion of the refusal case this file carried while the venues were
+    // blank — that branch stays covered by the injected-IO cases above, and the
+    // real-IO emit run below re-proves it: with nothing to refuse, it must be a
+    // no-op that writes zero files.
+    const rendered = renderMigration(committedRows, curatedAssignments(committedRows), { selfTest: false });
+    const onDisk = readFileSync(new URL(`../../supabase/migrations/${MIGRATION_FILENAME}`, import.meta.url), 'utf8');
+    expect(firstDriftLine(normalizeEol(onDisk), rendered)).toBeNull();
+
+    const written = new Map<string, string>();
     const result = runVenueBackfillCli([], {
       readFile: (path) => readFileSync(path, 'utf8'),
-      writeFile: () => {
-        throw new Error('emit must not write while curation is incomplete');
+      writeFile: (path, data) => {
+        written.set(path, data);
       },
     });
-    expect(result.exitCode).toBe(2);
-    expect(result.messages.join('\n')).toContain('no migration written');
+    expect(result.exitCode).toBe(0);
+    expect(result.messages.join('\n')).toContain('already matches the curated CSV');
+    expect(written.size).toBe(0);
   });
 });
 
@@ -567,12 +578,24 @@ describe('renderWorksheet and --worksheet — the hand-entry route for rows no f
     expect(sheet).not.toContain('KEN');
   });
 
-  it('names the exact CSV line to edit, so the answer is a paste and not a hunt', () => {
-    const sheet = renderWorksheet(committedRows);
-    const blanks = blankVenueRows(committedRows);
-    expect(blanks.length).toBeGreaterThan(0);
-    for (const row of blanks) expect(sheet).toContain(`csv:${String(row.line).padStart(4, ' ')}`);
-    expect(sheet.match(/game7_home_team = ____/g)).toHaveLength(blanks.length);
+  it('names the exact CSV line to edit, and follows the file when curation completes', () => {
+    // Formatting is proved on a fixture with known blanks; the committed file is
+    // asserted only for agreeing with its own blank count, so completing curation
+    // flips this test's branch instead of breaking it — the same discipline as the
+    // refuse-to-emit gate, which just went from refusing to emitting `00016`.
+    const fixture = parseVenuesCsv(csv('1962,BOS,LAL,NBA,', '1963,BOS,CNR,NBA,'), 'fixture.csv');
+    const sheet = renderWorksheet(fixture);
+    expect(sheet.match(/game7_home_team = ____/g)).toHaveLength(2);
+    for (const row of blankVenueRows(fixture)) expect(sheet).toContain(`csv:${String(row.line).padStart(4, ' ')}`);
+
+    const committedSheet = renderWorksheet(committedRows);
+    const committedBlanks = blankVenueRows(committedRows);
+    if (committedBlanks.length === 0) {
+      expect(committedSheet).toContain('0 NBA/BAA row(s) still blank');
+      expect(committedRows.filter((row) => row.league !== 'ABA' && row.home !== '')).toHaveLength(160);
+    } else {
+      expect(committedSheet.match(/game7_home_team = ____/g)).toHaveLength(committedBlanks.length);
+    }
   });
 
   it('exits 0 while the venues are still blank and writes nothing — the worksheet is for the gap', () => {

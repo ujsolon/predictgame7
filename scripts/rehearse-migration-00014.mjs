@@ -14,15 +14,16 @@
 //      team_a = game-1-home convention is the runner's assertion, and
 //      section 4 shows 00015's birth RPC refusing the swapped pair).
 //
-// What it does NOT prove (stated so nobody over-reads a green run): until
-// Story 2.8's curation lands, no claim here is made about the archive's real
-// Game-7 venues. Amended 2026-10-01 (spec-2-8): the header's former "the
-// archive total is not proven by replay" stopped being true the moment
-// section 5 seeded a 178-series x 7-row fixture archive — the replayed shape
-// IS now the real archive shape (178 / 1,246 / seven each, census guards
-// executing against it), while the fixture's venue values stay SYNTHETIC (the
-// deterministic 117/43 self-test assignment, spec-2-8 D2) until the curated
-// CSV lands. Amended again by review pass 1 (E1): the fixture seed is applied
+// What it does NOT prove (stated so nobody over-reads a green run): the
+// archive's REAL totals. This container replays a 178-series x 7-row fixture
+// built from the curated CSV, so its shape is the archive's shape as measured
+// 2026-10-01 and, since the 2026-10-02 curation, so are its venues — the
+// committed branch seeds curated values and the census (117 keep / 43 swap) is
+// measured in the database, while the self-test branch that runs only while
+// 00016 is unemitted still uses the deterministic synthetic assignment.
+// Amended 2026-10-01 (spec-2-8): the header's former "the archive total is not
+// proven by replay" stopped being true the moment section 5 seeded that fixture.
+// Amended again by review pass 1 (E1): the fixture seed is applied
 // INSIDE the ordered loop, immediately before a committed 00016* file, so the
 // deferred AC ("00001–00016 apply in filename order → exit 0") is executable
 // in both states — its guards are census guards and cannot evaluate over the
@@ -88,13 +89,13 @@ const dbName = 'rehearse';
 // disk while the ceiling is still 15 is a RehearsalFailure, not a warning
 // (review pass 1, E1): emit and ceiling share a commit or neither is
 // certified.
-// Story 2.8 (spec D2) deliberately keeps this at 15 for the whole
-// machinery session: 00016 is GENERATOR-OWNED and the generator refuses to
-// emit while the curated venues are blank, so the file above it does not
-// exist yet. It goes to 16 — in the same commit that lands the curated
-// venues and the emitted 00016 — and section 5's self-test certifies the
-// machinery off a temp-path rendering until then.
-const COVERED_THROUGH = 15;
+// Story 2.8 raised this to 16 on 2026-10-02, in the commit that landed the
+// curated venues and the emitted 00016. They must share a commit: 00016 is
+// GENERATOR-OWNED and the generator refuses to emit while any curated NBA/BAA
+// venue is blank, so the ceiling tracked curation, not code — while the venues
+// were blank the file above 15 did not exist and section 5 certified the
+// machinery off a temp-path self-test rendering instead.
+const COVERED_THROUGH = 16;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
@@ -573,9 +574,9 @@ function main() {
         assert('SELF-TEST generator exited 0 on the self-test path', gen.exitCode === 0, `exit ${gen.exitCode}`);
         migrationText = readFileSync(migrationPath, 'utf8');
         assert(
-          'SELF-TEST 00016 rendering was NOT written into supabase/migrations/ (COVERED_THROUGH stays 15 until curation lands)',
+          'SELF-TEST 00016 rendering was NOT written into supabase/migrations/ (this branch runs only while no committed 00016 exists)',
           !migration016File,
-          '00016 exists on disk while COVERED_THROUGH is 15 — the self-test path leaked into the migrations directory',
+          'a 00016 appeared on disk during the self-test branch — the temp rendering leaked into supabase/migrations/',
         );
         assert('SELF-TEST CLI fixture seed matches the generator render the ordered replay would use', readFileSync(fixturePath, 'utf8') === fixtureSeedText);
         venues = venueBackfill.syntheticAssignments(curatedRows);

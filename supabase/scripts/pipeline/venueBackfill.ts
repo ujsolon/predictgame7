@@ -18,13 +18,14 @@
  * comment. Blank is legal on the 18 ABA rows only: their game-7 rows stay as
  * archived (sprint-change-proposal Call 2).
  *
- * The self-test path (spec D2): until curation lands, the harness drives the
+ * The self-test path (spec D2): while curation was outstanding, the harness drove the
  * SAME template with a deterministic synthetic assignment — the first 117
  * NBA/BAA rows in file order get home = `team_a` (keep), the last 43 get
  * home = `team_b` (swap) — written to a temp path, never into
  * `supabase/migrations/`. It exists so every guard is demonstrably falsifiable
  * on a fixture archive of the real shape (178 series × 7 rows); a guard that
- * cannot fail is not a guard.
+ * cannot fail is not a guard. Curation landed 2026-10-02, so a normal run takes
+ * the committed-file branch and this one remains for a pre-emit drill.
  *
  * The orientation rule per matched game-7 row (Design Notes):
  *   1. stored home = curated home  → keep;
@@ -975,8 +976,9 @@ COMMIT;
  * pre-00016 state — home = team_a throughout (the 00007 orientation),
  * winner = team_a throughout (the series winner), games 1/2/5/7 home wins and
  * 3/4/6 away wins (the certified 3-3 + game 7), synthetic scores that satisfy
- * every 00005 CHECK. The shape is real; only the venue values are synthetic
- * until curation lands. No committed derived file: it is rebuilt from the
+ * every 00005 CHECK. The shape is real; the venue VALUES are deliberately absent —
+ * every row names `team_a` as home, which is the 00007 fiction `00016` exists to
+ * correct. No committed derived file: it is rebuilt from the
  * CSV, so it cannot drift.
  */
 export function renderFixtureSeed(rows: readonly VenueRow[]): string {
@@ -1139,7 +1141,7 @@ export function runVenueBackfillCli(argv: readonly string[], io: { readFile?: (p
 
     const refusal = refusalReport(rows, csvPath);
     if (refusal !== null) {
-      messages.push(refusal, 'no migration written; 00016 does not exist and COVERED_THROUGH stays 15 until the curated venues land');
+      messages.push(refusal, 'no migration written — the blanks listed above are the blocker (spec-2-8 D2). If 00016 already exists on disk it is now stale against this CSV, and --check will say so.');
       return { exitCode: 2, messages };
     }
 
@@ -1167,7 +1169,7 @@ export function runVenueBackfillCli(argv: readonly string[], io: { readFile?: (p
       return { exitCode: 0, messages };
     }
     writeFile(target, rendered);
-    messages.push(`wrote ${target} from ${rows.length} curated rows — COVERED_THROUGH in scripts/rehearse-migration-00014.mjs goes 15 to 16 in this same commit (Story 2.8)`);
+    messages.push(`wrote ${target} from ${rows.length} curated rows — this file and the rehearsal's COVERED_THROUGH ceiling share a commit (Story 2.8 D5)`);
     return { exitCode: 0, messages };
   } catch (error) {
     return { exitCode: 2, messages: [...messages, `venueBackfill failed: ${error instanceof Error ? error.message : String(error)}`] };

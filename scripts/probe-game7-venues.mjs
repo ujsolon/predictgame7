@@ -48,16 +48,18 @@
 // What a run can reveal, per D1: feed depth short of the season asked (a route that
 // answers with no series at all), 403s on the historical seasons, or a franchise whose
 // feed abbreviation the `teams` table does not hold. Each prints loudly with
-// the URL and the season; none is a fallback. If a season cannot be covered,
-// its rows — the pre-1993 block included — are hand-entered from a reference
-// by the owner. No agent-drafted venue list is authorized.
+// the URL and the season; none is a fallback. A season the route cannot answer
+// falls back to `--worksheet` hand entry from a reference by the owner. No
+// agent-drafted venue list is authorized. (This proved unnecessary in practice:
+// the 2026-10-02 curation answered all 160 NBA/BAA rows from the feed, the era
+// codes closing through the approved alias table.)
 //
 // Requires Node >= 22.18 (imports the shipped TypeScript adapter and the
 // Story 2.8 generator under native type-stripping; an older Node crashes at
 // import, as in the 2.4 probe).
 //
 // Usage:
-//   node scripts/probe-game7-venues.mjs                 # all seasons 1992-93 → 2025-26
+//   node scripts/probe-game7-venues.mjs                 # all seasons 1946-47 → 2025-26
 //   node scripts/probe-game7-venues.mjs --season=2016-17  # one season (drill)
 const exitWith = (code, reason) => {
   console.error(`\nPROBE COULD NOT RUN TO COMPLETION: ${reason}`);

@@ -94,20 +94,32 @@ context:
 - [x] `tests/pipeline/venue-backfill.test.ts` (loopback E5/VG-4) — derive the committed-CSV expectations from `blankVenueRows(...)` so the suite inverts itself at curation instead of turning `npm test` red; add a real-IO `--check` case, a case pinning every CSV abbreviation against the 59-team `00005`+`00007` seed, and a `node --check` smoke over both `scripts/**` additions.
 - [x] docs (loopback E7/E8) — correct the impossible `160 / 1 / 18` triple at `epics.md:412`/`:430`, `sprint-change-proposal-2026-10-01.md:153` and `epic-2-context.md:43` to 159 NBA + 1 BAA + 18 ABA (NBA/BAA combined = 160) with a pointer to D4; reconcile the 178th row's slot convention between the CSV comment and `CURRENT_DATA_MODEL.md`; state the archive-growth rule in the handover (re-measure the live archive and append any series newer than the CSV before emitting, or `league_backfill_complete` aborts the owner's `db push`).
 
+**Curation commit (2026-10-02) — the deferred half of D2:**
+- [x] `game7_venues_curated.csv` — the last 21 NBA/BAA venues transcribed from the owner's third sweep (21 written / 139 re-derived identically / 0 conflicts), provenance comment rewritten to the route that actually happened (all 160 from the feed + the 14-code alias table; no hand entry), 18 ABA rows left blank by scope.
+- [x] `supabase/migrations/00016_archive_league_identity_and_game7_venues.sql` — **emitted** from the complete CSV by the generator (25,609 bytes; re-running the emit is a byte-identical no-op), `--check` green on the committed pair.
+- [x] `scripts/rehearse-migration-00014.mjs` — `COVERED_THROUGH` 15→16 in this commit, with the header comment and the self-test branch's strings corrected to describe both states truthfully.
+- [x] `tests/pipeline/venue-backfill.test.ts` — the two cases pinned to the pre-curation state inverted rather than deleted (worksheet branch on the real blank count; the `{ skip: … }` emit case became a render↔committed-file byte compare plus a real-IO no-op assertion).
+- [x] `docs/CURRENT_DATA_MODEL.md` — the same-commit standing rule discharged: the slots-not-venues section, the league-composition section and the Story-2.8-status section rewritten to the post-`00016` boundary, plus a "not yet on the live table" pointer in the `series` entry, and the stale 139/21 and 98/62 figures removed.
+- [x] `epic-2-context.md`, `deferred-work.md` (Tier B now apply-open; E10's AGENTS.md rule still waits for the apply commit), `sprint-status.yaml` — 2.8 restated as curated/emitted/rehearsed and **apply-pending**.
+- [x] Gate + rehearsal + `--check` re-run on the final tree (321 tests; rehearsal exit 0, 58 `ok`, census measured in the database); `npx supabase db push` **not** run — it stays the owner's command.
+
 **Acceptance Criteria:**
 *Met by this session:*
 - Given the CSV with a blank venue column, when the generator runs, then it exits non-zero naming the 160 rows and writes no migration — the data gap is an instrument that cannot pass, not a comment.
 - Given a seeded fixture archive of 178 series / 1,246 game rows and the self-test migration, when the harness applies it, then the census reads 159 NBA + 1 BAA + 18 ABA (NBA/BAA combined = 160, per D4) with zero NULL and Game-7 home wins = 117, and every swapped row still has `winner_team_id` = the higher-scoring side.
 - Given each guard, when its input is tampered (a flipped venue, a curated row matching two series, a blank NBA venue, a game-7 row that already carries a different venue), then the harness observes the abort with a message **and measures the rolled-back state** — no guard is certified by its presence in the SQL alone, and no rollback claim is certified by an assertion that cannot fail.
 
-*Deferred to the curation commit by design (D2), not silently:*
-- Given the curated venues and the emitted `00016`, when `00001`–`00016` apply in filename order — with the fixture archive seeded inside that loop immediately before `00016`, since its guards are census guards and the `00001` fixture leaves 8 series — then the run exits 0 with `COVERED_THROUGH = 16`, `--check` passes on the committed pair, and Story 2.8's `epics.md:418-442` AC closes.
-- Given a hand-edit of the emitted `00016`, when `--check` runs, then it exits non-zero naming the divergence.
-- Given the owner has not run `npx supabase db push`, then production is unchanged and every claim here is sourced from the throwaway container.
+*Deferred to the curation commit by design (D2), not silently — **all three met on 2026-10-02**, evidence in Implementation Notes:*
+- Given the curated venues and the emitted `00016`, when `00001`–`00016` apply in filename order — with the fixture archive seeded inside that loop immediately before `00016`, since its guards are census guards and the `00001` fixture leaves 8 series — then the run exits 0 with `COVERED_THROUGH = 16`, `--check` passes on the committed pair, and Story 2.8's `epics.md:418-442` AC closes. ✅ 16 files replayed, exit 0, 58 `ok` lines, `--check` asserted inside the run.
+- Given a hand-edit of the emitted `00016`, when `--check` runs, then it exits non-zero naming the divergence. ✅ Pinned by the `--check contract` tests — `catches a hand-edit of the emitted migration in either direction, naming the line`, plus the CRLF-checkout case E2 demanded — and the real-IO pass over the committed pair runs inside the rehearsal.
+- Given the owner has not run `npx supabase db push`, then production is unchanged and every claim here is sourced from the throwaway container. ✅ Still true — the story is now **apply-blocked, not data-blocked**.
 
 ## Implementation Notes
 
 **Session outcome (2026-10-01): machinery complete, venues pending — ends `review`-pending-data per D2.**
+**Updated (2026-10-02): the venues landed, `00016` is emitted, and the rehearsal passes on the committed
+pair — so the story ends `review`-apply-pending instead. See "Curation complete" near the end of this
+section for the run outputs, and the handover for the two commands that remain.**
 Committed this session: `game7_venues_curated.csv` (178 rows), `venueBackfill.ts` (generator: parse →
 validate → refuse-to-emit gate → emit `00016` → `--check` byte-compare → deterministic self-test mode),
 `scripts/probe-game7-venues.mjs` (owner-run, never executed by the agent — outbound policy, same as the
@@ -537,40 +549,79 @@ All 97 answers were transcribed into `game7_venues_curated.csv` by script, not b
 
 **D7a + D7b applied (2026-10-02).** The owner approved all eight proposed mappings and the two-substitution rule change together, so the alias table is fourteen rows and `matchSeasonFeedSeries` now substitutes every applicable alias at once. What did **not** change is the thing that actually guards a wrong answer: exactly one unclaimed curated row survives, zero is unmatched with its candidates listed for a proposal, and two raises as a broken pair-uniqueness invariant rather than being ranked. The rule's original reason — two substitutions would rest on two unverified codes — lapsed the moment each code is individually audited, and the four 1979-era pairs it blocked (`WAS/SAN`, `SAN/PHL`, `BLT/PHL`, `STL/MNL`) are the cost that was being paid. Tests: the 1979 pairs now resolve with `[alias WAS+SAN]`-style provenance; the tripwire is reached by building duplicate-pair rows directly, since the parser makes it unreachable through normal input (59 tests in this file, gate green).
 
+**Curation complete, `00016` emitted, rehearsal green on the committed pair (2026-10-02).** The owner ran the sweep a third time over 1946-47 → 2025-26 and handed back its output; transcribing it wrote the **21** remaining venues and re-derived the **139** already in the file **identically for a second time** — `newly written: 21 | already agreed: 139 | conflicts: 0 | problems: 0`, no row refused. The curated file now stands at **178 rows / 159 NBA + 1 BAA + 18 ABA**, **0 blank NBA/BAA venues** (18 ABA blank by scope), and **`game7_home_team` = `team_a` on 117 of the 160** — the published 117–43 computed from venue data, from three probe runs that agreed on every overlapping answer and against the owner's own reference rows for 1998/2000/2001. So the 13 seasons the classifier had earlier mislabelled are closed as corroboration, the eight newly-approved codes and the four two-substitution pairs both resolved from the feed, and **no row needed `--worksheet` hand entry or basketball-reference at all** — D6 survives only as the spot-check route it was used for.
+
+What that unblocked, in this commit:
+
+```
+$ node supabase/scripts/pipeline/venueBackfill.ts
+00016_archive_league_identity_and_game7_venues.sql already matches the curated CSV — nothing written     # exit 0 (first run wrote 25,609 bytes; re-run byte-identical)
+$ node supabase/scripts/pipeline/venueBackfill.ts --check
+--check ok: 00016_archive_league_identity_and_game7_venues.sql matches this generator's output for …game7_venues_curated.csv (EOL-normalized byte compare)   # exit 0
+```
+
+`COVERED_THROUGH` raised **15→16** in the same commit, and `node scripts/rehearse-migration-00014.mjs` → **exit 0**, 58 `ok` lines, zero `SELF-TEST` tags. The decisive lines, verbatim:
+
+```
+seeded 178-series x 7-row fixture archive from the curated CSV (pre-00016 state)
+applied 00016_archive_league_identity_and_game7_venues.sql
+2.8 mode: committed 00016 (ceiling 16) — supabase/migrations/ left untouched by this branch
+2.8 curated split read from the CSV slot order: 117 keep / 43 swap — reported, not asserted (P2-14); the census below measures it in the database
+ok   2.8 guard game7_home_win_census: one flipped curated venue lands 116, not 117, and aborts — the curated list checksums itself — abort observed; post-reject state measured: league DDL rolled back (column and check absent), rows exactly as before (0|0|178|1246|0)
+2.8 census — league: 159 NBA + 1 BAA + 18 ABA = 178, NULL 0; NBA/BAA Game-7: 117 home wins + 43 swapped (home = team_b) over the 160 population; home = stored winner in 117
+ok   2.8 Game-7 home wins over the 160 NBA/BAA series = 117 (nba.com 117-43, same population)
+REHEARSAL PASSED: … Story 2.8's committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured.
+rehearsal container pg7-rehearse-00014-4600 removed
+```
+
+Three things that were only provable in this state are now proven. **The census is measured against real venues in a database that actually ran the migration**, not the generator's synthetic 117/43 — so the as-of-date caveat (would the archive land 116 or 118?) is answered in writing: it lands **117**, and no guard was relaxed to get there. **Ten guard tampers ran over the committed file's own text**, each with the post-reject state measured (`league` column and `series_league_check` gone, row counts unchanged), which is what the owner is told to trust before `db push`. **Section 1's ordered replay ran for the first time with `00016` on disk** — 16 files, seeding inside the loop immediately before it, 178 series and 1,246 game rows present for the census guards to read; that path is E1's whole point and it is now executed rather than reasoned about. `npm run gate` green on the resulting tree (Biome, `tsc -b`, 321 tests, build with the `/predictgame7/` base check). A consequence of finishing, not new design: two tests had been pinned to the pre-curation state and were inverted rather than deleted — the worksheet case now branches on `blankVenueRows` actual count (formatting proved on a two-blank fixture, the committed file asserted as 160 filled), and the case that had been `{ skip: committedBlanks.length === 0 }` became a byte-compare of the generator's render against the committed `00016` plus a real-IO emit run that must write nothing. A permanently-skipped test is not an instrument; the refuse-to-emit branch it stood for stays covered by the injected-IO cases.
+
 **Known limits, stated not glossed.**
-- Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — verified
-  only by running them, per AGENTS.md. `venueBackfill.ts` is under the gate by design (Biome + `tsc -b`
-  via `tsconfig.pipeline.json`).
-- The rehearsal's census `117` is proven against SYNTHETIC venues (the deterministic 117/43 assignment);
-  what transfers to the real migration is the template and the guards' falsifiability, not any venue
-  value. The 117-vs-116/118 as-of-date caveat (§2.3 of the change proposal) is untouched and stays the
-  curation commit's to resolve in writing.
-- CSV row 178 (2026 Finals, `2026,OKC,SAS,NBA,`) is not in `NBASeriesResults.xlsx`; its matchup and
-  winner-first slot come from the owner-pinned flagship record (FR-13, 2026-09-25 — the list is
-  winner-first everywhere else). Provenance is recorded in the file's comments. If that slot order is
-  ever wrong, the design stays safe: series resolution is by UNORDERED pair, `league` comes from the
-  row's own column, and AD-4's consistency guards read `winner_team_id` from the table, never from the
-  CSV — orientation case 3 aborts rather than clobbering.
-- The probe was NOT run this session (owner-run: D1 + the live-leg policy from spec-2.4 Decision 12);
-  nothing here claims the feed's current reachability. It is syntax-checked only.
+- Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — Biome's
+  `files.includes` skips it even when named directly, so the probe's verification is `node --check`
+  plus the matcher tests underneath it, and its real exercise is the owner's runs. `venueBackfill.ts`
+  is under the gate by design (Biome + `tsc -b` via `tsconfig.pipeline.json`).
+- The census `117` is now proven against **real curated venues** in a container that applied the
+  committed `00016`; the earlier synthetic-117/43 proof stands as the pass that falsified the guards
+  before any data existed. What the rehearsal still cannot certify is the **live** table's shape — it
+  replays a 178-series fixture built from the CSV, so archive growth between the curation date and the
+  apply is exactly what step 0 below is for, and what `league_backfill_complete` exists to catch.
+- CSV row 178 (the **2026 conference finals**, `2026,SAS,OKC,NBA,OKC`) is not in
+  `NBASeriesResults.xlsx`; its matchup and winner-first slot come from the owner's own confirmation of
+  2026-10-01 — earlier text here called it the Finals and held `OKC` first, which is the inference the
+  probe's winner-inversion report corrected. Provenance is recorded in the file's comments. If that
+  slot order is ever wrong, the design stays safe: series resolution is by UNORDERED pair, `league`
+  comes from the row's own column, and AD-4's consistency guards read `winner_team_id` from the table,
+  never from the CSV — orientation case 3 aborts rather than clobbering.
+- Every one of the 160 venues is **feed-derived**, through the shipped adapter plus the approved alias
+  table, and three owner runs agreed on every overlapping answer. That is agreement between runs of
+  one source, not independent confirmation: the only outside grades on record are the owner's spot
+  checks of 1998 CHI / 2000 MIA / 2000 LAL (and 2001 MIL, supplied as evidence for `CHH→CHA`). The
+  117–43 checksum is what catches a single wrong row; it does not catch a compensating pair — the
+  reason D1 refused an agent-drafted list, and why it still stands as a caveat rather than a proof.
+- The probe was NOT run by the agent (owner-run: D1 + the live-leg policy from spec-2.4 Decision 12);
+  nothing here claims the feed's reachability beyond the three sweeps already in evidence.
 - `npx supabase db push` not run; production unchanged; every number above is sourced from the
   throwaway container.
 
-**Handover to the owner (in order, when venues are curated):**
-0. **Archive-growth rule (D5 — the pinned counts stay pinned by choice, so this step is the route out):** the CSV covers the archive as measured 2026-10-01 (178 rows). Before emitting, re-measure the live archive (owner-run; the agent never reads production) and append any series newer than the CSV's last row — every new series needs a curated row and, if NBA/BAA, a curated Game-7 venue — **and change `EXPECTED_NBA_BAA` / `EXPECTED_ABA` / `EXPECTED_GAME7_HOME_WINS` in `venueBackfill.ts` in that same commit**, since they are literals by design and the guards read them. A series the CSV does not cover makes `league_backfill_complete` or `venue_coverage` abort the `db push`, and both messages name this step. No committed tool produces the `(year, team pair)` list the comparison needs: `scripts/spike-2-1/audit-unique-key.mjs` prints counts, duplicate groups and the round domain, and `scripts/probe-game7-venues.mjs` reports curated-row mismatches only for the seasons it asks about (1992-93 → 2025-26), so the growth check is a count against the CSV's 178 rows and the two instruments' mismatch lists, not one command.
-1. **Venues: 139 of 160 are already in the file**, transcribed from the probe's output across two runs that agreed on every overlapping row. The last 21 come from the feed too — approve the eight proposed aliases (`BOM→SLB`, `ROC→ROR`, `MNL→MPL`, `FTW→FWP`, `PHL→PHI`, `BLT→BLB`, `CAP→CPB`, `SAN→SAS`) into `data/game7_feed_aliases.csv` and re-run for seventeen of them; the remaining four (`csv:51, 73, 100, 103`) need two substitutions in one pair, which D7 currently forbids, so they are either a D7 amendment or `--worksheet` hand entry against basketball-reference.com (D6). The ABA rows stay blank by scope, never by omission.
-2. `node supabase/scripts/pipeline/venueBackfill.ts` — emits `00016`; then bump `COVERED_THROUGH` 15→16
-   in `scripts/rehearse-migration-00014.mjs` in the same commit, and let that commit replace the
-   "slots, not venues" paragraphs of `docs/CURRENT_DATA_MODEL.md` with the post-`00016` boundary
-   (standing same-commit rule). The rehearsal now treats a `00016` on disk with the ceiling still at
-   15 as a hard failure, so emit and ceiling bump genuinely share a commit.
-3. `node scripts/rehearse-migration-00014.mjs` (must print the ordered replay including 00016 — the
-   fixture archive is seeded inside that loop immediately before the file — plus the committed-mode
-   section: guard tampers over the committed text, `--check` green on the committed pair, census
-   159/1/18 + 117 — and exit 0).
-4. `npx supabase db push` — the apply stays the owner's explicit action.
-If the census lands 116 or 118: resolve WHICH in writing (mis-curated row vs. the published as-of date
-excluding the 2026 Finals) — relaxing or deleting the guard is not an acceptable resolution.
+**Handover to the owner (2026-10-02 — curation, emission and rehearsal are all committed; what remains is the push and the apply):**
+0. **Archive-growth rule (D5 — the pinned counts stay pinned by choice, so this step is the route out):** the CSV covers the archive as measured 2026-10-01 (178 rows). Before the apply, re-measure the live archive (owner-run; the agent never reads production) and append any series newer than the CSV's last row — every new series needs a curated row and, if NBA/BAA, a curated Game-7 venue — **and change `EXPECTED_NBA_BAA` / `EXPECTED_ABA` / `EXPECTED_GAME7_HOME_WINS` in `venueBackfill.ts`, re-emit `00016`, and update the tests' derived expectations in that same commit**, since the constants are literals by design and the guards read them. A series the CSV does not cover makes `league_backfill_complete` or `venue_coverage` abort the `db push`, and both messages name this step. No committed tool produces the `(year, team pair)` list the comparison needs: `scripts/spike-2-1/audit-unique-key.mjs` prints counts, duplicate groups and the round domain, and `scripts/probe-game7-venues.mjs` reports curated-row mismatches only for the seasons it asks about (1946-47 → 2025-26), so the growth check is a count against the CSV's 178 rows and the two instruments' mismatch lists, not one command.
+1. `git push origin master` — the pre-push hook runs `npm run gate` (green as of this commit: 321 tests, 0 skipped). Story 2.8 stays `review` through the push; it is **apply-blocked now, not data-blocked**, and 2.9 and 2.5 stay behind it.
+2. `npx supabase db push` — your explicit action; the agent never runs it, and nothing in this commit has touched any database but the throwaway container. `00016`'s nine guards evaluate against the **live** table, which the rehearsal could only simulate over a fixture built from the same CSV. If a guard aborts, the route out is step 0 — **relaxing or deleting a guard is not an acceptable resolution**, and neither is a 117 that had to move to get there.
+3. Re-measure production after the apply, in the dashboard SQL editor:
+   ```sql
+   SELECT count(*) FILTER (WHERE league = 'NBA') AS nba,
+          count(*) FILTER (WHERE league = 'BAA') AS baa,
+          count(*) FILTER (WHERE league = 'ABA') AS aba,
+          count(*) FILTER (WHERE league IS NULL) AS nulls
+   FROM series;                                                              -- expect 159 | 1 | 18 | 0
+   SELECT count(*) FILTER (WHERE s.winner_team_id = g.home_team_id) AS home_wins,
+          count(*) AS nba_baa_game7
+   FROM series s JOIN series_game_scores g ON g.series_id = s.id AND g.game_number = 7
+   WHERE s.league IN ('NBA','BAA');                                          -- expect 117 | 160
+   ```
+   plus `node scripts/spike-2-1/audit-unique-key.mjs`, which should still exit 0 over 178 rows. If the second line reads 116 or 118, resolve **which** in writing (a mis-curated row against the published as-of date) before touching anything.
+4. Then `docs/CURRENT_DATA_MODEL.md`'s "Until the owner applies `00016`" paragraph flips to the boundary above it, and the AGENTS.md standing rule (`league IN ('NBA','BAA')` is the "this Game-7 venue is real" marker) can be added in that commit. Story 2.9's first move is the read path, not the chip (deferred-work E9): declare `league` in `src/types/types.ts` and add it to `PredictPage.tsx`'s `SERIES_SELECT` — `HistoricalPage.tsx` already selects `*`.
 
 ## Spec Change Log
 
@@ -589,6 +640,8 @@ excluding the 2026 Finals) — relaxing or deleting the guard is not an acceptab
 **Loopback 1 implemented (2026-10-01).** All five unchecked Execution lines landed (E1–E6, E8). D4's triple-correction had already reached `epics.md`, `epic-2-context.md` and the proposal's §5.3 Story 2.8 AC line; this pass swept the proposal's three remaining `160/1/18` shorthand sites (§2.1 table, §2.3 rehearsal bullet, §5.2 Edit-E7 line) with pointers to D4, since E7's verdict named the approved-artifact wording itself as the hazard. The handover gained step 0 (the archive-growth rule the Change Log demanded) and `CURRENT_DATA_MODEL.md`'s 178th-row sentence was reconciled with the curated CSV's winner-first convention (E8). No frozen-block edit, no `00016` emission, no production command; the re-run outputs are recorded in Implementation Notes.
 
 (No changes to the frozen block; implemented as approved on 2026-10-01.)
+
+**Curation commit (2026-10-02) — frozen block untouched; D2's deferral discharged.** D1/D6/D7 were executed as written and one of their premises retired: the "98 probe / 62 hand-entered from basketball-reference.com" split D6 recorded turned out to describe the *fallback* rather than the feed (the depth drill reached 1962-63), and the 14-code alias table closed every remaining row, so **all 160 venues are feed-derived and not one used the hand-entry route**. D6 stays in the block as approved — it names the spot-check reference, which is the role it actually played — and `## Known limits` now states the consequence honestly: three agreeing runs of one source plus three owner spot checks is agreement, not independent confirmation, and the 117 checksum catches a single wrong row but not a compensating pair. No constant relaxed, no guard softened, no frozen decision rewritten.
 
 ## Review Triage Log
 
@@ -647,8 +700,9 @@ Three-case orientation rule for each matched series' game-7 row, which is what m
 
 ## Verification
 
-**Commands:**
-- `node supabase/scripts/pipeline/venueBackfill.ts --check` -- expected: non-zero this session, naming the 160 blank venues and writing no migration; exit 0 and silence once the CSV is complete and `00016` matches it.
-- `node scripts/rehearse-migration-00014.mjs` -- expected: exit 0 with a SELF-TEST banner on every venue line, printed census `159 NBA + 1 BAA + 18 ABA` (combined 160) and `Game-7 home wins = 117`, and each guard's tamper observed as an abort **with the rolled-back state measured afterwards**. Once `00016` is emitted, the same command additionally applies the committed file over the seeded fixture inside the ordered replay and runs `--check` against the committed pair. Requires a running Docker daemon (up and `postgres:16` cached as of 2026-10-01).
-- `npm run gate` -- expected: all four pass. State the coverage gap rather than glossing it: `scripts/**` is checked by none of them, so the rehearsal and the probe are verified only by running them.
-- Owner-run, never agent-run: `node scripts/probe-game7-venues.mjs` (the venue block) and `npx supabase db push` (the apply, after the curated CSV and the emitted `00016` land).
+**Commands (expected states as of 2026-10-02, after curation completed):**
+- `node supabase/scripts/pipeline/venueBackfill.ts --check` -- **exit 0** with `--check ok: 00016_….sql matches this generator's output for …game7_venues_curated.csv (EOL-normalized byte compare)`. (Before curation it exited 2 naming the 160 blanks — that refusal is still the gate: it returns if anyone blanks a venue again, and it goes red on a hand-edit of the emitted file naming the line.)
+- `node supabase/scripts/pipeline/venueBackfill.ts` -- **exit 0**, `… already matches the curated CSV — nothing written`; re-running it is a no-op, and the file it would write is byte-deterministic (verified: same sha256 across renders).
+- `node scripts/rehearse-migration-00014.mjs` -- **exit 0**, 58 `ok` lines, **no SELF-TEST banner**: 16 migrations replayed in filename order with the fixture seeded inside that loop immediately before the committed `00016`, `--check` asserted on the committed pair inside the run, ten guard tampers each followed by a measured post-reject state, and the census printed from the database (`159 NBA + 1 BAA + 18 ABA = 178, NULL 0; 117 home wins + 43 swapped over the 160`). Requires a running Docker daemon (up and `postgres:16` cached as of 2026-10-02).
+- `npm run gate` -- all four pass (321 tests, 0 skipped, as of this commit). State the coverage gap rather than glossing it: `scripts/**` is checked by none of them, so the rehearsal and the probe are verified only by running them.
+- Owner-run, never agent-run: `node scripts/probe-game7-venues.mjs` (three runs are on record, all agreeing; the next one is the regression check if the alias table or the archive changes) and `npx supabase db push` — the apply, which nothing in this repo has done.
