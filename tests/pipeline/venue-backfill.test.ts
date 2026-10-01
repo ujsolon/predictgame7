@@ -600,9 +600,14 @@ describe('the era-code alias table and the two-pass season matcher (curation opt
     return parseVenuesCsv(csv(...rows), 'fixture.csv');
   }
 
-  it('the committed table holds the five evidenced mappings, each pointing into the teams seed', () => {
+  it('the committed table carries the evidenced mappings, each pointing into the teams seed', () => {
     const seed = parseTeamsSeed(TEAMS_SEED_TEXT, 'seed');
-    expect(aliases.map((alias) => alias.feed).sort()).toEqual(['CIN', 'GOS', 'STL', 'UTH', 'WAS']);
+    // Derived, not counted: the owner approving another era code is the table
+    // working, and a pinned list would turn that into a red gate.
+    expect(aliases.length).toBeGreaterThanOrEqual(5);
+    for (const feed of ['CIN', 'STL', 'WAS', 'GOS', 'UTH', 'CHH']) {
+      expect(aliases.some((alias) => alias.feed === feed)).toBe(true);
+    }
     for (const alias of aliases) {
       expect(seed.has(alias.teams)).toBe(true);
       expect(alias.evidence).toContain('csv:');

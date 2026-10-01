@@ -33,3 +33,4 @@ STL,SLH,1962-63 game 7 LAL vs STL resolves to curated row 1963 LAL vs SLH (csv:5
 WAS,WSB,1975-76 game 7 CLE vs WAS resolves to curated row 1976 CLE vs WSB (csv:88) — opposing side CLE matches; no 1976 curated row holds WAS, so the direct pass cannot claim it
 GOS,GSW,1975-76 game 7 GOS vs PHX resolves to curated row 1976 PHX vs GSW (csv:91) — opposing side PHX matches and GSW is the only unclaimed 1976 row holding it; this is also the row whose HOME side is the aliased code
 UTH,UTA,1987-88 game 7 LAL vs UTH resolves to curated row 1988 LAL vs UTA (csv:114) — the direct pass already claimed 1988 LAL vs DAL (csv:112) and 1988 LAL vs DET (csv:113), leaving UTA as the only unclaimed 1988 row with LAL
+CHH,CHA,2000-01 game 7 MIL vs CHH resolves to curated row 2001 MIL vs CHA (csv:135) — the only unclaimed row for that year holding MIL; owner confirmed the venue from a reference (May 20, 2001, Bradley Center, Charlotte 95 at Milwaukee 104)

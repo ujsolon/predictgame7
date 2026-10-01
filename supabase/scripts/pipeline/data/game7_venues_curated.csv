@@ -18,10 +18,14 @@
 # Provenance of the four derived columns (177 of the 178 rows): docs/NBASeriesResults.xlsx,
 #   sheet NBASeriesResults_v2025, rows with Total games = 7 (read 2026-10-01; columns Year,
 #   League, Winner Team, Loser Team). team names resolved to abbreviations through the
-#   teams seed of migrations 00005 + 00007. The 178th row — the 2026 Finals Game 7, absent
-#   from the sheet (it stops at the 2026 conference semifinals) — is the owner-pinned
-#   flagship 2026 Thunder-Spurs (FR-13, 2026-09-25; the flagship list is winner-first, the
-#   same convention as the sheet), league NBA.
+#   teams seed of migrations 00005 + 00007. The 178th row — absent from the sheet,
+#   which stops at the 2026 conference semifinals — is the 2026 conference finals
+#   Game 7 the owner confirmed on 2026-10-01: San Antonio won at Oklahoma City, so
+#   team_a is SAS under this file's winner-first convention and the curated venue is
+#   OKC. (It was first appended as "2026,OKC,SAS" on a flagship-list inference; the
+#   venue probe's own run reported that as a winner inversion, and the owner resolved
+#   it. Resolution in 00016 is by UNORDERED pair, so the slot order never carried a
+#   venue to the wrong series.)
 # Census: 159 NBA + 1 BAA + 18 ABA = 178 rows; 160 NBA/BAA Game 7s = nba.com's published
 #   count. game7_home_team curation route (spec-2-8 D1/D6, owner-run): 98 of the 160 rows
 #   are in calendar years >= 1993 and answered by node scripts/probe-game7-venues.mjs
@@ -132,7 +136,7 @@ year,team_a,team_b,league,game7_home_team
 1998,CHI,IND,NBA,CHI
 2000,LAL,POR,NBA,LAL
 2000,NYK,MIA,NBA,MIA
-2001,MIL,CHA,NBA,
+2001,MIL,CHA,NBA,MIL
 2001,PHI,MIL,NBA,PHI
 2001,PHI,TOR,NBA,PHI
 2002,LAL,SAC,NBA,SAC
@@ -212,5 +216,5 @@ year,team_a,team_b,league,game7_home_team
 2026,CLE,DET,NBA,DET
 2026,CLE,TOR,NBA,CLE
 2026,DET,ORL,NBA,DET
-2026,OKC,SAS,NBA,OKC
+2026,SAS,OKC,NBA,OKC
 2026,PHI,BOS,NBA,BOS

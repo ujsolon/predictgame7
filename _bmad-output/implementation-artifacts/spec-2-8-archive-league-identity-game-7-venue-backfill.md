@@ -517,6 +517,14 @@ All 97 answers were transcribed into `game7_venues_curated.csv` by script, not b
 
 **Two things the sweep raised that are not venue questions.** The 2026 Finals row is confirmed inverted against the curated convention — the feed says SAS won a Game 7 hosted at OKC, while the file holds OKC in the winner-first slot — exactly the divergence `CURRENT_DATA_MODEL.md` asserts for that row, now with source evidence; the migration reads the winner from the table and matches unordered, so nothing depends on it. And 1998-99 answering with **no series at all** sits oddly beside an archive that holds no 1999 Game 7 either: the two agree, but a whole empty postseason is the kind of thing to check once against a reference rather than accept, because nba.com's published 160 Game 7s is the denominator this file is being built to match.
 
+**Owner's confirmations, applied (2026-10-01 evening).** Three things settled by the owner, one of them against an independent table:
+
+- **`CHH → CHA` approved** and appended to the alias table, with csv:135's venue filled from the same evidence the owner cited (May 20, 2001, Bradley Center: Charlotte 95 at Milwaukee 104 → `2001,MIL,CHA,NBA,MIL`). The next sweep should reproduce that answer from the feed; if it does not, the mapping or the parse is wrong, and that is a finding rather than a detail.
+- **The 178th row is the 2026 conference finals, not the Finals** — San Antonio won at Oklahoma City. The file's row is now `2026,SAS,OKC,NBA,OKC`, and its provenance comment plus `docs/CURRENT_DATA_MODEL.md` and `spec-2-5` carry the correction. The venue was never at risk (resolution is by unordered pair); what was wrong was a slot-order inference the probe had already surfaced as a winner inversion.
+- **1998-99's empty postseason is corroborated, not a feed failure** — the owner's own dataset has the same gap. The row count is unaffected (the archive holds no 1999 Game 7), so `classifySeason` still naming that season loudly is the instrument doing its job on a data shape nobody assumed.
+
+**A cross-check worth recording, because it is the first independent grade of the whole route.** The owner supplied three Game 7s from their own reference; the feed-and-alias answers already in the file match all three — `1998,CHI,IND,…,CHI` (United Center), `2000,LAL,POR,…,LAL` (Staples Center), `2000,NYK,MIA,…,MIA` (American Airlines Arena, 83–82). Three for three on rows the feed reached through *different* paths, one of them the 1997-era code space. State of the curated file now: **98 of 160 venues filled, 62 blank**, all 62 in the 1948–1992 block the widened sweep has not yet been run over.
+
 **Known limits, stated not glossed.**
 - Coverage split: `scripts/**` (rehearsal, probe) is checked by none of the four gate steps — verified
   only by running them, per AGENTS.md. `venueBackfill.ts` is under the gate by design (Biome + `tsc -b`
