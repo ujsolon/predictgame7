@@ -75,7 +75,7 @@ context:
 - `supabase/migrations/00014_*.sql:28` — `series_year_team_pair_key`, the identity the CSV resolves against; `teams.abbreviation` is `UNIQUE NOT NULL` and 59 abbreviations cover the archive (watch near-collisions: BKN/NJN/NYN, GSW/PHW/SFW, NOP/NOH/CHA, DEN/DNR).
 - `docs/CURRENT_DATA_MODEL.md` — **the authoritative statement of the post-`00016` boundary**; this spec's Code Map and `epic-2-context.md` point at it rather than restating it (pass 2, P2-11). Replace "The archive carries slots, not venues — and slot `a` is the series winner" and the Decision-11 freeze annotation with the post-`00016` boundary, stated so no later reader repeats the falsified measurement. Same commit as the migration.
 - `_bmad-output/implementation-artifacts/seriesdatasource-port.md` — one sentence in the `manual_csv` section: the floor writes live playoff rows only and is not a backfill vehicle; pointer to `00016`.
-- `epics.md:418-442` — the ACs this spec implements; `sprint-change-proposal-2026-10-01.md` §2.3 and §4 — the four owner calls, treated as fixed input.
+- `epics.md:419-443` — the ACs this spec implements (`:418-442` at authoring; the block moved +1 on 2026-10-02 when Story 2.5 gained owner decision U4's footer AC); `sprint-change-proposal-2026-10-01.md` §2.3 and §4 — the four owner calls, treated as fixed input.
 
 ## Tasks & Acceptance
 

@@ -90,11 +90,11 @@ export default function HistoricalPage() {
   // below announces 178 while the insights read 160, and the owner accepted that
   // on 2026-10-02: reconciling it in the UI would mean a filter nobody reaches
   // for, which is what 2.9's deleted `Select` was. The chip on the 19 rows plus
-  // the gloss in a chipped record are the whole reconciliation, and running it is
-  // the reader's job.
+  // the gloss in a chipped record are the whole archive-side reconciliation; the
+  // insights side is Story 2.5's owner-decision U4 footer (2026-10-02, planned).
   // Decoys with the same words that must NOT move: `epics.md:382`,
-  // `ARCHITECTURE-SPINE.md:89`, `epic-2-context.md:44`, `sprint-status.yaml:253`
-  // and `spec-2-5:91,98` all mean Story 2.5's backend population rule when they
+  // `ARCHITECTURE-SPINE.md:89`, `epic-2-context.md:44`, `sprint-status.yaml:272`
+  // and `spec-2-5:92,99` all mean Story 2.5's backend population rule when they
   // say "league filter".
   const years = useMemo(() => {
     const uniqueYears = Array.from(new Set(seriesList.map((series) => series.year))).sort((a, b) => b - a);

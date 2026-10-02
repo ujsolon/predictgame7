@@ -15,8 +15,8 @@ During the 2027 playoff window, Active Series reflect the latest results with ze
 - Story 2.4: Automated adapter per the spike decision
 - Story 2.8: Archive league identity + Game 7 venue backfill (`00016`) — added by `sprint-change-proposal-2026-10-01.md`
 - Story 2.9: League chip and filter on the archive surface — added by the same proposal. Its read-path close and verbatim-league rule shipped; its **filter** did not survive the owner's preview review.
-- Story 2.10: Conditional league chip + gloss inside the chipped record, **no league control** — the 2026-10-02 renegotiation of 2.9's surface (`spec-2-10-conditional-league-chip-and-gloss-popover.md`). FR-10's filters stay year and team.
-- Story 2.11: Team search answering the abbreviation the row displays — found while building 2.10; backlog, see `deferred-work.md`.
+- Story 2.10: NBA-by-default archive rows + the league gloss inside the chipped record, **no league control** — the 2026-10-02 renegotiation of 2.9's surface (`spec-2-10-nba-by-default-league-chip-and-in-record-gloss.md`, renamed the same day; it was "conditional chip and gloss popover"). FR-10's filters stay year and team.
+- Story 2.11: Team search answering the stored `teams.abbreviation` over the series foreign key — found while building 2.9's surface, re-cut by the owner 2026-10-02 (U1/U3); backlog, see `deferred-work.md`.
 - Story 2.5: Insights cache refresh (`00017`)
 - Story 2.6: Scheduled workflows + failure notification
 - Story 2.7: Epic verification — simulated playoff week

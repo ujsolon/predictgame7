@@ -52,6 +52,13 @@ development_status:
   2-1-q-4-data-source-feasibility-spike: done
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: done
+  # 2-4 sits at review ON PURPOSE, and the reason is the owner's call of 2026-10-02 (U2, during
+  # Story 2.10's walkthrough): it received its in-session step-04 review pass, and it still needs an
+  # external review — `bmad-code-review` in a fresh context, on the owner's own model — before it
+  # flips to done. Its spec frontmatter says the same thing (`status: 'in-review'`, iteration 1).
+  # This is not drift and should not be "corrected" to done because later stories shipped: 2.4's
+  # adapter is live and 00016 was applied from data it helped curate, and being verified-in-use is
+  # not the independent review this tracker requires before done.
   2-4-automated-adapter-per-the-spike-decision: review
   # 2-8's data gate is CLOSED: 00016 is APPLIED to production (owner ran git push + npx supabase db
   # push on 2026-10-02; 'Applying migration 00016… Finished supabase db push', no guard abort). A
@@ -100,14 +107,18 @@ development_status:
   # record (:391-393 — the header placement overflowed the team logos into the paragraph at 390px),
   # and the 178-vs-160 divergence is now recorded developer-side at :84-98 rather than reconciled in
   # the UI. Dead-code pass found nothing dead in src; one vacuous test assertion removed.
-  2-10-conditional-league-chip-and-gloss-popover: review
-  # Found while building 2-10, on the owner's request that SAS find the Spurs. Measured bigger than
-  # it looks: the row displays getTeamAbbreviation(full_name), which disagrees with the stored
-  # teams.abbreviation on 39 of 178 rows (20 franchises, all pre-1976), the helper has 16 more call
-  # sites on PredictPage (14 lines), and the SAS→Kansas City hit comes from the *name* path, not the
-  # code.
-  # Spec-2-10 D5' carries the measurement; the story must settle which code a fan searches by first.
-  2-11-team-search-answers-the-displayed-abbreviation: backlog
+  2-10-nba-by-default-league-chip-and-in-record-gloss: review
+  # Found while building 2-10, on the owner's observation that typing SAS on /historical finds
+  # Kansas City, not the Spurs. Measured bigger than it looks: the row displays
+  # getTeamAbbreviation(full_name), which disagrees with the stored teams.abbreviation on 39 of 178
+  # rows (20 franchises, all pre-1976), and the helper has 16 more call sites on PredictPage (14 lines).
+  # SETTLED by the owner 2026-10-02 (walkthrough U1 + U3): search the FK's stored teams.abbreviation,
+  # keep the name path, accept the SAS→Kansas hit (the list is year-descending, so recent rows lead),
+  # and switch the row's displayed code to that same column. Open for 2-11's planning: whether the
+  # 16 PredictPage call sites change with it. Spec-2-10 D5' carries the measurement.
+  2-11-search-the-archive-by-the-stored-team-abbreviation: backlog
+  # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
+  # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   2-5-insights-cache-refresh: backlog
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
   2-7-epic-verification-simulated-playoff-week: backlog
