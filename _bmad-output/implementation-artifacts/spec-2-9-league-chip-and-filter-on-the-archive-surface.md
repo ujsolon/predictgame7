@@ -2,7 +2,7 @@
 title: 'League chip and filter on the archive surface'
 type: 'feature'
 created: '2026-10-02'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '84d4c78137fe3844b1496ee4026c4672e27bca59'
@@ -104,49 +104,87 @@ inherits the year-desc sort → NBA, ABA, BAA). `filteredSeries` ANDs three pred
 `resetFilters` clears the league too — with the reset button's visibility condition extended to
 `leagueFilter !== 'all'`. `Select` is the third control in the filter card; the D2 legend sentence
 is the card's last child (`w-full md:basis-full` inside `md:flex-wrap`, always visible, no tooltip);
-the polite live region is the first child of the list section and carries
-`Showing {visibleSeries.length} of {filteredSeries.length} series.` No scroll is triggered on
-selection.
+the polite live region carries `Showing {visibleSeries.length} of {filteredSeries.length} series.`
+and sits as the **last** child of the list section — added there as first child, and relocated in the
+review pass because `space-y-8 > :not([hidden]) ~ :not([hidden])` then matched the table wrapper and
+gave it a 32px top margin it had never had. No scroll is triggered on selection.
 
 **Layout note (why the legend is inside the card, not under it):** the list section is
-`space-y-*`-driven, and Tailwind's `space-y-12 > :not([hidden]) ~ :not([hidden])` selector outranks
-a single-class negative margin, so the first attempt at tucking the legend up beside the filters
-(`-mt-8`) was silently a no-op. Restructuring the card to `md:flex-wrap` and giving the legend
-`md:basis-full` puts it on its own line inside the controls' own card, which is where D2's "reads as
-belonging to the filters" actually lives.
+`space-y-*`-driven, and Tailwind's `space-y-12 > :not([hidden]) ~ :not([hidden])` selector (the page
+container at `:139`) outranks a single-class negative margin, so the first attempt at tucking the
+legend up beside the filters (`-mt-8`) was silently a no-op. Restructuring the card to `md:flex-wrap`
+and giving the legend `md:basis-full` puts it on its own line inside the controls' own card, which is
+where D2's "reads as belonging to the filters" actually lives. Because D2's own wording says "under
+the filter row", both UX docs shipped repeating that phrase; the review pass corrected
+`DESIGN.md`/`EXPERIENCE.md` to describe the position the code actually renders — the card's last line,
+immediately below the controls — so the docs no longer claim a DOM position this build does not have.
 
-**Contrast:** the chip and the legend use `text-on-muted` `#595959`, ~6.4:1 on the `muted` `#F5F5F5`
-fill (~7:1 on white) — AA at that size with headroom. `muted-foreground` `#808080` is ~3.95:1 on
-white and would fail small text; Story 5.2's app-wide retune stays untouched, and both docs say so
+**Contrast, per element rather than one number for the pair:** the chip's `text-on-muted` `#595959`
+measures 6.42:1 on its own `bg-muted` `#F5F5F5` plate. The legend shares the ink token but not the
+substrate — it sits on the filter card's `bg-muted/20` over white, which computes to ≈ #FDFDFD, so
+its ratio is ≈ 6.9:1, not 6.4:1. Both clear 4.5:1 at their size (chip 10px, legend 12px). The new
+league `Select`'s own label went to `text-on-muted` for the same reason, which leaves it visibly
+darker than the two sibling labels that stay on `muted-foreground` — a deliberate, AA-required
+asymmetry, with the pre-existing pair handed to Story 5.2. `muted-foreground` `#808080` is ~3.95:1
+on white and would fail small text; Story 5.2's app-wide retune stays untouched, and both docs say so
 rather than implying the token is fixed. No new token, radius or elevation was introduced.
 
+**Review pass (step-04) patches to the tree.** Four source/test changes, each proved to bite: the two
+source patches by reverting them and watching exactly the matching cases go red (label token → the
+AA-token case; live-region relocation → the structural case, and the wrapper's computed `margin-top`
+back to 32px in Chrome), and the two new pins by breaking the source they watch (projection string
+stripped of `league`-and-`*` → the projection case; `text-on-muted` → `text-muted-foreground` → the
+AA-token case). Specifically: (1) the league label's `text-muted-foreground` → `text-on-muted`, which
+is the AA rule applied to text this story added; (2) the live region relocated from first to last child
+of the `space-y-8` section, restoring the table wrapper's `margin-top` to 0px (measured over CDP
+against `vite preview` of the rebuilt bundle); (3) `reads \`league\` on the archive projection…` — the
+archive half of the read path was unpinned because the mock returns fixtures whatever the projection
+string says, so `'*'` could regress to an enumerated list without `league` and all 16 cases plus the
+whole gate would stay green; (4) `puts every piece of text it adds on the AA-safe token` — a
+`classList` pin on chip, legend and label, because computed contrast is unreachable from jsdom but the
+forbidden `text-muted-foreground` swap is exactly what a later edit will do. Plus
+`changes the league without moving the page`, which closes the Always rule that had no evidence at
+all: it installs `window.scrollTo`/`window.scroll` spies and asserts neither fires on selection
+(`scrollIntoView` is undefined in jsdom, so a call there throws rather than passing silently).
+
 **Tests (`src/pages/__tests__/historical-page-archive.test.tsx`, `src/pages/__tests__/helpers.tsx`,
-`src/pages/__tests__/predict-phase-groups.test.tsx`):** 9 new cases in a Story 2.9 `describe` over a
-three-league fixture set (1998 NBA, 1976 ABA, 1948 BAA) — one per I/O row plus the AA and analytics
-legs: default scope + announced count, chip verbatim per league (asserting the BAA row's own cell
+`src/pages/__tests__/predict-phase-groups.test.tsx`):** 13 new cases in a Story 2.9 `describe` over a
+three-league fixture set (1998 NBA, 1976 ABA, 1948 BAA) — nine from the implement pass covering the
+matrix plus the AA and analytics legs, four added by the review pass: default scope + announced count,
+chip verbatim per league (asserting the BAA row's own cell
 contains `BAA` and **no** `NBA` text anywhere in it), chip in the expanded record, the legend's exact
 `textContent` and its document order after the team search input, filter + re-announcement,
 three-filter intersection then an empty league × year intersection that reuses "No series found
 matching your filters.", `visibleCount` back to 10 (12 rows → Load More → 12 → pick `NBA` → 10 +
 Load More restored), the exact capture payload (`toEqual` on `db.capture.mock.calls`, so a new event
-name would fail), and the reset button clearing the league. The league `Select` is driven through the
+name would fail), and the reset button clearing the league. The mapping to the matrix is 13 cases over
+5 rows, not one apiece: the "All three filters set" and "Empty intersection" rows are carried by the
+same `it` (intersection then empty, in that order); the "Default" row by the default-scope case, which
+also pins the ABA row's "stays listed" half (three rows, `1998/1976/1948`, none dropped by the new
+predicate); the BAA row by the two chip cases plus the legend case; and the ABA row's chip by the
+verbatim case. Its "and prerendered" half is not a client-test claim at all — the route list is built
+outside this suite — so it rests on the AC's boundary statement (`no route list, page count or
+prerender input changes`) and on no query having changed, not on a test. The league `Select` is driven through the
 real Radix control with `fireEvent.click` — its trigger opens on click under jsdom because
 `pointerTypeRef` starts non-mouse, and `role="option"` items select on click. All assertions are raw
 `textContent` / `toBeInstanceOf(HTMLButtonElement)`; **no computed accessible name is read**
 (AGENTS.md accname rule), the accessible name being a manual-QA leg. `historical-page-archive.test.tsx`
-is 12/12 (3 pre-existing + 9 new); the projection test now also asserts the `Series` read carries
+is 16/16 (3 pre-existing + 13 new); the projection test now also asserts the `Series` read carries
 `league`.
 
-**Verification — `npm run gate` (exit 0), the load-bearing lines:**
+**Verification — `npm run gate` (exit 0), re-run after the review patches; the load-bearing lines:**
 
 ```
 biome lint .                                  → Checked 122 files in 2s. No fixes applied.
 tsc -b                                        → (no output)
 vitest run                                    → Test Files  20 passed (20)
-                                                Tests  333 passed (333)
-vite build                                    → ✓ 1894 modules transformed / ✓ built in 13.36s
+                                                Tests  337 passed (337)
+vite build                                    → ✓ 1894 modules transformed / ✓ built in 2.58s
 scripts/verify-build-base.mjs                 → Build output uses the /predictgame7/ asset prefix.
 ```
+
+(The 333 → 337 is the four review-pass pins plus the no-scroll pin landing after the first record was
+written. `historical-page-archive.test.tsx` alone: 16 passed.)
 
 `tsc -b` did exactly the job the Code Map predicted: it named three sites for the required field —
 `helpers.tsx:seriesFixture`, `historical-page-archive.test.tsx:archivedRow`,
@@ -174,10 +212,12 @@ chip treatment under Components.
 no migration, no `db push`, no deploy, no route-list/prerender change, no new empty state, and D4's
 two carry-overs were not touched (they stay with `spec-2-8b`).
 
-**Independent surface verification over CDP against `vite preview` of the implementation commit,
-reading production (main agent, same session, 2026-10-02).** The implement pass is a report; these
-numbers were re-measured through the deployed client's own read path, in real Chrome, because three
-of the spec's "Always" items are not observable from jsdom. Each is an observation, not a derivation:
+**Surface re-measured over CDP against `vite preview` of the built bundle, reading production data
+(same session as the implementation — *not* an independent review, 2026-10-02).** The implement pass
+is a report; these numbers were re-measured through the deployed client's own read path, in real
+Chrome, because three of the spec's "Always" items are not observable from jsdom. Each is an
+observation, not a derivation. Independence this session cannot offer is what the owner's fresh-context
+re-run on another model supplies.
 
 - **Default scope is the real archive.** The live region read `Showing 10 of 178 series.` on first
   paint — the fetch returned all 178 rows and every league stayed in scope at `all` — and
@@ -187,14 +227,21 @@ of the spec's "Always" items are not observable from jsdom. Each is an observati
   at the default carried an `NBA` chip, so the column arrives populated. Choosing `ABA` →
   `Showing 10 of 18 series.` with all ten chips reading `ABA` (1976/1975/1974… — the 18-row span the
   census says); then choosing `BAA` → `Showing 1 of 1 series.`, one row,
-  `1948 PW vs SLB / SEMIFINALS / BAA / 85−46`. Opening that row put the same `BAA` text beside the
-  expanded record's title, with the seven game tiles (`G1 58-60` … `G7 85-46`) and "SERIES WINNER
+  `1948 PW vs SLB / SEMIFINALS / BAA / 85−46` (the row's separator is U+2212, which is what `:290`
+  renders). Opening that row put the same `BAA` text beside the expanded record's title, with the
+  seven game tiles (`G1` … `G7`, each stacking its two scores vertically with no separator glyph at
+  all — so the earlier `58-60` flattening in this record was my transcription, not the app's) and
+  "SERIES WINNER
   Philadelphia Warriors" unchanged. The reset button returned the trigger to `All leagues` and the
   count to 178, and removed itself (`svg.lucide-funnel-x` absent afterwards).
 - **Chip contrast measured, not asserted.** `getComputedStyle` on a rendered chip: color
   `rgb(89, 89, 89)` (`#595959` = `--on-muted`) on `rgb(245, 245, 245)` (`#F5F5F5` = `muted`),
   `font-size: 10px`, `font-weight: 600` → 6.42:1 by WCAG relative luminance, ≥4.5:1 at the smallest
-  size on the surface. The legend: same color at 12px.
+  size on the surface. The legend and the new league label share that ink at 12px and 10px but **not**
+  that substrate — the review pass measured their background stack rather than assuming the chip's:
+  `rgba(245, 245, 245, 0.2)` (the card's `bg-muted/20`) over `rgb(255, 255, 255)`, which composites to
+  ≈ #FDFDFD → ≈ 6.9:1. So the legend's ratio is higher than the chip's, not the same, and the earlier
+  sentence that quoted one figure for both was measuring the chip only.
 - **The accessible-name leg the tests are forbidden to assert.** Chrome's own accessibility tree
   gives the new control a computed name — `combobox "FILTER LEAGUE" … hasPopup="listbox" focusable`,
   next to its `StaticText "FILTER LEAGUE"` — while the pre-existing year combobox in the same row
@@ -217,6 +264,16 @@ the line sitting inside the controls' own card at its bottom. Owner accepts or r
 
 ## Spec Change Log
 
+- 2026-10-02 (step-04 review, BH-2): `DESIGN.md`'s chip bullet said "Below the filter row" and
+  `EXPERIENCE.md`'s Component Patterns row said "sits under the filter row" for the D2 legend. Both
+  corrected to the position the code renders (immediately below the controls, as the filter card's own
+  last line). This is not a D2 renegotiation — the requirement (plain text, always visible, both
+  leagues, never hover-only, verbatim wording) is unchanged and still met; only two downstream docs had
+  copied D2's phrasing literally while the shipped DOM parentage differs. The earlier change-log entry
+  below claimed the code map's "under the filter row" was satisfied; it was, for the requirement, but
+  the claim left the docs describing a position the build does not have, which is what this entry
+  closes. No intent changed.
+
 - 2026-10-02 (implementation): `DESIGN.md`'s new chip bullet first stated the `on-muted`-on-`muted`
   ratio as ~6.6:1; recomputed against WCAG relative luminance it is ~6.4:1 (and ~7:1 on white).
   Corrected in `DESIGN.md` and in the `HistoricalPage.tsx` comment. Passes either way, but the doc is
@@ -226,4 +283,39 @@ the line sitting inside the controls' own card at its bottom. Owner accepts or r
   note. Same visible outcome, same always-visible/no-tooltip requirement; the code map's "under the
   filter row" is satisfied, and the alternative was unreachable because `space-y-*` outranks a
   negative-margin utility. No intent changed.
+
 ## Review Triage Log
+
+Pass 1 (step-04, 2026-10-02). Diff 56.45 kB → blind-hunter floor N = min(⌊√56.45 + 1⌋, 10) = 8, filed
+10. Edge-case hunter filed 4; verification-gap filed 2 gaps + 2 other findings. 18 rows below, one per
+finding, before deduplication. Verdicts are this session's, made by reading the cited code and, for the
+four layout/contrast claims, re-measuring the built bundle over CDP; reviewer severities disregarded.
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| BH-1 | `sprint-status.yaml` still says `in-progress` while the spec says `in-review`; `## Review Triage Log` is an empty heading stuck to the previous section with no blank line. | low | Both true at filing: the tracked state contradicted the frontmatter and the section was bare. | patch — the log is this step's own output; sprint-status flips to `review` in the same commit, blank line added. |
+| BH-2 | D2's frozen wording ("legend line **under** the filter row") and both UX docs repeat that placement, while the shipped legend is the card's *last child*; the Change Log claimed satisfaction without reconciling the docs. | medium | Confirmed: `DESIGN.md:157` read "Below the filter row" and `EXPERIENCE.md:96` "sits under the filter row", so the docs of record described a DOM position this build does not ship — the next agent auditing placement against them would find a false match. | patch — both doc lines now state the shipped position ("immediately below the filter controls, as the card's own last line"); D2's requirement (always visible, plain text, both leagues, no tooltip) is what the code meets, and the owner-facing acceptance leg stays open below. |
+| BH-3 | The AA rule is applied to the chip while its immediate neighbour, the round sub-label at `text-muted-foreground/50` (≈ #C0C0C0 on white ≈ 1.8:1), is left failing on the surface this story declares AA for, unmentioned. | medium | Real, and it is in the diff's context lines — but `git diff 84d4c78` shows that span's class string is unchanged; this story only re-wrapped it in a flex container. Pre-existing, not caused here. | defer — Story 5.2 (NFR-A1 remediation); it names the year/search labels and the `/50` round sub-label. |
+| BH-4 | The legend's contrast is documented with the chip's substrate: `#F5F5F5` is the chip's `bg-muted` fill, but the legend sits on the filter card's `bg-muted/20` over white. | medium | Confirmed by measurement, and it strengthens rather than breaks the claim: post-patch `getComputedStyle` gives the label stack `rgba(245,245,245,0.2)` over `rgb(255,255,255)` ≈ #FDFDFD → ~6.9:1. | patch — Implementation Notes and the CDP bullet now carry each element's own substrate and ratio. |
+| BH-5 | "No automatic scroll on selection" is an Always constraint with no test, no mutation check and no CDP observation. | medium | True at filing: the constraint appeared in the Always list and in the notes, backed by nothing. | patch — `changes the league without moving the page` spies `window.scrollTo`/`window.scroll` and asserts neither fires; `scrollIntoView` is undefined in jsdom, so a call would throw loudly. |
+| BH-6 | `resetFilters` now clears the league but emits nothing, so the event stream counts application and never removal — undocumented, and FR-25 will read a biased funnel. | low | Real asymmetry. It mirrors the pre-existing year filter, which also captures on apply only (`:150`), and the AC settled only the apply-side payload. | defer — Story 3.1 / FR-25 (the analytics port owns event semantics before FR-25 is re-pointed). |
+| BH-7 | The CDP leg observed the pre-existing year `Select` has no computed accessible name and generated no follow-up for a demonstrated AA gap on the same surface. | medium | Confirmed both ways: `:149`'s `<label>` has no `htmlFor` and the trigger has no `id`, and Chrome's tree gives that combobox no name while the league control has one. Pre-existing markup, untouched by this diff. | defer — Story 5.2, same entry family as BH-3. |
+| BH-8 | The live region announces "Showing 0 of 0 series." during the initial load, a false result set. | false | The page returns a spinner while `loading` (`HistoricalPage.tsx:128-134`), so the list section — and the region — never mounts before data arrives; the empty row and the region are downstream of that guard. Measured: CDP's first paint read `Showing 10 of 178 series.`, with 0 console messages. | rejected |
+| BH-9 | The verification header claims "Independent" while disclosing the same session; the score glyph appears as both `85−46` and `85-46`; and "one case per I/O row" is bent by one `it` bundling two rows, with no case↔row mapping stated. | low (2 of 3 sub-claims) | The self-contradicting heading and the missing mapping are both real about the record. The glyph sub-claim is **false**: the two strings come from two different render sites — the row's score cell emits U+2212 (`:290`), while each game tile stacks its two scores vertically with no separator glyph at all (`:374-377`), so the `85-46` was my own flattening of a vertical pair, not a transcription of a dash. Nothing to unify; the transcription is what needed correcting. | patch — heading reworded to "same session, not independent", the tile/row glyphs documented at their source, and the mapping written out (13 cases over 5 matrix rows; the intersection case carries two; the default-scope case carries ABA-stays-listed). |
+| BH-10a | The frozen Approach says "select it on both pages" while `HistoricalPage`'s query is untouched, contradicting the notes. | false | `.select('*, teams(…)')` does project the column, so "select it on both pages" holds of the read path, which is what the sentence describes; the notes' "no query changed" narrows the mechanism, not the outcome. No contradiction to resolve, and the fix would be a spec edit. | rejected |
+| BH-10b | The Problem statement is 178-rows-vs-160-denominators, but the gloss ships only on `/historical`; the surfaces that display 160-based insights still say nothing about the ABA exclusion, and no story owns that half. | medium | True: `InsightsPage` renders the `insights_cache` lines with no league framing, and this story's AC place the legend on the archive. | defer — Story 2.5, which owns the insights refresh and that page's copy. |
+| ECH-1 | `LeagueChip` renders a blank plate if `series.league` is undefined/null through the unvalidated `asSeries` cast. | false | Unreachable: `00016:456-458` leaves the column `NOT NULL DEFAULT 'NBA'` with a three-value CHECK, so no row can carry null; and the spec's Never list explicitly forbids adding validation to those casts, so the guard the finding asks for is excluded by intent. Measured on production: 178 rows, every chip populated, 0 console messages. | rejected |
+| ECH-2 | One missing `league` puts `undefined` in the `leagues` Set, and a Radix `SelectItem` with an undefined value throws, failing the whole page. | false | Same `NOT NULL` + CHECK proof — the Set's source cannot contain null/undefined. Same "no validation on the casts" exclusion. | rejected |
+| ECH-3 | A client that meets a pre-`00016` database gets an enumerated-select error and PredictPage's series read fails wholesale. | false | Ordering is already settled and executed: `00016` was applied 2026-10-02 before this client ships, which is Story 2.1's/hard-ordering AC's own point. A rollback of an applied migration is not a state any client-side guard could serve, and `if (error) throw error` at `PredictPage.tsx:155` already routes it to the failure panel rather than a blank page. | rejected |
+| ECH-4 | The new "Filter League" label keeps `text-muted-foreground` — 10px meaningful text at ~3.95:1, failing WCAG 1.4.3 on the surface the story promises AA for. | medium | Confirmed at `:165` pre-patch, and it is text this story added, so the AC's own AA leg was unmet. | patch — token now `text-on-muted`; measured `rgb(89,89,89)` post-patch. Cost: it reads visibly darker than its two sibling labels (BH-3), which is the one owner-facing call in this batch. |
+| VG-1 | `HistoricalPage`'s `league` read is unpinned — the mocked client returns fixtures whatever the projection says, so dropping the column keeps all 16 tests and the whole gate green. | medium | Confirmed by the reviewer's demonstration and by the file's own history: the Story 2.2 header records `.eq('status', …)` blanking the archive with the gate green, and `docs/CURRENT_DATA_MODEL.md:142` now says the projection tests "are what watch that wire" while only PredictPage's was watched. | patch — `reads \`league\` on the archive projection, not only on the predict one` asserts `db.projection` still carries a wildcard or the named column. |
+| VG-2 | The AA token is an Always rule that no verification observes; flipping `text-on-muted` → `text-muted-foreground` passes every gate step, and Story 5.2's retune makes that drift plausible in this very file. | medium | Confirmed: searched `src` tests for `text-on-muted`/`classList` — no match; the chip tests read `textContent` only, and `npm run gate` has no visual leg. | patch — `puts every piece of text it adds on the AA-safe token` pins chip, legend and label to `text-on-muted` and against `text-muted-foreground`. |
+| VG-o1 | The live region entered `div.space-y-8` as its **first** child, so Tailwind's `space-y-8 > :not([hidden]) ~ :not([hidden])` — the exact mechanism this story's layout note documents — gave the table wrapper a `margin-top: 2rem` it never had, an unobserved layout shift on a ratified surface. | medium | Confirmed by measurement, not inference: pre-patch computed `marginTop` on the wrapper read 32px against 0px before this story. `sr-only` does not set `hidden`, so the region counted. | patch — region relocated to the last child with the measured mechanism in the comment; re-measured `tableWrapperMarginTop: "0px"`, plus the structural pin. |
+| VG-o2 | `applyLeagueFilter` captures `league: 'all'` when the user re-selects "All leagues", and captures even when the value is unchanged — noted for FR-25 rather than as a gap. | low | Accurate, and by design: the AC requires capture "from the same call site the year filter uses", and `:150` behaves identically, so mirroring it is the spec-faithful outcome, not drift. | grouped with BH-6 → defer (same root cause: the event contract covers application only). |
+
+**Net effect of this pass on the tree:** four source patches (ECH-4 label token, VG-o1 live-region
+relocation, VG-1 projection pin, VG-2 AA-token pin) plus BH-5's no-scroll pin, BH-2/BH-4/BH-9's record
+corrections, and BH-1's bookkeeping. Five findings rejected on refutation (BH-8, BH-10a, ECH-1, ECH-2,
+ECH-3), four deferred with named owners (BH-3, BH-6+VG-o2, BH-7, BH-10b). No `intent_gap` and no
+`bad_spec` entry survived verification, so there is no loopback: `review_loop_iteration` stays 0 and
+the code is not re-derived.

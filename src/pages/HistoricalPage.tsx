@@ -162,7 +162,7 @@ export default function HistoricalPage() {
           </Select>
         </div>
         <div className="w-full md:w-[200px] space-y-2">
-          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1" htmlFor="league-filter-select">
+          <label className="text-[10px] uppercase tracking-widest text-on-muted font-semibold px-1" htmlFor="league-filter-select">
             Filter League
           </label>
           <Select value={leagueFilter} onValueChange={applyLeagueFilter}>
@@ -209,12 +209,6 @@ export default function HistoricalPage() {
       </div>
 
       <div className="space-y-8">
-        {/* Story 2.9: the filtered result set is re-announced politely — the
-            list itself has no role, so the count lives in its own region. */}
-        <p aria-live="polite" className="sr-only">
-          {`Showing ${visibleSeries.length} of ${filteredSeries.length} series.`}
-        </p>
-
         <div className="w-full overflow-x-auto -mx-4 px-4 md:-mx-0 md:px-0">
           <Table>
             <TableHeader>
@@ -325,6 +319,16 @@ export default function HistoricalPage() {
             </Button>
           </div>
         )}
+
+        {/* Story 2.9: the filtered result set is re-announced politely. LAST
+            child on purpose — as the first child it made the table wrapper a
+            `space-y-8` sibling and gave it a 32px top margin it never had
+            (measured over CDP: marginTop 32px → 0px by moving this node).
+            `sr-only` is absolutely positioned, so the margin this rule now
+            puts on the region itself paints nothing. */}
+        <p aria-live="polite" className="sr-only">
+          {`Showing ${visibleSeries.length} of ${filteredSeries.length} series.`}
+        </p>
       </div>
 
       {selectedSeries && (

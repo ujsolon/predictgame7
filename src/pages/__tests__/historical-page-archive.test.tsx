@@ -317,4 +317,66 @@ describe('HistoricalPage league chip and filter (Story 2.9)', () => {
     expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
     expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
   });
+
+  it('changes the league without moving the page', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseLeague('ABA');
+
+    // The spec's "no automatic scroll on selection" rule is the owner's
+    // established behavior for this app, so it is pinned rather than promised.
+    // `scrollIntoView` needs no spy: jsdom does not define it, so a call would
+    // throw and fail this case on its own.
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    scroll.mockRestore();
+  });
+
+  it('reads `league` on the archive projection, not only on the predict one', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    // The chip, the option list and the predicate all read `series.league`, and
+    // this page receives it through the `*` wildcard. The mock hands back the
+    // fixtures whatever the projection says, so an enumerated rewrite that
+    // dropped `league` would keep every other case green while blanking the
+    // chip in production — the exact failure shape this file's header comment
+    // records for Story 2.2. Pin the wire, as `predict-phase-groups` pins its own.
+    expect(db.projection).toMatch(/(\*|\bleague\b)/);
+  });
+
+  it('puts every piece of text it adds on the AA-safe token', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    // Computed contrast is only reachable over CDP (the spec's record carries the
+    // measurement); jsdom can pin the token, which is what a later edit can drift.
+    const chip = within(rowByYear(1948)).getByText('BAA');
+    const legend = await screen.findByText(/^BAA is the league that became the NBA in 1949/);
+    const label = document.querySelector('label[for="league-filter-select"]') as HTMLElement;
+
+    for (const el of [chip, legend, label]) {
+      expect(el.classList.contains('text-on-muted')).toBe(true);
+      expect(el.className).not.toContain('text-muted-foreground');
+    }
+  });
+
+  it('keeps the live region out of the list section\'s first-child slot', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    // `space-y-8` gives every non-first child a 32px top margin, so a first-child
+    // live region pushed the table down by a margin the ratified surface never
+    // had. Measured over CDP as marginTop 32px, then 0px once the region moved.
+    const region = liveRegion() as HTMLElement;
+    const section = region.parentElement as HTMLElement;
+    expect(section.firstElementChild).not.toBe(region);
+    expect(section.firstElementChild?.className).toContain('overflow-x-auto');
+  });
 });

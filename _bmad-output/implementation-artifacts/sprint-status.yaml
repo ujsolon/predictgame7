@@ -75,7 +75,7 @@ development_status:
   # omits `league` while HistoricalPage selects `*`, and src/types/types.ts does not declare the field
   # — so one path never sees a column that already ships and the other receives it through an
   # unvalidated cast. spec-2-8 E9.
-  2-9-league-chip-and-filter-on-the-archive-surface: in-progress
+  2-9-league-chip-and-filter-on-the-archive-surface: review
   2-5-insights-cache-refresh: backlog
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
   2-7-epic-verification-simulated-playoff-week: backlog
