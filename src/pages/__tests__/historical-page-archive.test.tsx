@@ -77,7 +77,6 @@ beforeEach(() => {
   }));
 });
 
-
 describe('HistoricalPage archive read (Story 2.2)', () => {
   it('selects the archive by the derived winner, not by a stored status', async () => {
     render(<HistoricalPage />);

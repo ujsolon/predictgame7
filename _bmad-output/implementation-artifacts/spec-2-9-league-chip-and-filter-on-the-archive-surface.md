@@ -174,6 +174,47 @@ chip treatment under Components.
 no migration, no `db push`, no deploy, no route-list/prerender change, no new empty state, and D4's
 two carry-overs were not touched (they stay with `spec-2-8b`).
 
+**Independent surface verification over CDP against `vite preview` of the implementation commit,
+reading production (main agent, same session, 2026-10-02).** The implement pass is a report; these
+numbers were re-measured through the deployed client's own read path, in real Chrome, because three
+of the spec's "Always" items are not observable from jsdom. Each is an observation, not a derivation:
+
+- **Default scope is the real archive.** The live region read `Showing 10 of 178 series.` on first
+  paint — the fetch returned all 178 rows and every league stayed in scope at `all` — and
+  `list_console_messages` was empty (0 messages across the whole session: load, three filter
+  changes, opening a record, and reset).
+- **The two data-shaped matrix rows, on production rows rather than fixtures.** All ten rows visible
+  at the default carried an `NBA` chip, so the column arrives populated. Choosing `ABA` →
+  `Showing 10 of 18 series.` with all ten chips reading `ABA` (1976/1975/1974… — the 18-row span the
+  census says); then choosing `BAA` → `Showing 1 of 1 series.`, one row,
+  `1948 PW vs SLB / SEMIFINALS / BAA / 85−46`. Opening that row put the same `BAA` text beside the
+  expanded record's title, with the seven game tiles (`G1 58-60` … `G7 85-46`) and "SERIES WINNER
+  Philadelphia Warriors" unchanged. The reset button returned the trigger to `All leagues` and the
+  count to 178, and removed itself (`svg.lucide-funnel-x` absent afterwards).
+- **Chip contrast measured, not asserted.** `getComputedStyle` on a rendered chip: color
+  `rgb(89, 89, 89)` (`#595959` = `--on-muted`) on `rgb(245, 245, 245)` (`#F5F5F5` = `muted`),
+  `font-size: 10px`, `font-weight: 600` → 6.42:1 by WCAG relative luminance, ≥4.5:1 at the smallest
+  size on the surface. The legend: same color at 12px.
+- **The accessible-name leg the tests are forbidden to assert.** Chrome's own accessibility tree
+  gives the new control a computed name — `combobox "FILTER LEAGUE" … hasPopup="listbox" focusable`,
+  next to its `StaticText "FILTER LEAGUE"` — while the pre-existing year combobox in the same row
+  still has **no** computed name in the same tree (`combobox … value="All Years"`). The open listbox
+  reported `option "BAA" focusable selectable`, so the control is in the tab order and operable
+  without a pointer. What remains genuinely human is announcement *behaviour*: the live region's text
+  is in the tree, but whether AT speaks the change is not measurable here.
+- **Viewport limit, stated.** This browser's viewport measured 638 CSS px (`matchMedia('(min-width:
+  768px)')` false), so what was observed is the mobile stack — year, league, search, legend each on
+  its own line at x=41, w=546. The `md:flex-wrap` + `md:basis-full` desktop arrangement is therefore
+  **not observed**; it is the one leg a human eyeball settles, and the layout class change
+  (`md:flex-wrap`) that carries it is otherwise inert at this width. No screenshot exists: the popup
+  route to a wider viewport was refused, same as Story 2.8's run.
+
+**A deviation from D2's wording, recorded rather than hidden:** the legend is the filter card's *last
+child* (`md:basis-full`), not a sibling paragraph under the card. First attempt at the sibling (`-mt-8`
+beside the card) was silently a no-op because the list section's `space-y-*` selector outranks a
+single-class negative margin — so the always-visible, plain-text, both-leagues requirement is met with
+the line sitting inside the controls' own card at its bottom. Owner accepts or renegotiates.
+
 ## Spec Change Log
 
 - 2026-10-02 (implementation): `DESIGN.md`'s new chip bullet first stated the `on-muted`-on-`muted`
