@@ -2,7 +2,7 @@
 title: 'League chip and filter on the archive surface'
 type: 'feature'
 created: '2026-10-02'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '84d4c78137fe3844b1496ee4026c4672e27bca59'
