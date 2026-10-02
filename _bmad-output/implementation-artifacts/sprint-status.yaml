@@ -120,6 +120,10 @@ development_status:
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   2-5-insights-cache-refresh: backlog
+  # Carried to this story 2026-10-02 by owner decision (Story 2.10's walkthrough): the two Story 2.8
+  # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
+  # alias collision in the venue probe's resolver, and game7_home_win_census counting pending series.
+  # Owner's condition: split either out into its own story at 2-6's planning turn if it does not fit.
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
   2-7-epic-verification-simulated-playoff-week: backlog
   epic-2-retrospective: optional

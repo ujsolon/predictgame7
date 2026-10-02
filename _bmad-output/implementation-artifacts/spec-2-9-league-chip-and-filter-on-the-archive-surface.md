@@ -26,7 +26,7 @@ context:
 - **D1 — chip placement:** inline in the "Matchup & Round" cell beside the existing `{series.round}` sub-label (`HistoricalPage.tsx:216`). The table stays three columns; the empty row keeps `colSpan={3}`.
 - **D2 — gloss:** one plain-text legend line under the filter row, covering **both** BAA and ABA. No tooltip primitive, no hover-only affordance. Wording owned here; floor pinned: "BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records." (Accurate against the data: one `BAA` row, 1948; 18 `ABA` rows, calendar years 1969–1976.)
 - **D3 — filter control:** a third `Select` beside the year `Select`, mirroring it — "All leagues" plus the leagues present.
-- **D4 — scope:** Story 2.8's two deferred carry-overs (`resolveFeedCode`'s context-free `WAS` collision; the census-pending guard) are **out**. They re-point to follow-on spec `spec-2-8b-venue-probe-and-guard-followup.md`; their `deferred-work.md` entries were updated at this checkpoint. **This story touches nothing under `supabase/`.**
+- **D4 — scope:** Story 2.8's two deferred carry-overs (`resolveFeedCode`'s context-free `WAS` collision; the census-pending guard) are **out**. They re-point to follow-on spec `spec-2-8b-venue-probe-and-guard-followup.md`; their `deferred-work.md` entries were updated at this checkpoint. **[Superseded 2026-10-02: that spec was never authored. The owner routed both carry-overs to Story 2.6 at the close of Story 2.10's walkthrough — `deferred-work.md` carries the live ownership, which is where this pointer should be read from.]** **This story touches nothing under `supabase/`.**
 
 ## Boundaries & Constraints
 
@@ -212,7 +212,8 @@ chip treatment under Components.
 
 **Boundary proof:** `git status --porcelain supabase/` is empty — nothing under `supabase/` changed,
 no migration, no `db push`, no deploy, no route-list/prerender change, no new empty state, and D4's
-two carry-overs were not touched (they stay with `spec-2-8b`).
+two carry-overs were not touched (they were left with `spec-2-8b`, a spec that was never authored;
+on 2026-10-02 the owner routed both to Story 2.6 — `deferred-work.md` is the live ownership record).
 
 **Surface re-measured over CDP against `vite preview` of the built bundle, reading production data
 (same session as the implementation — *not* an independent review, 2026-10-02).** The implement pass

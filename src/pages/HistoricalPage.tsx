@@ -93,7 +93,7 @@ export default function HistoricalPage() {
   // the gloss in a chipped record are the whole archive-side reconciliation; the
   // insights side is Story 2.5's owner-decision U4 footer (2026-10-02, planned).
   // Decoys with the same words that must NOT move: `epics.md:382`,
-  // `ARCHITECTURE-SPINE.md:89`, `epic-2-context.md:44`, `sprint-status.yaml:272`
+  // `ARCHITECTURE-SPINE.md:89`, `epic-2-context.md:44`, the Story 4.3 note in `sprint-status.yaml`
   // and `spec-2-5:92,99` all mean Story 2.5's backend population rule when they
   // say "league filter".
   const years = useMemo(() => {
