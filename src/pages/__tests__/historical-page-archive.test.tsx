@@ -32,6 +32,14 @@ vi.mock('@posthog/react', () => ({
 
 vi.mock('sonner', () => ({ toast: db.toast }));
 
+// jsdom defines no `scrollIntoView`, and Radix's `Select` calls it while
+// highlighting the selected option, so every case that opens the year list
+// would otherwise crash inside a passive effect. The stub is a spy on purpose:
+// the "nothing on this surface moves the page" case asserts it was not called,
+// rather than relying on the method being absent.
+const scrollIntoView = vi.fn(() => {});
+Element.prototype.scrollIntoView = scrollIntoView;
+
 const lakers: Series['team_a'] = { id: 33, full_name: 'Los Angeles Lakers', abbreviation: 'LAL', created_at: 'e' };
 const warriors: Series['team_b'] = { id: 44, full_name: 'Golden State Warriors', abbreviation: 'GSW', created_at: 'f' };
 
@@ -114,11 +122,16 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
   });
 });
 
-// Story 2.9: the league chip and the league filter — one case per row of the
-// spec's I/O matrix. Per AGENTS.md · Evidence discipline nothing here asserts a
-// *computed accessible name*: chips, the legend and the live region are read
-// through `textContent` / structural queries, because jsdom's accname
-// implementation inserts separators Chrome does not (qa-matrix-1-5.md F16).
+// Story 2.9 put a league chip on every row, a per-league `Select` in the filter
+// row and a legend line under it. Story 2.10 re-cut all three on the owner's
+// call: the chip only where it carries information (`NBA` renders nothing), the
+// gloss moves to a click/keyboard popover, and the league control is deleted
+// outright — FR-10's filters stay year and team. The cases below are one per
+// row of that spec's I/O matrix. Per AGENTS.md · Evidence discipline nothing
+// here asserts a *computed accessible name*: chips, the gloss and the live
+// region are read through `textContent` or literal attributes, because jsdom's
+// accname implementation inserts separators Chrome does not
+// (qa-matrix-1-5.md §5 note 4, finding F16).
 const nets: Series['team_a'] = { id: 66, full_name: 'New York Nets', abbreviation: 'NYN', created_at: 'h' };
 const colonels: Series['team_b'] = { id: 77, full_name: 'Kentucky Colonels', abbreviation: 'KEN', created_at: 'i' };
 
@@ -138,6 +151,10 @@ const abaRow: Series = {
   winner_team: nets,
   winner_team_id: 66,
 };
+
+/** The sentence Story 2.9 D2 ratified and Story 2.10 D2' moved into the popover. */
+const GLOSS =
+  'BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.';
 
 function rowByYear(year: number): HTMLTableRowElement {
   return yearCell(year).closest('tr') as HTMLTableRowElement;
@@ -161,9 +178,7 @@ function optionByText(value: string) {
 
 /**
  * Drives a Radix `Select` the way a pointer/keyboard user reaches it: the
- * trigger opens on click and the choice lands on the option's own click. The
- * league trigger is located by the id its visible `<label for>` points at, so
- * the labeling is exercised rather than assumed.
+ * trigger opens on click and the choice lands on the option's own click.
  */
 async function chooseFrom(select: HTMLElement, value: string) {
   fireEvent.click(select);
@@ -177,13 +192,15 @@ async function chooseFrom(select: HTMLElement, value: string) {
   });
 }
 
-function chooseLeague(value: string) {
-  return chooseFrom(document.getElementById('league-filter-select') as HTMLElement, value);
-}
-
-// The year `Select` is the first combobox in the filter row.
 function chooseYear(value: string) {
   return chooseFrom(document.querySelectorAll<HTMLElement>('[role="combobox"]')[0], value);
+}
+
+/** The gloss trigger, located by its own text rather than a computed name. */
+function glossTrigger(): HTMLElement {
+  const button = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Leagues');
+  if (!button) throw new Error('no gloss trigger button');
+  return button;
 }
 
 function liveRegion(): Element | null {
@@ -194,26 +211,60 @@ function renderedRows(): number {
   return document.querySelectorAll('tbody tr').length;
 }
 
-describe('HistoricalPage league chip and filter (Story 2.9)', () => {
-  it('keeps every league in scope at the default, with the count announced', async () => {
+function chipCount(container: HTMLElement): number {
+  return Array.from(container.querySelectorAll('span')).filter((s) => ['NBA', 'BAA', 'ABA'].includes(s.textContent ?? '')).length;
+}
+
+/**
+ * The select string split on its top-level columns only, so a nested wildcard
+ * (`team_a:team_a_id(*)`) cannot masquerade as the whole-row one. PostgREST
+ * nests inside parentheses, so depth tracking is enough.
+ */
+function topLevelColumns(select: string): string[] {
+  const cols: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const char of select) {
+    if (char === '(') depth += 1;
+    else if (char === ')') depth -= 1;
+    if (char === ',' && depth === 0) {
+      cols.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  cols.push(current.trim());
+  return cols;
+}
+
+function resetButton(): HTMLButtonElement | undefined {
+  // `FilterX` renders through lucide's `createLucideIcon("funnel-x")`, so the
+  // class on its svg is `lucide-funnel-x` — verified against
+  // node_modules/lucide-react/dist/esm/icons/funnel-x.js, not guessed.
+  return document.querySelector('svg.lucide-funnel-x')?.closest('button') ?? undefined;
+}
+
+describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D1\')', () => {
+  it('renders no chip on the NBA row, in the list or in its record', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1948');
 
-    expect(renderedRows()).toBe(3);
-    // Newest first, unchanged by this story: all three leagues are in scope.
-    expect(visibleYears()).toEqual(['1998', '1976', '1948']);
-    expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
+    expect(chipCount(rowByYear(1998))).toBe(0);
+    // AC 1's second half: dropping the chip does not drop or add a column.
+    expect(document.querySelectorAll('thead th')).toHaveLength(3);
+    fireEvent.click(yearCell(1998).closest('tr') as HTMLTableRowElement);
+    const sheet = screen.getByText('1998 Finals').closest('.rounded-xl') as HTMLElement;
+    expect(chipCount(sheet)).toBe(0);
   });
 
-  it('shows the stored league verbatim on each row and never maps BAA to NBA', async () => {
+  it('shows the stored league verbatim where a chip does render, and never maps BAA to NBA', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1948');
 
-    expect(within(rowByYear(1998)).getByText('NBA').textContent).toBe('NBA');
     expect(within(rowByYear(1948)).getByText('BAA').textContent).toBe('BAA');
-    expect(within(rowByYear(1976)).getByText('ABA').textContent).toBe('ABA');
     // The BAA row carries no NBA anywhere: nothing folds the stored value into
     // the younger league's name.
     expect(within(rowByYear(1948)).queryByText('NBA')).toBeNull();
@@ -229,125 +280,253 @@ describe('HistoricalPage league chip and filter (Story 2.9)', () => {
     expect(within(sheet).getByText('BAA').textContent).toBe('BAA');
   });
 
-  it('carries one plain-text legend line naming both BAA and ABA under the filters', async () => {
-    render(<HistoricalPage />);
-    const legend = await screen.findByText(/^BAA is the league that became the NBA in 1949/);
-
-    expect(legend.textContent).toBe(
-      'BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.'
-    );
-    // Under the filter row, not beside it: it follows the team-search control.
-    const search = screen.getByPlaceholderText('Search by team name...');
-    expect(legend.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
-  });
-
-  it('filters the archive to one league and re-announces the new result set', async () => {
-    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
-    await screen.findByText('1948');
-
-    await chooseLeague('ABA');
-
-    expect(renderedRows()).toBe(1);
-    expect(visibleYears()).toEqual(['1976']);
-    expect(liveRegion()?.textContent).toBe('Showing 1 of 1 series.');
-  });
-
-  it('intersects league with year and team search so none of the three overrides', async () => {
-    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
-    await screen.findByText('1948');
-
-    await chooseLeague('ABA');
-    await chooseYear('1976');
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
-
-    expect(renderedRows()).toBe(1);
-    expect(visibleYears()).toEqual(['1976']);
-
-    // Now the team predicate excludes the row the other two kept: an empty
-    // intersection reuses the existing empty state, with no new copy. The only
-    // row left in the table body is that empty row.
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Lakers' } });
-    expect(await screen.findByText('No series found matching your filters.')).toBeInTheDocument();
-    expect(visibleYears()).toEqual(['No series found matching your filters.']);
-  });
-
-  it('resets the visible counter to 10 when the league changes, like the year filter', async () => {
-    const many = Array.from({ length: 11 }, (_, i) => ({ ...archivedRow, id: `s-${i}`, year: 1998 - i }));
-    db.list = { data: [...many, abaRow], error: null };
+  it('keeps an unrecognized league visible rather than silencing it', async () => {
+    // Whatever the CHECK domain holds, a row the chip logic does not know must
+    // still show what it says instead of rendering as an unexplained NBA row.
+    db.list = { data: [{ ...archivedRow, league: 'NBL' }], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1998');
 
-    expect(renderedRows()).toBe(10);
-    fireEvent.click(screen.getByText('Load More History'));
-    await waitFor(() => expect(renderedRows()).toBe(12));
-
-    await chooseLeague('NBA');
-    // 11 NBA series are in scope, but only the first page shows again.
-    expect(renderedRows()).toBe(10);
-    expect(screen.getByText('Load More History')).toBeInTheDocument();
-  });
-
-  it('emits the existing historical_filter_applied event with the league value', async () => {
-    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
-    await screen.findByText('1948');
-
-    await chooseLeague('ABA');
-
-    expect(db.capture.mock.calls).toEqual([['historical_filter_applied', { filter_type: 'league', league: 'ABA' }]]);
-  });
-
-  it('clears the league filter with the reset button, and hides it again', async () => {
-    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
-    await screen.findByText('1948');
-
-    await chooseLeague('BAA');
-    expect(renderedRows()).toBe(1);
-
-    const reset = document.querySelector('svg.lucide-funnel-x')?.closest('button');
-    // `toBeInstanceOf` fails on `undefined` too, which `not.toBeNull()` does not.
-    expect(reset).toBeInstanceOf(HTMLButtonElement);
-    fireEvent.click(reset as HTMLButtonElement);
-
-    await waitFor(() => expect(renderedRows()).toBe(3));
-    // The button's own visibility condition gained the league filter too.
-    expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
-    expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
-  });
-
-  it('changes the league without moving the page', async () => {
-    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-    const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
-    render(<HistoricalPage />);
-    await screen.findByText('1948');
-
-    await chooseLeague('ABA');
-
-    // The spec's "no automatic scroll on selection" rule is the owner's
-    // established behavior for this app, so it is pinned rather than promised.
-    // `scrollIntoView` needs no spy: jsdom does not define it, so a call would
-    // throw and fail this case on its own.
-    expect(scrollTo).not.toHaveBeenCalled();
-    expect(scroll).not.toHaveBeenCalled();
-    scrollTo.mockRestore();
-    scroll.mockRestore();
+    expect(within(rowByYear(1998)).getByText('NBL').textContent).toBe('NBL');
   });
 
   it('reads `league` on the archive projection, not only on the predict one', async () => {
     render(<HistoricalPage />);
     await screen.findByText('1998');
 
-    // The chip, the option list and the predicate all read `series.league`, and
-    // this page receives it through the `*` wildcard. The mock hands back the
-    // fixtures whatever the projection says, so an enumerated rewrite that
-    // dropped `league` would keep every other case green while blanking the
-    // chip in production — the exact failure shape this file's header comment
-    // records for Story 2.2. Pin the wire, as `predict-phase-groups` pins its own.
-    expect(db.projection).toMatch(/(\*|\bleague\b)/);
+    // The chip reads `series.league`, and this page receives it through the
+    // whole-row wildcard. The mock hands back the fixtures whatever the
+    // projection says, so an enumerated rewrite that dropped `league` would keep
+    // every other case green while blanking the chip in production — the exact
+    // failure shape this file's header comment records for Story 2.2. Pin the
+    // wire at the only depth where it means something: a bare top-level `*`, or
+    // an explicit `league`. (`/(\*|\bleague\b)/` was the first attempt here and
+    // was vacuous — every plausible projection carries nested `(*)` selects, so
+    // it could not fail.)
+    const cols = topLevelColumns(db.projection);
+    expect(cols.includes('*') || cols.includes('league')).toBe(true);
+    expect(cols).toContain('*');
+  });
+});
+
+describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9 D3)', () => {
+  it('lists every league by default, chips and all, with the count announced', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    // The 18 ABA rows stay in the archive and in the SEO set (AD-7); the chip is
+    // what marks them, not a filter that hides them.
+    expect(renderedRows()).toBe(3);
+    expect(visibleYears()).toEqual(['1998', '1976', '1948']);
+    expect(within(rowByYear(1976)).getByText('ABA').textContent).toBe('ABA');
+    expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
+    expect(resetButton()).toBeUndefined();
+  });
+
+  it('offers the year `Select` as the only dropdown in the filter row', async () => {
+    db.list = { data: [archivedRow, baaRow, { ...abaRow, id: 's-aba-72', year: 1972 }], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    expect(document.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+    // 2.9's control, and the scope toggle that replaced it, are both gone.
+    expect(document.body.textContent).not.toContain('Filter League');
+    expect(document.body.textContent).not.toContain('All leagues');
+    expect(document.body.textContent).not.toContain('Archive scope');
+    // And the year list is back to the whole archive: 1972 exists here only as
+    // an ABA series, and nothing scopes it out any more.
+    const yearSelect = document.querySelectorAll<HTMLElement>('[role="combobox"]')[0];
+    fireEvent.click(yearSelect);
+    await waitFor(() => expect(optionByText('1998')).toBeTruthy());
+    expect(optionByText('1972')?.textContent).toBe('1972');
+    fireEvent.click(optionByText('All Years') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('[role="listbox"]')).toBeNull());
+  });
+
+  it('never emits a league filter event, since nothing filters by league', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseYear('1976');
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.click(glossTrigger());
+    fireEvent.click(rowByYear(1976));
+
+    // The whole capture log for the surface, including the row expansion: two
+    // filter events, nothing from the gloss trigger, and §A.1's existing
+    // `historical_series_expanded`. Because the array is pinned exactly, no name
+    // outside addendum §A.1's ten can appear without failing this case, and a
+    // `filter_type: 'league'` cannot either.
+    expect(db.capture.mock.calls).toEqual([
+      ['historical_filter_applied', { filter_type: 'year', year: '1976' }],
+      ['historical_filter_applied', { filter_type: 'team_search' }],
+      [
+        'historical_series_expanded',
+        {
+          series_id: 's-aba',
+          series_year: 1976,
+          series_round: 'ABA Finals',
+          team_a: 'New York Nets',
+          team_b: 'Kentucky Colonels',
+          winner: 'New York Nets',
+        },
+      ],
+    ]);
+  });
+
+  it('intersects year with team search, and an empty intersection reuses the existing empty state', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseYear('1976');
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    expect(renderedRows()).toBe(1);
+    expect(visibleYears()).toEqual(['1976']);
+
+    // Now the team predicate excludes the row the year kept: FR-10's combined
+    // rule, with the copy that already existed and no new empty state.
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Lakers' } });
+    expect(await screen.findByText('No series found matching your filters.')).toBeInTheDocument();
+    expect(liveRegion()?.textContent).toBe('Showing 0 of 0 series.');
+  });
+
+  it('clears both filters with the reset button and hides it again', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseYear('1976');
+    expect(renderedRows()).toBe(1);
+
+    const reset = resetButton();
+    // `toBeInstanceOf` fails on `undefined` too, which `not.toBeNull()` does not.
+    expect(reset).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.click(reset as HTMLButtonElement);
+
+    await waitFor(() => expect(renderedRows()).toBe(3));
+    expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
+    expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
+  });
+
+  it('resets the visible counter to 10 when the year filter changes, as it always did', async () => {
+    // 15 in 1998 and 10 in 1997: paging out to 20 rows and then filtering to the
+    // 15-row year has to land on a 10-row page again, which is only true if the
+    // counter reset rather than staying at 20.
+    db.list = {
+      data: [
+        ...Array.from({ length: 15 }, (_, i) => ({ ...archivedRow, id: `a-${i}`, year: 1998 })),
+        ...Array.from({ length: 10 }, (_, i) => ({ ...archivedRow, id: `b-${i}`, year: 1997 })),
+      ],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    // Not `findByText('1998')` — fifteen rows carry that year, and a text query
+    // that matches more than one element throws.
+    await waitFor(() => expect(renderedRows()).toBe(10));
+
+    fireEvent.click(screen.getByText('Load More History'));
+    await waitFor(() => expect(renderedRows()).toBe(20));
+
+    await chooseYear('1998');
+    expect(renderedRows()).toBe(10);
+    expect(screen.getByText('Load More History')).toBeInTheDocument();
+  });
+
+  it('resets the visible counter to 10 when the team search changes, on the same terms', async () => {
+    // The counter reset lives in two call sites (`HistoricalPage.tsx:186`'s
+    // search handler as well as the year one), and only the year path was covered
+    // above. 15 Lakers rows and 10 Nets rows: page out to 20, then search for
+    // `Lakers`, and a 15-row page proves the counter stayed at 20.
+    db.list = {
+      data: [
+        ...Array.from({ length: 15 }, (_, i) => ({ ...archivedRow, id: `l-${i}` })),
+        ...Array.from({ length: 10 }, (_, i) => ({ ...abaRow, id: `n-${i}` })),
+      ],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(10));
+
+    fireEvent.click(screen.getByText('Load More History'));
+    await waitFor(() => expect(renderedRows()).toBe(20));
+
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Lakers' } });
+    await waitFor(() => expect(liveRegion()?.textContent).toBe('Showing 10 of 15 series.'));
+    expect(renderedRows()).toBe(10);
+    expect(screen.getByText('Load More History')).toBeInTheDocument();
+  });
+});
+
+describe('HistoricalPage gloss popover (Story 2.10 D2\', supersedes 2.9 D2 carrier)', () => {
+  it('keeps the gloss out of the layout until the trigger is opened', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    // 2.9's always-visible legend line is gone: no element anywhere carries the
+    // sentence before a click.
+    expect(document.body.textContent).not.toContain('BAA is the league');
+    expect(glossTrigger()).toBeInstanceOf(HTMLButtonElement);
+  });
+
+  it('shows the ratified sentence verbatim when the trigger is clicked', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    fireEvent.click(glossTrigger());
+
+    const gloss = await screen.findByText(/^BAA is the league that became the NBA in 1949/);
+    expect(gloss.textContent).toBe(GLOSS);
+  });
+
+  it('names the panel it opens, by literal attribute', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    fireEvent.click(glossTrigger());
+
+    // Chrome's own tree reported this panel as `dialog` with an empty name on the
+    // first 2.10 build, so the attribute is pinned literally — asserting the
+    // computed name here would be the jsdom accname check AGENTS.md forbids.
+    const panel = await waitFor(() => {
+      const el = document.querySelector('[role="dialog"]');
+      if (!el) throw new Error('no dialog panel open');
+      return el;
+    });
+    expect(panel.getAttribute('aria-label')).toBe('What the league chips mean');
+  });
+
+  it('closes the gloss on Escape from inside the panel', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    fireEvent.click(glossTrigger());
+    const panel = await waitFor(() => {
+      const el = document.querySelector('[role="dialog"]');
+      if (!el) throw new Error('no dialog panel open');
+      return el as HTMLElement;
+    });
+    // Dismissal is pinned from the panel, where focus actually is after Radix
+    // moves it there, not from the trigger — the earlier version of this case
+    // fired on the trigger, which only passed because the listener is
+    // document-level.
+    expect(document.activeElement).toBe(panel);
+    fireEvent.keyDown(panel, { key: 'Escape', code: 'Escape' });
+    await waitFor(() => expect(document.body.textContent).not.toContain('BAA is the league'));
+  });
+
+  it('explains without scoping: opening the gloss changes no row and no count', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    fireEvent.click(glossTrigger());
+    expect(await screen.findByText(/^BAA is the league that became the NBA in 1949/)).toBeInTheDocument();
+
+    expect(renderedRows()).toBe(3);
+    expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
   });
 
   it('puts every piece of text it adds on the AA-safe token', async () => {
@@ -358,13 +537,56 @@ describe('HistoricalPage league chip and filter (Story 2.9)', () => {
     // Computed contrast is only reachable over CDP (the spec's record carries the
     // measurement); jsdom can pin the token, which is what a later edit can drift.
     const chip = within(rowByYear(1948)).getByText('BAA');
-    const legend = await screen.findByText(/^BAA is the league that became the NBA in 1949/);
-    const label = document.querySelector('label[for="league-filter-select"]') as HTMLElement;
+    const abaChip = within(rowByYear(1976)).getByText('ABA');
+    const trigger = glossTrigger();
 
-    for (const el of [chip, legend, label]) {
+    for (const el of [chip, abaChip, trigger]) {
       expect(el.classList.contains('text-on-muted')).toBe(true);
       expect(el.className).not.toContain('text-muted-foreground');
     }
+  });
+
+  it('adds the trigger without moving the page', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    fireEvent.click(glossTrigger());
+    await screen.findByText(/^BAA is the league that became the NBA in 1949/);
+
+    // The owner's established behavior for this app is that selecting something
+    // never scrolls, so it is pinned rather than promised. `scrollIntoView` is a
+    // spy (see the polyfill note above), so an attempt shows up here instead of
+    // throwing.
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    scroll.mockRestore();
+  });
+
+  it('moves the page for no filter interaction either', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseYear('1976');
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.click(resetButton() as HTMLButtonElement);
+    fireEvent.click(rowByYear(1998));
+
+    // `scrollIntoView` is deliberately not asserted here: opening the year
+    // `Select` makes Radix scroll its own highlighted option inside the popup,
+    // which is the listbox moving, not the page. The two window methods are what
+    // a page scroll would go through.
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    scroll.mockRestore();
   });
 
   it('keeps the live region out of the list section\'s first-child slot', async () => {
