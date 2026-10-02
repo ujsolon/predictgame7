@@ -124,14 +124,16 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
 
 // Story 2.9 put a league chip on every row, a per-league `Select` in the filter
 // row and a legend line under it. Story 2.10 re-cut all three on the owner's
-// call: the chip only where it carries information (`NBA` renders nothing), the
-// gloss moves to a click/keyboard popover, and the league control is deleted
-// outright — FR-10's filters stay year and team. The cases below are one per
-// row of that spec's I/O matrix. Per AGENTS.md · Evidence discipline nothing
-// here asserts a *computed accessible name*: chips, the gloss and the live
-// region are read through `textContent` or literal attributes, because jsdom's
-// accname implementation inserts separators Chrome does not
-// (qa-matrix-1-5.md §5 note 4, finding F16).
+// call, and the owner re-cut 2.10's carrier the same day after reviewing it in
+// preview: the chip renders only where it carries information — `NBA` is gated
+// out at the call site so those rows build no chip at all — the league control is
+// deleted outright (FR-10's filters stay year and team), and the gloss is static
+// text inside the record of a series that carries a chip, with no trigger
+// anywhere on the filter row. The cases below are one per row of that spec's I/O
+// matrix. Per AGENTS.md · Evidence discipline nothing here asserts a *computed
+// accessible name*: chips, the gloss and the live region are read through
+// `textContent` or literal attributes, because jsdom's accname implementation
+// inserts separators Chrome does not (qa-matrix-1-5.md §5 note 4, finding F16).
 const nets: Series['team_a'] = { id: 66, full_name: 'New York Nets', abbreviation: 'NYN', created_at: 'h' };
 const colonels: Series['team_b'] = { id: 77, full_name: 'Kentucky Colonels', abbreviation: 'KEN', created_at: 'i' };
 
@@ -152,7 +154,7 @@ const abaRow: Series = {
   winner_team_id: 66,
 };
 
-/** The sentence Story 2.9 D2 ratified and Story 2.10 D2' moved into the popover. */
+/** The sentence Story 2.9 D2 ratified; 2.10 moved it into a chipped record. */
 const GLOSS =
   'BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.';
 
@@ -196,11 +198,19 @@ function chooseYear(value: string) {
   return chooseFrom(document.querySelectorAll<HTMLElement>('[role="combobox"]')[0], value);
 }
 
-/** The gloss trigger, located by its own text rather than a computed name. */
-function glossTrigger(): HTMLElement {
-  const button = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Leagues');
-  if (!button) throw new Error('no gloss trigger button');
-  return button;
+/** The ratified gloss sentence, located as a rendered paragraph — never by a
+ *  computed name, and never by opening something. */
+function gloss(): HTMLElement | null {
+  return Array.from(document.querySelectorAll('p')).find((p) => p.textContent === GLOSS) ?? null;
+}
+
+/** Opens a series record the way a pointer user does: click the row. */
+async function openRecord(year: number, title: string): Promise<HTMLElement> {
+  fireEvent.click(rowByYear(year));
+  const heading = await screen.findByText(title);
+  const sheet = heading.closest('.rounded-xl');
+  if (!sheet) throw new Error(`no record sheet rendered for ${title}`);
+  return sheet as HTMLElement;
 }
 
 function liveRegion(): Element | null {
@@ -254,9 +264,14 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
     expect(chipCount(rowByYear(1998))).toBe(0);
     // AC 1's second half: dropping the chip does not drop or add a column.
     expect(document.querySelectorAll('thead th')).toHaveLength(3);
-    fireEvent.click(yearCell(1998).closest('tr') as HTMLTableRowElement);
-    const sheet = screen.getByText('1998 Finals').closest('.rounded-xl') as HTMLElement;
+    const sheet = await openRecord(1998, '1998 Finals');
     expect(chipCount(sheet)).toBe(0);
+    // The NBA record carries no gloss either — it is the chipped rows that need
+    // the sentence, and `showsLeagueChip` is the one rule behind both. That the
+    // guard sits in front of the element rather than inside `LeagueChip` (the
+    // owner's 2026-10-02 call, so 159 rows spend no render pass on it) is a
+    // source-level fact: a tree with no chip looks identical either way.
+    expect(gloss()).toBeNull();
   });
 
   it('shows the stored league verbatim where a chip does render, and never maps BAA to NBA', async () => {
@@ -274,9 +289,8 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1948');
-    fireEvent.click(yearCell(1948).closest('tr') as HTMLTableRowElement);
 
-    const sheet = screen.getByText('1948 BAA Finals').closest('.rounded-xl') as HTMLElement;
+    const sheet = await openRecord(1948, '1948 BAA Finals');
     expect(within(sheet).getByText('BAA').textContent).toBe('BAA');
   });
 
@@ -330,10 +344,12 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     await screen.findByText('1948');
 
     expect(document.querySelectorAll('[role="combobox"]')).toHaveLength(1);
-    // 2.9's control, and the scope toggle that replaced it, are both gone.
+    // 2.9's control is gone. The `'Archive scope'` assertion that sat here was
+    // dropped on the 2026-10-02 dead-code pass: the scope toggle it named was
+    // built, measured and then removed before it was ever committed, so no edit
+    // to this tree could resurrect it and the case could not fail.
     expect(document.body.textContent).not.toContain('Filter League');
     expect(document.body.textContent).not.toContain('All leagues');
-    expect(document.body.textContent).not.toContain('Archive scope');
     // And the year list is back to the whole archive: 1972 exists here only as
     // an ABA series, and nothing scopes it out any more.
     const yearSelect = document.querySelectorAll<HTMLElement>('[role="combobox"]')[0];
@@ -351,14 +367,14 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 
     await chooseYear('1976');
     fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
-    fireEvent.click(glossTrigger());
     fireEvent.click(rowByYear(1976));
 
     // The whole capture log for the surface, including the row expansion: two
-    // filter events, nothing from the gloss trigger, and §A.1's existing
-    // `historical_series_expanded`. Because the array is pinned exactly, no name
-    // outside addendum §A.1's ten can appear without failing this case, and a
-    // `filter_type: 'league'` cannot either.
+    // filter events and §A.1's existing `historical_series_expanded`. Because the
+    // array is pinned exactly, no name outside addendum §A.1's ten can appear
+    // without failing this case, and a `filter_type: 'league'` cannot either. The
+    // gloss is not clicked here because there is nothing to click: it is static
+    // text, and an explanation was never a filter application (2.10 D4').
     expect(db.capture.mock.calls).toEqual([
       ['historical_filter_applied', { filter_type: 'year', year: '1976' }],
       ['historical_filter_applied', { filter_type: 'team_search' }],
@@ -459,71 +475,72 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     expect(screen.getByText('Load More History')).toBeInTheDocument();
   });
 });
-
-describe('HistoricalPage gloss popover (Story 2.10 D2\', supersedes 2.9 D2 carrier)', () => {
-  it('keeps the gloss out of the layout until the trigger is opened', async () => {
-    render(<HistoricalPage />);
-    await screen.findByText('1998');
-
-    // 2.9's always-visible legend line is gone: no element anywhere carries the
-    // sentence before a click.
-    expect(document.body.textContent).not.toContain('BAA is the league');
-    expect(glossTrigger()).toBeInstanceOf(HTMLButtonElement);
-  });
-
-  it('shows the ratified sentence verbatim when the trigger is clicked', async () => {
-    render(<HistoricalPage />);
-    await screen.findByText('1998');
-
-    fireEvent.click(glossTrigger());
-
-    const gloss = await screen.findByText(/^BAA is the league that became the NBA in 1949/);
-    expect(gloss.textContent).toBe(GLOSS);
-  });
-
-  it('names the panel it opens, by literal attribute', async () => {
-    render(<HistoricalPage />);
-    await screen.findByText('1998');
-
-    fireEvent.click(glossTrigger());
-
-    // Chrome's own tree reported this panel as `dialog` with an empty name on the
-    // first 2.10 build, so the attribute is pinned literally — asserting the
-    // computed name here would be the jsdom accname check AGENTS.md forbids.
-    const panel = await waitFor(() => {
-      const el = document.querySelector('[role="dialog"]');
-      if (!el) throw new Error('no dialog panel open');
-      return el;
-    });
-    expect(panel.getAttribute('aria-label')).toBe('What the league chips mean');
-  });
-
-  it('closes the gloss on Escape from inside the panel', async () => {
-    render(<HistoricalPage />);
-    await screen.findByText('1998');
-
-    fireEvent.click(glossTrigger());
-    const panel = await waitFor(() => {
-      const el = document.querySelector('[role="dialog"]');
-      if (!el) throw new Error('no dialog panel open');
-      return el as HTMLElement;
-    });
-    // Dismissal is pinned from the panel, where focus actually is after Radix
-    // moves it there, not from the trigger — the earlier version of this case
-    // fired on the trigger, which only passed because the listener is
-    // document-level.
-    expect(document.activeElement).toBe(panel);
-    fireEvent.keyDown(panel, { key: 'Escape', code: 'Escape' });
-    await waitFor(() => expect(document.body.textContent).not.toContain('BAA is the league'));
-  });
-
-  it('explains without scoping: opening the gloss changes no row and no count', async () => {
+describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised by the owner the same day)', () => {
+  it('keeps the sentence off the surface until a chipped record is open', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1948');
 
-    fireEvent.click(glossTrigger());
-    expect(await screen.findByText(/^BAA is the league that became the NBA in 1949/)).toBeInTheDocument();
+    // Neither carrier that existed earlier survives: not 2.9's always-visible
+    // legend line, and not 2.10's first replacement for it — a `Leagues` trigger
+    // button in the filter row, which the owner judged too prominent for an
+    // audience here for the modern game. A named `dialog` is what that trigger
+    // opened, so pinning its absence pins the deletion.
+    expect(document.body.textContent).not.toContain('BAA is the league');
+    expect(Array.from(document.querySelectorAll('button')).some((b) => b.textContent === 'Leagues')).toBe(false);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('glosses the record of a BAA row, verbatim, inside that sheet', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    const sheet = await openRecord(1948, '1948 BAA Finals');
+    const paragraph = gloss();
+    expect(paragraph).toBeInstanceOf(HTMLParagraphElement);
+    expect(sheet.contains(paragraph)).toBe(true);
+    // Verbatim means Story 2.9 (D2)'s ratified wording, not a paraphrase of it.
+    expect(paragraph?.textContent).toBe(GLOSS);
+    // It sits *below* the winner readout, not in the header: on the 390px pass the
+    // header placement wrapped the sentence to six lines beside the logo stack and
+    // floated the close button into the middle of it, so the owner moved it to the
+    // foot of the card. Pin the order, since nothing else would notice a move back.
+    const winnerLabel = Array.from(sheet.querySelectorAll('p')).find((el) => el.textContent === 'Series Winner');
+    expect(winnerLabel).toBeInstanceOf(HTMLParagraphElement);
+    expect(winnerLabel!.compareDocumentPosition(paragraph!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // Static text in an already-open sheet: no popup anywhere on the page.
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('glosses an ABA record on the same rule, beside its chip', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    const sheet = await openRecord(1976, '1976 ABA Finals');
+    expect(within(sheet).getByText('ABA').textContent).toBe('ABA');
+    expect(gloss()).toBeInstanceOf(HTMLParagraphElement);
+  });
+
+  it('does not gloss an unchipped record', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await openRecord(1998, '1998 Finals');
+    // The 159 `NBA` rows are the archive's own default; the sentence explaining
+    // the two exceptions has no reason to appear on them.
+    expect(gloss()).toBeNull();
+  });
+
+  it('explains without scoping: opening a chipped record changes no row and no count', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await openRecord(1948, '1948 BAA Finals');
+    expect(gloss()).toBeInstanceOf(HTMLParagraphElement);
 
     expect(renderedRows()).toBe(3);
     expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
@@ -533,28 +550,28 @@ describe('HistoricalPage gloss popover (Story 2.10 D2\', supersedes 2.9 D2 carri
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     render(<HistoricalPage />);
     await screen.findByText('1948');
+    await openRecord(1948, '1948 BAA Finals');
 
     // Computed contrast is only reachable over CDP (the spec's record carries the
     // measurement); jsdom can pin the token, which is what a later edit can drift.
     const chip = within(rowByYear(1948)).getByText('BAA');
     const abaChip = within(rowByYear(1976)).getByText('ABA');
-    const trigger = glossTrigger();
+    const paragraph = gloss() as HTMLElement;
 
-    for (const el of [chip, abaChip, trigger]) {
+    for (const el of [chip, abaChip, paragraph]) {
       expect(el.classList.contains('text-on-muted')).toBe(true);
       expect(el.className).not.toContain('text-muted-foreground');
     }
   });
 
-  it('adds the trigger without moving the page', async () => {
+  it('adds the gloss without moving the page', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
     render(<HistoricalPage />);
     await screen.findByText('1948');
 
-    fireEvent.click(glossTrigger());
-    await screen.findByText(/^BAA is the league that became the NBA in 1949/);
+    await openRecord(1948, '1948 BAA Finals');
 
     // The owner's established behavior for this app is that selecting something
     // never scrolls, so it is pinned rather than promised. `scrollIntoView` is a

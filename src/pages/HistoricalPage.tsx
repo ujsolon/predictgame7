@@ -3,11 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/db/supabase';
 import { Series, SeriesGameScore, Team } from '@/types/types';
-import { Loader2, ChevronDown, Check, Search, FilterX, Info } from 'lucide-react';
+import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
@@ -20,48 +19,28 @@ interface SeriesWithNestedTeams extends Series {
   series_game_scores?: SeriesGameScore[];
 }
 
-// Story 2.9 (D1), re-cut by Story 2.10 (D1'): the stored `series.league` shown
-// verbatim — no year-derived value, no `BAA` folded into `NBA` — but only where
-// it carries information. An `NBA` row is the archive's own default and the chip
-// on all 159 of them is noise, so `NBA` renders nothing; `BAA` and `ABA` keep
-// their chips in the "Matchup & Round" cell and beside the expanded record's
-// title. A league value outside the three known ones still renders verbatim:
-// an unexplained row should show what it says rather than be silenced.
-// `text-on-muted` (#595959, ~6.4:1 on the `muted` #F5F5F5 fill it sits on)
-// rather than the label motif's `muted-foreground`, which is #808080 and fails
-// AA for text this small until Story 5.2 retunes the token.
+// Story 2.9 (D1), re-cut by Story 2.10 (D1'), then by the owner's review of the
+// same day: the chip is the *exception* path, so the guard stands in front of the
+// element rather than inside the component. An `NBA` row — 159 of 178, and every
+// future one — never constructs `LeagueChip` at all: no render pass, no node.
+// `showsLeagueChip` is the single copy of the rule; the component is pure
+// presentation of a stored value. Verbatim, no year-derived value, no `BAA`
+// folded into `NBA`. A league outside the three known ones still counts as the
+// exception and renders what it says — fail visible, because an unexplained row
+// is a fact the archive exists to state.
+const showsLeagueChip = (league: string) => league !== 'NBA';
+
+const LEAGUE_GLOSS =
+  'BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.';
+
+// `text-on-muted` (#595959, ~6.4:1 on the `muted` #F5F5F5 fill it sits on) rather
+// than the label motif's `muted-foreground`, which is #808080 and fails AA for
+// text this small until Story 5.2 retunes the token.
 function LeagueChip({ league }: { league: string }) {
-  if (league === 'NBA') return null;
   return (
     <span className="inline-flex items-center rounded-md border border-border/60 bg-muted px-1.5 py-0.5 text-[10px] uppercase leading-none tracking-widest font-semibold text-on-muted">
       {league}
     </span>
-  );
-}
-
-// Story 2.10 (D2'): the gloss on the two leagues that carry a chip. A click/
-// keyboard carrier, not a tooltip — `@radix-ui/react-tooltip` returns on
-// `pointerType === 'touch'`, so a tooltip would put the explanation out of reach
-// on the mobile surface this page must be usable on (EXPERIENCE.md bans
-// hover-only affordances). The sentence is Story 2.9 (D2)'s, verbatim.
-function LeagueGloss() {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" className="h-11 gap-1.5 px-2 text-xs uppercase tracking-widest text-on-muted">
-          <Info className="h-4 w-4" aria-hidden="true" />
-          Leagues
-        </Button>
-      </PopoverTrigger>
-      {/* `aria-label` because the panel is `role="dialog"` and Radix gives it no
-          name of its own: measured in Chrome's accessibility tree on the preview
-          build as `dialog` with an empty name, which is a 4.1.2 gap on a surface
-          this story is responsible for. The trigger's own visible text is the
-          button's name; this is the panel's. */}
-      <PopoverContent aria-label="What the league chips mean" className="w-80 text-sm leading-relaxed">
-        BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -102,6 +81,21 @@ export default function HistoricalPage() {
     }
   };
 
+  // Story 2.10 (D3') — read this before touching either number. This list is the
+  // whole archive: 178 series, because the 18 `ABA` rows are archived here and
+  // stay openable (AD-7), and there is deliberately no league control to scope
+  // them out. Every insight denominator on the predict side is 160, because
+  // Story 2.5's population rule is `league IN ('NBA','BAA')` — the marker for a
+  // real Game-7 venue (migration `00016`), not a UI preference. So the counter
+  // below announces 178 while the insights read 160, and the owner accepted that
+  // on 2026-10-02: reconciling it in the UI would mean a filter nobody reaches
+  // for, which is what 2.9's deleted `Select` was. The chip on the 19 rows plus
+  // the gloss in a chipped record are the whole reconciliation, and running it is
+  // the reader's job.
+  // Decoys with the same words that must NOT move: `epics.md:382`,
+  // `ARCHITECTURE-SPINE.md:89`, `epic-2-context.md:44`, `sprint-status.yaml:253`
+  // and `spec-2-5:91,98` all mean Story 2.5's backend population rule when they
+  // say "league filter".
   const years = useMemo(() => {
     const uniqueYears = Array.from(new Set(seriesList.map((series) => series.year))).sort((a, b) => b - a);
     return uniqueYears;
@@ -187,10 +181,6 @@ export default function HistoricalPage() {
             />
           </div>
         </div>
-        {/* Story 2.10 (D1'/D2'): the league marker is the chip on the rows that
-            need one, and this is where its explanation lives — `h-11` so the
-            44×44px floor in EXPERIENCE.md · Interaction Primitives holds. */}
-        <LeagueGloss />
         {(yearFilter !== 'all' || teamSearch !== '') && (
           <Button variant="ghost" size="icon" onClick={resetFilters} className="h-10 w-10 text-muted-foreground hover:text-destructive transition-colors">
             <FilterX className="h-5 w-5" />
@@ -264,12 +254,13 @@ export default function HistoricalPage() {
                             </div>
                           </div>
                           {/* Story 2.9 (D1), re-cut by 2.10 (D1'): the chip sits
-                              inline beside the round sub-label, and renders only
-                              on the rows that need one — the table stays three
-                              columns either way and the empty row colSpan={3}. */}
+                              inline beside the round sub-label, gated by
+                              `showsLeagueChip` so an `NBA` row builds nothing —
+                              the table stays three columns either way and the
+                              empty row colSpan={3}. */}
                           <div className="flex items-center gap-2">
                             <span className="text-xs uppercase tracking-widest text-muted-foreground/50 font-medium">{series.round}</span>
-                            <LeagueChip league={series.league} />
+                            {showsLeagueChip(series.league) && <LeagueChip league={series.league} />}
                           </div>
                         </div>
                       </TableCell>
@@ -341,7 +332,7 @@ export default function HistoricalPage() {
                       it. The game tiles below are untouched. */}
                   <div className="flex items-center gap-2">
                     <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
-                    <LeagueChip league={selectedSeries.league} />
+                    {showsLeagueChip(selectedSeries.league) && <LeagueChip league={selectedSeries.league} />}
                   </div>
                   <CardDescription>{selectedSeries.team_a?.full_name} vs {selectedSeries.team_b?.full_name}</CardDescription>
                 </div>
@@ -387,6 +378,19 @@ export default function HistoricalPage() {
                   </div>
                 </div>
               </div>
+              {/* Story 2.10 (D2'), as revised by the owner on 2026-10-02: the
+                  gloss is not a filter-row feature — BAA/ABA history is trivia to
+                  an audience here for the modern game — so it is plain static
+                  text at the foot of the one record that carries a chip, which is
+                  where a reader needs it and needs nothing else. Static, so no
+                  hover-only affordance (EXPERIENCE.md · Interaction Primitives)
+                  and reachable on touch by construction. Bottom rather than the
+                  header: measured on the 390px pass, in the header column the
+                  sentence wrapped to six lines beside the logo stack and the
+                  close button ended up vertically centred inside the paragraph. */}
+              {showsLeagueChip(selectedSeries.league) && (
+                <p className="text-xs leading-relaxed text-on-muted">{LEAGUE_GLOSS}</p>
+              )}
             </CardContent>
           </Card>
         </div>
