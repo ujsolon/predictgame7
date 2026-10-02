@@ -111,12 +111,12 @@ development_status:
   # Found while building 2-10, on the owner's observation that typing SAS on /historical finds
   # Kansas City, not the Spurs. Measured bigger than it looks: the row displays
   # getTeamAbbreviation(full_name), which disagrees with the stored teams.abbreviation on 39 of 178
-  # rows (20 franchises, all pre-1976), and the helper has 16 more call sites on PredictPage (14 lines).
-  # SETTLED by the owner 2026-10-02 (walkthrough U1 + U3): search the FK's stored teams.abbreviation,
-  # keep the name path, accept the SAS→Kansas hit (the list is year-descending, so recent rows lead),
-  # and switch the row's displayed code to that same column. Open for 2-11's planning: whether the
-  # 16 PredictPage call sites change with it. Spec-2-10 D5' carries the measurement.
-  2-11-search-the-archive-by-the-stored-team-abbreviation: backlog
+  # rows (20 franchises, all pre-1976), and the helper has 16 more call sites on PredictPage (14
+  # lines, 2 inside a commented-out block). SETTLED 2026-10-02 over two owner rounds (walkthrough
+  # U1/U3, then U6-U9): search matches the FK's stored abbreviation, the name path stays, the
+  # SAS→Kansas hit is accepted (the list is year-descending, so recent rows lead), and all 14 live
+  # code sites read the row while the hardcoded TEAM_ABBREVIATIONS map is deleted. Spec-2-10 D5'.
+  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: backlog
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   2-5-insights-cache-refresh: backlog
@@ -264,7 +264,7 @@ action_items:
     epic: 4
     action: "Story 2.1's audit pinned the live total at 178 series / 1,246 score rows,
       every series exactly seven. The 177 figure still stands as a live-table claim in
-      prd.md FR-19 + :72/:224, epics.md :52/:542/:594 and EXPERIENCE.md :40, and AD-7's
+      prd.md FR-19 + :72/:224, epics.md :52 and EXPERIENCE.md :40, and AD-7's
       172+5 split sums to 177. Re-derive the prerender route list from the measured 178
       plus the owner's flagship list, then correct the wording in those five places --
       distinguish the source-spreadsheet 177 from the live count rather than overwriting
