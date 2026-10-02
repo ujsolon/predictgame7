@@ -19,6 +19,20 @@ interface SeriesWithNestedTeams extends Series {
   series_game_scores?: SeriesGameScore[];
 }
 
+// Story 2.9 (D1): the stored `series.league` shown verbatim — no year-derived
+// value, no `BAA` folded into `NBA`. Sits inline in the "Matchup & Round" cell
+// and beside the expanded record's title. `text-on-muted` (#595959, ~6.4:1 on
+// the `muted` #F5F5F5 fill it sits on) rather than the label motif's
+// `muted-foreground`, which is #808080 and fails AA for text this small until
+// Story 5.2 retunes the token.
+function LeagueChip({ league }: { league: string }) {
+  return (
+    <span className="inline-flex items-center rounded-md border border-border/60 bg-muted px-1.5 py-0.5 text-[10px] uppercase leading-none tracking-widest font-semibold text-on-muted">
+      {league}
+    </span>
+  );
+}
+
 export default function HistoricalPage() {
   const posthog = usePostHog();
   const [loading, setLoading] = useState(true);
@@ -26,6 +40,7 @@ export default function HistoricalPage() {
   const [visibleCount, setVisibleCount] = useState(10);
   const [selectedSeries, setSelectedSeries] = useState<SeriesWithNestedTeams | null>(null);
   const [yearFilter, setYearFilter] = useState<string>('all');
+  const [leagueFilter, setLeagueFilter] = useState<string>('all');
   const [teamSearch, setTeamSearch] = useState<string>('');
 
   useEffect(() => {
@@ -61,25 +76,42 @@ export default function HistoricalPage() {
     return uniqueYears;
   }, [seriesList]);
 
+  // Story 2.9 (D3): the same derive-the-options precedent as `years`, over the
+  // stored league. `seriesList` is sorted year-desc, so first sighting orders
+  // the leagues by their newest series (NBA, ABA, BAA) with nothing hardcoded.
+  const leagues = useMemo(() => {
+    return Array.from(new Set(seriesList.map((series) => series.league)));
+  }, [seriesList]);
+
   const filteredSeries = useMemo(() => {
     return seriesList.filter((series) => {
       const teamAName = series.team_a?.full_name ?? '';
       const teamBName = series.team_b?.full_name ?? '';
       const matchesYear = yearFilter === 'all' || series.year.toString() === yearFilter;
+      // Intersects with year and team search (FR-10): three predicates ANDed,
+      // none of them overriding the others.
+      const matchesLeague = leagueFilter === 'all' || series.league === leagueFilter;
       const matchesTeam =
         teamSearch === '' ||
         teamAName.toLowerCase().includes(teamSearch.toLowerCase()) ||
         teamBName.toLowerCase().includes(teamSearch.toLowerCase());
-      return matchesYear && matchesTeam;
+      return matchesYear && matchesLeague && matchesTeam;
     });
-  }, [seriesList, yearFilter, teamSearch]);
+  }, [seriesList, yearFilter, leagueFilter, teamSearch]);
 
   const loadMore = () => {
     setVisibleCount((prev) => prev + 10);
   };
 
+  const applyLeagueFilter = (val: string) => {
+    setLeagueFilter(val);
+    setVisibleCount(10);
+    posthog?.capture('historical_filter_applied', { filter_type: 'league', league: val });
+  };
+
   const resetFilters = () => {
     setYearFilter('all');
+    setLeagueFilter('all');
     setTeamSearch('');
     setVisibleCount(10);
   };
@@ -112,7 +144,7 @@ export default function HistoricalPage() {
         </p>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
+      <div className="flex flex-col md:flex-row md:flex-wrap gap-4 items-end bg-muted/20 p-4 rounded-lg border border-border/50">
         <div className="w-full md:w-[200px] space-y-2">
           <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1">Filter Year</label>
           <Select value={yearFilter} onValueChange={(val) => { setYearFilter(val); setVisibleCount(10); posthog?.capture('historical_filter_applied', { filter_type: 'year', year: val }); }}>
@@ -124,6 +156,24 @@ export default function HistoricalPage() {
               {years.map((year) => (
                 <SelectItem key={year} value={year.toString()}>
                   {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-full md:w-[200px] space-y-2">
+          <label className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold px-1" htmlFor="league-filter-select">
+            Filter League
+          </label>
+          <Select value={leagueFilter} onValueChange={applyLeagueFilter}>
+            <SelectTrigger id="league-filter-select" className="bg-background border-border/60">
+              <SelectValue placeholder="Select League" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All leagues</SelectItem>
+              {leagues.map((league) => (
+                <SelectItem key={league} value={league}>
+                  {league}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -141,14 +191,30 @@ export default function HistoricalPage() {
             />
           </div>
         </div>
-        {(yearFilter !== 'all' || teamSearch !== '') && (
+        {(yearFilter !== 'all' || leagueFilter !== 'all' || teamSearch !== '') && (
           <Button variant="ghost" size="icon" onClick={resetFilters} className="h-10 w-10 text-muted-foreground hover:text-destructive transition-colors">
             <FilterX className="h-5 w-5" />
           </Button>
         )}
+        {/* Story 2.9 (D2): one plain-text legend line under the filter row,
+            covering both BAA and ABA — no tooltip, nothing hover-only
+            (EXPERIENCE.md · Interaction Primitives bans hover-only
+            affordances). `text-on-muted` rather than `muted-foreground`,
+            because this is meaningful small text and #808080 fails AA until
+            Story 5.2. `md:basis-full` puts it on its own line inside the
+            filter card, so it reads as belonging to the controls. */}
+        <p className="w-full md:basis-full text-xs text-on-muted leading-relaxed">
+          BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records.
+        </p>
       </div>
 
       <div className="space-y-8">
+        {/* Story 2.9: the filtered result set is re-announced politely — the
+            list itself has no role, so the count lives in its own region. */}
+        <p aria-live="polite" className="sr-only">
+          {`Showing ${visibleSeries.length} of ${filteredSeries.length} series.`}
+        </p>
+
         <div className="w-full overflow-x-auto -mx-4 px-4 md:-mx-0 md:px-0">
           <Table>
             <TableHeader>
@@ -213,7 +279,13 @@ export default function HistoricalPage() {
                               )}
                             </div>
                           </div>
-                          <span className="text-xs uppercase tracking-widest text-muted-foreground/50 font-medium">{series.round}</span>
+                          {/* Story 2.9 (D1): the stored league inline beside the
+                              round sub-label — the table stays three columns and
+                              the empty row keeps colSpan={3}. */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs uppercase tracking-widest text-muted-foreground/50 font-medium">{series.round}</span>
+                            <LeagueChip league={series.league} />
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell className="py-8 text-right pr-8">
@@ -269,7 +341,13 @@ export default function HistoricalPage() {
                   )}
                 </div>
                 <div className="space-y-1">
-                  <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
+                  {/* Story 2.9: the same stored value the row carries, so the
+                      record repeats it rather than dropping it. The game tiles
+                      below are untouched. */}
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
+                    <LeagueChip league={selectedSeries.league} />
+                  </div>
                   <CardDescription>{selectedSeries.team_a?.full_name} vs {selectedSeries.team_b?.full_name}</CardDescription>
                 </div>
               </div>

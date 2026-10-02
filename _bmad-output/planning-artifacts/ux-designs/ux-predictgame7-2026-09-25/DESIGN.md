@@ -2,7 +2,7 @@
 name: PredictGame7
 status: final
 description: NBA Game 7 prediction analytics. Monochrome editorial sports desk — data in tabular mono, drama in large type, team logos as the only color. Light-only.
-updated: 2026-09-25
+updated: 2026-10-02
 sources:
   - ../../sprint-change-proposal-2026-09-25.md
 colors:
@@ -154,6 +154,7 @@ Existing shadcn primitives (Button, Card, Sheet, Sonner Toaster, and the full li
 - **Retry panel** — persistent `muted` panel, `rounded-lg`, hairline border: warning-tile icon, one-line failure description in `on-muted #595959`, Retry button. Behavior (in-place replacement, input preservation, the AD-9 refinement): EXPERIENCE.md · Component Patterns · Retry panel.
 - **Inline field error** — `destructive-text #B91C1C` under the field, `text-sm`, with `aria-describedby` wiring; the field border switches to `destructive #DC3C3C` (≥3:1 as a boundary). RHF + zod resolver (AD-9). Selected values always render in ink; placeholders in `#767676`. No alert boxes, no toasts for validation.
 - **Form success confirmation** — replaces the form region: confirmation title, one line, onward path; `role="status"`. Used by the Contact rebuild (Story 3.3).
+- **League chip + archive legend** (`/historical`, Story 2.9, 2026-10-02) — the label motif at `text-[10px]` (`uppercase tracking-widest font-semibold`) on a `muted #F5F5F5` fill inside a `rounded-md` `border #E6E6E6` hairline plate, ink text in `on-muted #595959` (~6.4:1 on that fill): the chip carries the **stored** `series.league` verbatim, so a `BAA` row reads `BAA` and nothing tints or merges it. It is text-only — no icon, no semantic color, and never the sole carrier of meaning (Colors). Placement is inline in the "Matchup & Round" cell beside the round sub-label and repeated beside the expanded record's title; the table stays three columns. The `#808080` small-text rule at Colors · Contrast floor is why the chip is `on-muted` and not `muted-foreground` — that app-wide retune stays Story 5.2's. Below the filter row, the two-league gloss is one plain sentence in the body-small `on-muted` pair, never a tooltip. No new radius, elevation, or token.
 - **Empty state** — accent-tile icon (`p-2 bg-accent rounded-lg`, matching Insights tiles), `headline`-weight title, one helpful line in muted text that meets small-text contrast, single onward link/button.
 
 ## Do's and Don'ts

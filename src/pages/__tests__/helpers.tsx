@@ -17,6 +17,7 @@ export const seriesFixture: Series = {
   id: 's-1',
   year: 2022,
   round: 'Finals',
+  league: 'NBA',
   team_a_id: 11,
   team_b_id: 22,
   created_at: 'c',

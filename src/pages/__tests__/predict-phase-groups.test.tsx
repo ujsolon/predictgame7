@@ -71,6 +71,7 @@ const archivedSeries: Series = {
   id: 's-archive',
   year: 1998,
   round: 'Finals',
+  league: 'NBA',
   team_a_id: 33,
   team_b_id: 44,
   winner_team_id: 33,
@@ -221,6 +222,10 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     expect(projection).toContain('winner_team_id');
     expect(projection).toContain('series_game_scores(*)');
     expect(projection).not.toMatch(/\bstatus\b/);
+    // Story 2.9 closes the other half of that asymmetry: this list enumerates
+    // its columns, so `league` has to be named here too or the `Series` this
+    // page builds is missing a field its own type requires.
+    expect(projection).toContain('league');
   });
 
   it('reports a pending series as `current` on the selection event', async () => {

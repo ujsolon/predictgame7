@@ -32,6 +32,7 @@ const SERIES_SELECT = `
   id,
   year,
   round,
+  league,
   team_a_id,
   team_b_id,
   winner_team_id,

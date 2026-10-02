@@ -8,12 +8,12 @@ sources:
   - ../../prds/prd-predictgame7-2026-09-22/prd.md
   - ../../prds/prd-predictgame7-2026-09-22/addendum.md
   - ../../sprint-change-proposal-2026-09-25.md
-updated: 2026-09-25
+updated: 2026-10-02
 ---
 
 # PredictGame7 — Experience Spine (scoped: 4 new surfaces)
 
-> Scoped run. Covers only the surfaces with no design yet: OG share card, flagship series content page, Share button + success states, error/empty states. The existing app (Home, Predict, Historical, Insights, Maths) is ratified practice — referenced where the new surfaces must match it, not re-specced. `DESIGN.md` beside this file is the visual reference; visual specs live there, behavior lives here. Composition reference: `mockups/key-og-card.html` (three OG variants + safe zone), `mockups/key-series-page.html` (flagship preview + result pages, bare series, 404), `mockups/key-error-states.html` (share toasts, retry panel, inline error, empty state). **Spines win on conflict with any mock.** Amended 2026-09-25 per `../../sprint-change-proposal-2026-09-25.md` (spoiler-free preview/result split, OG logo chips).
+> Scoped run. Covers only the surfaces with no design yet: OG share card, flagship series content page, Share button + success states, error/empty states. The existing app (Home, Predict, Historical, Insights, Maths) is ratified practice — referenced where the new surfaces must match it, not re-specced. `DESIGN.md` beside this file is the visual reference; visual specs live there, behavior lives here. Composition reference: `mockups/key-og-card.html` (three OG variants + safe zone), `mockups/key-series-page.html` (flagship preview + result pages, bare series, 404), `mockups/key-error-states.html` (share toasts, retry panel, inline error, empty state). **Spines win on conflict with any mock.** Amended 2026-09-25 per `../../sprint-change-proposal-2026-09-25.md` (spoiler-free preview/result split, OG logo chips). One later delta on a ratified surface: Story 2.9's archive league chip and filter (2026-10-02), recorded in Component Patterns.
 
 ## Foundation
 
@@ -93,6 +93,7 @@ Behavioral rules. Visual specs in DESIGN.md · Components.
 | Inline field error | All new/changed forms (Predict custom, Contact rebuild) | RHF + zod resolver (AD-9). Errors appear on submit by default (not on keystroke); deterministic constraints (for example, score bounds) are enforced pre-submission via constrained inputs or hints where possible (Story 1.3). Clears on valid re-submit; field stays focus-visible; no toast. |
 | Form success confirmation | Contact rebuild | Replaces the form region (not a toast): confirmation title, one line, onward path. Announced via `role="status"`. |
 | Empty state | Any list/region with zero items | Shared pattern: icon tile → title → one line → single onward action. Content differs per surface (State Patterns). |
+| Archive league chip + filter (`/historical`, Story 2.9 delta on a ratified surface) | Every archive row, the expanded series record, and the filter row beside the year `Select` | The chip shows the **stored** `series.league` verbatim (`NBA` / `BAA` / `ABA`) — never derived from the year, never relabelled, `BAA` not folded into `NBA`. The league `Select` (an `All leagues` option plus the leagues actually present) **intersects** with the year and team-search predicates rather than overriding either; changing it resets the visible page counter to 10 exactly like the year filter, and the existing reset button clears it too. It emits the **existing** `historical_filter_applied` event with `filter_type: 'league'` and the league value — no new event name. The changed result set is re-announced through a polite live region carrying the filtered count, the control is keyboard-reachable with a visible `<label for>`, and selecting a league never scrolls the page. One plain-text legend line sits under the filter row, always visible and never hover-only (see Interaction Primitives), reading exactly: "BAA is the league that became the NBA in 1949, so its Game 7s are NBA history. ABA is the rival league that merged into the NBA in 1976; its series are archived here, but they are not NBA records." An empty intersection reuses the existing "No series found matching your filters." row, and every series stays listed and prerendered whichever way the filter is set. |
 
 ## State Patterns
 

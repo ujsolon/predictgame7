@@ -28,6 +28,11 @@ export interface Series {
   id: string;
   year: number;
   round: string;
+  // Stored league identity, added by migration `00016` (Story 2.8): `NOT NULL
+  // DEFAULT 'NBA'` with a CHECK over 'NBA' | 'BAA' | 'ABA' — required here
+  // because the column can never be absent. Display it verbatim; never derive
+  // it from the year and never fold `BAA` into `NBA`.
+  league: string;
   team_a_id: number;
   team_b_id: number;
   winner_team_id?: number | null;
