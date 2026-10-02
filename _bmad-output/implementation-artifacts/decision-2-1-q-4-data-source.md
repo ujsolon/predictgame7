@@ -156,20 +156,48 @@ agree from opposite directions.
   and the schedule blob has rolled to 2026-27, so "current playoff bracket" was measured
   against the finished 2026 postseason. Re-run `probe-resultsheets.mjs` during the 2027
   window (SM-1, Apr–Jun 2027) before trusting in-series `SeriesStandings` freshness.
-  **→ STILL OWED, and it cannot be closed earlier than the window: 2027 Apr–Jun.** Routed
+  **→ PARTLY STILL OWED — only the freshness half cannot be closed earlier than 2027 Apr–Jun
+  (see the split below).** Routed
   out of this record so it stops reading as unfinished paperwork: one dated entry in
   `deferred-work.md`, owner-run in the 2027 playoff window (the FR-20/21 pipeline cadence —
   no Epic 2 story is gated on it), with the exact command. Its result is written back into
   this record, not into a new open item.
+  **Split 2026-10-02 (owner asked "can't we do a simulation?"): most of this leg is NOT
+  window-bound, and only one part is.** What the leg actually protects is Story 2.4's
+  in-season refresh — the pipeline has to tell a 3–2 series from a finished one, and
+  `resultSets`/`SeriesStandings` is the field it would read. A **finished-season replay**
+  proves today everything except the owed thing: envelope shape, header vocabulary, per-game →
+  series reconstruction against ground truth, and that a standings field is present and
+  self-consistent. Two routes exist and neither needs a live series: `node
+  scripts/spike-2-1/probe-resultsheets.mjs` as committed already reads a *past* postseason
+  (`Season=2025-26&SeasonType=Playoffs`, plus a `scoreboardv2` call pinned to one Finals game
+  date) and prints its `resultSets` headers, so it is the simulation, not a 2027-only probe —
+  and it needs no Supabase env at all, only outbound HTTP. The heavier route is Story 2.4's
+  real mapping code on a finished season, `node --env-file=.env
+  supabase/scripts/pipeline/run.ts --source=nba_com --season=<YYYY-YY> --dry-run`, but that
+  requires `SUPABASE_URL` + `SERVICE_ROLE_KEY` in `.env` (which today holds only the four
+  `VITE_*` names) and stays owner-run — the agent never points it at production. What no past season can show is **freshness/latency** — how soon after a game the
+  standings move, and whether `scoreboardv2` reports a series still in progress — because a
+  settled season is settled by definition, which is exactly why the 2026-09-30 observation
+  (taken after the playoffs ended, schedule blob already rolled to 2026-27) could not settle
+  it. So: the simulation leg can close now and is not window-bound; the 2027 window owes one
+  observation only. Both are owner-run — outbound HTTP to `stats.nba.com` is the owner's
+  policy call, and this session's tool policy refused it when attempted.
 - **The keyed alternate's shape** needs an owner-supplied key (see constraints).
   **→ CLOSED 2026-10-02 as "no consumer", not as "answered".** `api.balldontlie.io/v1/games`
   answered 401 with no key in `.env`, and the unkeyed `stats.nba.com/stats/leaguegamelog`
   route went on to carry everything since: Story 2.4's shipped adapter is that route, and
   Story 2.8's curation got **all 160** NBA/BAA Game-7 venues out of it across three sweeps
   with 0 conflicts, depth drilled to 1962-63. So the goal the alternate was probed for is
-  attained. Reopening the leg needs a story that wants a *second* source — and the named
-  trigger is written down: `leaguegamelog` is a hostile route with unmeasured limits, so if
-  it ever breaks, this becomes the fallback and the key is owed again.
+  attained. **Owner call 2026-10-02: the alternate is closed for good — no key is owed and no
+  fallback is pre-decided** — because the surviving route is first-party: `stats.nba.com` is
+  the NBA's own endpoint, not a third party that can reprice or vanish under a free tier. One
+  nuance recorded so the closure is informed rather than absolute: *first-party is not the
+  same as unlimited.* This same spike saw 403s on guessed CDN paths and the route needs the
+  `x-nba-stats-token` + Referer/Origin dance to answer at all, and its rate limits are
+  **unmeasured** (Story 2.8's probe therefore paced itself at one request per season). So if
+  that route ever degrades, the finding is a new story with its own evidence, not an
+  inherited assumption that balldontlie was the plan B.
 - **The 19 duplicate `(year, round)` groups and the 17-value `round` domain** must land in
   Story 2.2's spec before its migration is written — this record states them; 2.2's spec
   has not yet been updated.
