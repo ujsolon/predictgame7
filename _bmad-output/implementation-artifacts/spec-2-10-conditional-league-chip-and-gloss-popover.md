@@ -2,7 +2,7 @@
 title: 'Conditional league chip and gloss popover on the archive surface'
 type: 'feature'
 created: '2026-10-02'
-status: 'review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 baseline_commit: 'bc21f66a6e7bc44fac5779e9913cce8ad09c9999'
@@ -162,7 +162,7 @@ before deduplication; the severities are the reviewers' own and were disregarded
 | REV-8 | The Code Map's test arithmetic is wrong in shape and count: "22 tests in three describes (5/6/7)" — 5+6+7=19, there are four describes, and the gloss describe holds more cases than stated. | true | Rewritten as 24 across four describes (3/5/7/9), enumerated from the file's own `describe`/`it` lines. The Verification Log's earlier "22 tests" stays as that run's dated measurement with the delta named, because it is what the gate printed at that moment. | patch |
 | REV-9 | Boundary evidence cites `HistoricalPage.tsx:270-286` as the game tiles when that range is the row matchup cells, and cites `:56-60` for an attribute that is at `:61`. | true | Both ranges re-pointed — `:355-372` tiles, `:137-138` and `:357-359` derivation, `:61` attribute — in the Never list and in the log. "Untouched by this diff" stayed true; only the pointers were wrong. | patch |
 | REV-10 | The Code Map claims `toggle-group.tsx` "is no longer imported here", but `bc21f66` never imported it — the sentence describes the discarded intermediate build. | true | Reworded to what is true of the diff: not imported, and never was at baseline; the toggle exists only as an uncommitted build. | patch |
-| REV-11 | Both chip call-site comments still read as 2.9's unconditional rule; only the definition comment had been re-titled. | true | Re-titled to "Story 2.9 (D1), re-cut by 2.10 (D1')" at `:266-269` and `:340-342`. | patch |
+| REV-11 | Both chip call-site comments still read as 2.9's unconditional rule; only the definition comment had been re-titled. | true | Re-titled to "Story 2.9 (D1), re-cut by 2.10 (D1')" at `:266-269` and `:339-341`. | patch |
 | REV-12 | Categories 4 and the decoys are clean: no `supabase/`, migration, route/prerender, event-name or game-tile change; all five named decoys intact; no live artifact still claims a league filter or an always-visible legend exists. | confirmation | Independent re-verification of D6' by a reviewer who did not write it, including `git show HEAD:src/pages/HistoricalPage.tsx` to byte-check the reset condition and predicate against `7bef587^`. | no action |
 
 **Net effect on the tree:** one source patch from the verification leg (the `dialog` `aria-label`, not a

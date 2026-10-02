@@ -90,7 +90,10 @@ development_status:
   # accepted with it: the archive announces 178 while 2-5's denominators read 160, chip + gloss are
   # what reconcile them, 1972 is back in the year list, and no capture carries filter_type 'league'.
   # No FR moved (FR-10 never promised a league filter) and nothing under supabase/ was touched.
-  2-10-conditional-league-chip-and-gloss-popover: review
+  # DONE 2026-10-02: gate exit 0 (345 tests, 24 of them in the archive file), the surface measured
+  # against production over CDP on desktop and mobile, and a 20-finding review pass triaged in the spec.
+  # The owner's fresh-context review on their own model is still owed, as it was when 2-9 flipped.
+  2-10-conditional-league-chip-and-gloss-popover: done
   # Found while building 2-10, on the owner's request that SAS find the Spurs. Measured bigger than
   # it looks: the row displays getTeamAbbreviation(full_name), which disagrees with the stored
   # teams.abbreviation on 39 of 178 rows (20 franchises, all pre-1976), the helper has 16 more call
