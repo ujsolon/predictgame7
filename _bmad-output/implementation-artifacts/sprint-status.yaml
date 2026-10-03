@@ -161,17 +161,17 @@ development_status:
   # only governs triggers from the next push onward.
   # WHAT THE DISPATCHES ACTUALLY SHOWED (same day, after the secret + push). CAP-3 and the dedupe
   # rule are now proven on REAL breakage: issue #8 "Pipeline inseason run failed" opened with the
-  # run link and the short-SHA footer, and three further red runs appended "Still red:" comments
+  # run link and the short-SHA footer, and four further red runs appended "Still red:" comments
   # instead of opening three issues; the manual_csv + require_feed dispatch gave the designed
   # before-the-sink refusal. The credential half is proven too -- the failing step got past
-  # openSink()/readTeams() to the adapter. THE CADENCE ITSELF IS BLOCKED: stats.nba.com never
-  # answers a GitHub-hosted runner (two runs, 81 s of fetch each = three full FETCH_TIMEOUT_MS
-  # attempts, so no response at all), while the identical adapter+headers+URL answered from the
-  # owner's machine in seconds. That makes CAP-2's green dry dispatch unobtainable and CAP-4's
-  # "without manual intervention" false today; the three routes (self-hosted runner / schedule
-  # from the owner's machine / re-open the alternate feed route -- the last is the documented
-  # reopening trigger for the balldontlie entry) are enumerated with evidence in deferred-work.md,
-  # Story 2.6 section, and route B would be a bmad-correct-course, not a patch.
+  # openSink()/readTeams() to the adapter. THE CADENCE ITSELF IS BLOCKED: the feed answered exactly
+  # once. Three nba_com dry dispatches (06:15/06:19/06:56) each spent 81 s = three full FETCH_TIMEOUT_MS
+  # attempts with no response at all; Node on the owner's machine answered the byte-identical URL at
+  # 06:29, but curl with the same six headers got (56) Connection reset from that same machine, so the
+  # hosted/local split is NOT the finding -- either a client fingerprint or an intermittent block, and
+  # the discriminator is re-running the probe twice (deferred-work.md, Story 2.6, routes A/B/C). Route A
+  # (self-hosted runner) is viable only if Node passes there; route B would be a bmad-correct-course, not
+  # a patch; route C is the documented reopening trigger for the balldontlie entry.
   # Still owed regardless: sheet step 1 (source=fantrax) and step 5 (close #8, re-fire, confirm a
   # fresh issue) -- both zero-network, both reachable today.
   2-6-scheduled-workflows-failure-notification-sm-4: review
