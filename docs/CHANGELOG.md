@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2026-10-03
+
+### Added
+
+- `series.league` (`NBA` / `BAA` / `ABA`) and the real Game-7 venue for the 160 NBA/BAA archived series, carried by migration `00016` from a hand-curated, owner-reviewed CSV — the archive's Game-7 `home_team_id` is now a venue, not the series winner restated (Story 2.8). Applied to production 2026-10-02.
+- A league marker on the archive rows that need one, with the two-league explanation inside the record: `/historical` filters by year and team, and opens on all 178 series (Stories 2.9, 2.10, FR-10).
+- The insights cache writer: migration `00017` recomputes all three cached patterns from the league-filtered archived Game-7 population and replaces all three rows in one statement, so either all of them land or none does. It runs on a pipeline run that filled a winner, and through the new operator flag `node supabase/scripts/pipeline/run.ts --refresh-insights` (Story 2.5, owner decision U10).
+- A sample-set line at the foot of `/insights` naming the population its cards count, read from the same cached field the denominators come from (owner decision U4).
+- Server-side type-checking and request validation for `predict-game-7`, and a `seriesDatasource` pipeline with the `manual_csv` floor, the `nba_com` adapter, and idempotent birth/completion RPCs (Stories 2.0, 2.3, 2.4).
+- A derived series phase on the read path — `winner_team_id IS NULL` means Game 7 pending — with the stored `status` column dropped and identity keyed on the team pair (Story 2.2, AD-4, AD-5).
+
+### Changed
+
+- `/insights` describes what the archive actually shows. The Game 6 card's sentence claimed recent performance is "a strong predictor" while its own refreshed number read 37.5%; it now states the count instead of the claim. Owner decision, recorded as Story 5.1's first slice (FR-18).
+
+### Fixed
+
+- The published page no longer presents `00001`'s 8-series seed — "Based on **8** historical Game 7s", 62.5% — against an archive of 178 series and 1,246 score rows. `00017` was applied and the refresh run on 2026-10-03 reported 160 Game 7s, 117 home wins, 60 Game 6 winners, average margin 10.88; this release publishes the client half, and deferred-work F7 closes on the read-back that follows it.
+
 ## [0.2.4] - 2026-09-30
 
 ### Added

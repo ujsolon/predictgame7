@@ -185,7 +185,7 @@ export default function InsightsPage() {
             <div className="p-4 border border-border rounded-lg space-y-2">
               <p className="font-medium text-sm">Momentum Matters</p>
               <p className="text-sm text-muted-foreground">
-                {`Teams that win Game 6 carry significant momentum into Game 7, with a ${insights.game_6_winner_stats?.win_rate?.toFixed(2) || 0}% success rate. This suggests that recent performance is a strong predictor of Game 7 outcomes.`}
+                {`Winning Game 6 does not decide Game 7 — the Game 6 winner has gone on to take the series in ${insights.game_6_winner_stats?.win_rate?.toFixed(2) || 0}% of the ${insights.game_6_winner_stats?.total_game_sevens || 0} NBA and BAA Game 7s counted above.`}
               </p>
             </div>
 
