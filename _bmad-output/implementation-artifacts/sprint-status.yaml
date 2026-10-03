@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-03-2026 13:02
+last_updated: 10-03-2026 14:30
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -174,7 +174,30 @@ development_status:
   # and rounds 1-3 name the source: stats 0/12+ and cdn 403 at both clouds; ESPN answers BOTH (hosted
   # 200 in 78 ms, 3 games, "Rocket Arena"; Supabase 226 ms). Source change, no port. Owed: sheet 1 + 5.
   # The hosted run's exit 1 was my invalid dates-range param, not the network. c9745e2 fixes that.
-  2-6-scheduled-workflows-failure-notification-sm-4: review
+  # CLOSED 2026-10-03 by sprint-change-proposal-2026-10-03.md (owner calls C1-C4): the source
+  # blocker is resolved by measurement, not by this story -- stats.nba.com refuses all cloud egress
+  # (0/15, two providers), ESPN answers both clouds (HOSTED-ESPN GREEN, run 37119291248), so the
+  # feed-source change is routed to 2-13 and the scheduling half shipped here stands as built
+  # (D-5/D-7 never reopened). CAP-2's green non-dry dispatch re-points to 2-13 (C3). Transferred
+  # out, still owed, not dropped: the source=fantrax zero-write dispatch and the issue-#8 close ->
+  # re-fire -> fresh-issue confirmation go to 2-13's spec; one migration-rehearsal.yml dispatch is
+  # an owner action (2-13's 00018 will also trigger it on push); owner also owes `supabase
+  # functions delete feed-egress-probe`.
+  2-6-scheduled-workflows-failure-notification-sm-4: done
+  # Added by sprint-change-proposal-2026-10-03.md (approved same day, owner calls C1-C4): the
+  # scheduled source changes from stats.nba.com to site.api.espn.com -- new `espn` adapter behind
+  # the SeriesDataSource port, both workflows' nba_com defaults/choices re-pointed in the same
+  # commit, team join through a new teams.espn_code column (migration 00018, owner-applied;
+  # ESPN prints NY/SA where the table stores NYK/SAS), round naming parsed from notes[0].headline
+  # (type.shortName absent), request date derived in America/New_York (dates= is US-local, not
+  # UTC), single-date form only (ranges 400), non-Final games never enter the plan, and the
+  # 'in'-state payload probed rather than assumed. nba_com stays registered but hand-run only
+  # (C1); basketball-reference is the designated automated fallback of last resort, recorded but
+  # NOT implemented (C4); manual_csv stays the floor. Inherits 2-6's owed run-sheet steps and the
+  # green non-dry CAP-2 dispatch (C3). Ordered before 2-7 because the drill runs the scheduled
+  # source. Five binding findings: deferred-work.md, "CONFIRMED GREEN AND BOTH THROWAWAYS
+  # RETIRED".
+  2-13-espn-feed-adapter: backlog
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their
   # own story -- the content of the never-authored spec-2-8b. Ordered BEFORE 2-7 because the drill

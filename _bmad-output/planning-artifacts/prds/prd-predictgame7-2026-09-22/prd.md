@@ -236,7 +236,7 @@ During the playoffs, the pipeline runs daily to update Active Series statuses an
 **Consequences (testable):**
 - After a daily run, Predict's Active Series reflect latest results.
 - Script-based and CI-scheduled, consistent with the existing `supabase/scripts` precedent (owner-confirmed 2026-09-22).
-- Data source direction is set (Q-4: Fantrax API preferred, nba.com scrape fallback) but unverified — a feasibility spike is a build-time prerequisite. `[NOTE FOR PM]` if both fail, FR-21 reopens as a phase-blocker: stale Active Series data during the playoffs would invalidate the Traffic Gate measurement itself.
+- Data source direction is set (Q-4: Fantrax API preferred, nba.com scrape fallback) but unverified — a feasibility spike is a build-time prerequisite. `[NOTE FOR PM]` if both fail, FR-21 reopens as a phase-blocker: stale Active Series data during the playoffs would invalidate the Traffic Gate measurement itself. `[Re-resolved 2026-10-03 by sprint-change-proposal-2026-10-03.md: Fantrax was ruled out by the spike (2026-09-30), and the shipped nba_com adapter's endpoint refuses all cloud egress — stats.nba.com 0/15 across two providers and three client stacks, cdn.nba.com 403 from both. The scheduled source is ESPN's site.api.espn.com (Story 2.13), an unofficial endpoint with no SLA whose failure modes land in Story 2.6's proven non-zero-exit → issue machinery. basketball-reference is the designated automated fallback of last resort (owner call C4); manual_csv remains the floor. The phase-blocker note is not invoked — a hosted source exists.]`
 
 ### 4.5 Accounts & Persistence
 
