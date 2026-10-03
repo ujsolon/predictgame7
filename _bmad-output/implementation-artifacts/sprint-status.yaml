@@ -121,8 +121,8 @@ development_status:
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   # 2026-10-03: spec approved at CHECKPOINT 1 (owner decisions U10-U13; history split out to
   # spec-2-5-trail.md), built, and review pass 1 (three layers) applied — 2-5 sits at review pending
-  # the owner's fresh-context code review, exactly as 2-4 and 2-10 do. F7 STAYS OPEN by design:
-  # it closes on the owner's `--refresh-insights` run plus the anon read-back, not on this commit.
+  # the owner's fresh-context code review, exactly as 2-4 and 2-10 do. F7 CLOSED 2026-10-03: the
+  # owner applied `00017`, ran --refresh-insights (117 of 160 held), read /insights back as anon.
   2-5-insights-cache-refresh: review
   # Carried to this story 2026-10-02 by owner decision (Story 2.10's walkthrough): the two Story 2.8
   # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
