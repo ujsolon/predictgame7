@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-04-2026 07:00
+last_updated: 10-04-2026 07:40
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -107,7 +107,16 @@ development_status:
   # record (:391-393 — the header placement overflowed the team logos into the paragraph at 390px),
   # and the 178-vs-160 divergence is now recorded developer-side at :84-98 rather than reconciled in
   # the UI. Dead-code pass found nothing dead in src; one vacuous test assertion removed.
-  2-10-nba-by-default-league-chip-and-in-record-gloss: review
+  # EXTERNAL REVIEW LANDED 2026-10-04 (fresh session, owner's model — the owed pass the 10-02 note
+  # above anticipated): all four layers ran against bc21f66..c673243; the shipped code and every
+  # Code Map / boundary claim verified clean by the acceptance auditor. 20 findings → 5 patch entries
+  # + the gap layer's filed test all applied (gate exit 0 re-run, archive file now 25 cases, the
+  # new one mutation-proven to be the only red under deletion of the reset button's teamSearch
+  # disjunct), 1 defer (pre-existing unnamed reset button — already owned by 5.2's AA entry), 13
+  # rejected, all recorded with verdicts in spec-2-10's Review Findings section. The seven rejections
+  # whose fix would edit the spec itself are left with the owner there — headline: AC 5 and the
+  # frozen I/O/Always rows still describe the popover trigger the second preview pass deleted.
+  2-10-nba-by-default-league-chip-and-in-record-gloss: done
   # Found while building 2-10, on the owner's observation that typing SAS on /historical finds
   # Kansas City, not the Spurs. Measured bigger than it looks: the row displays
   # getTeamAbbreviation(full_name), which disagrees with the stored teams.abbreviation on 39 of 178

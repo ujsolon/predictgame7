@@ -319,7 +319,6 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
     // it could not fail.)
     const cols = topLevelColumns(db.projection);
     expect(cols.includes('*') || cols.includes('league')).toBe(true);
-    expect(cols).toContain('*');
   });
 });
 
@@ -427,6 +426,30 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
   });
 
+  it('shows the reset button for a team search alone and clears the search with it', async () => {
+    // The other half of the button's render condition (`HistoricalPage.tsx:184`:
+    // `yearFilter !== 'all' || teamSearch !== ''`). The case above reaches the
+    // button through the year disjunct only, so without this one, deleting the
+    // `teamSearch` disjunct keeps every other case green while a fan who only
+    // typed a team name loses the page's sole clear control. Filed by the
+    // external review's verification-gap layer (2026-10-04) as the diff's one
+    // unpinned leg; mutation-proven there — this case reddens without the disjunct.
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    expect(renderedRows()).toBe(1);
+
+    const reset = resetButton();
+    expect(reset).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.click(reset as HTMLButtonElement);
+
+    await waitFor(() => expect(renderedRows()).toBe(3));
+    expect((screen.getByPlaceholderText('Search by team name...') as HTMLInputElement).value).toBe('');
+    expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
+  });
+
   it('resets the visible counter to 10 when the year filter changes, as it always did', async () => {
     // 15 in 1998 and 10 in 1997: paging out to 20 rows and then filtering to the
     // 15-row year has to land on a 10-row page again, which is only true if the
@@ -452,7 +475,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
   });
 
   it('resets the visible counter to 10 when the team search changes, on the same terms', async () => {
-    // The counter reset lives in two call sites (`HistoricalPage.tsx:186`'s
+    // The counter reset lives in two call sites (`HistoricalPage.tsx:180`'s
     // search handler as well as the year one), and only the year path was covered
     // above. 15 Lakers rows and 10 Nets rows: page out to 20, then search for
     // `Lakers`, and a 15-row page proves the counter stayed at 20.
