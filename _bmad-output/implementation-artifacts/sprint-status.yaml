@@ -162,16 +162,16 @@ development_status:
   # WHAT THE DISPATCHES ACTUALLY SHOWED (same day, after the secret + push). CAP-3 and the dedupe
   # rule are now proven on REAL breakage: issue #8 "Pipeline inseason run failed" opened with the
   # run link and the short-SHA footer, and four further red runs appended "Still red:" comments
-  # instead of opening three issues; the manual_csv + require_feed dispatch gave the designed
+  # instead of opening four issues; the two manual_csv + require_feed dispatches gave the designed
   # before-the-sink refusal. The credential half is proven too -- the failing step got past
-  # openSink()/readTeams() to the adapter. THE CADENCE ITSELF IS BLOCKED: the feed answered exactly
-  # once. Three nba_com dry dispatches (06:15/06:19/06:56) each spent 81 s = three full FETCH_TIMEOUT_MS
-  # attempts with no response at all; Node on the owner's machine answered the byte-identical URL at
-  # 06:29, but curl with the same six headers got (56) Connection reset from that same machine, so the
-  # hosted/local split is NOT the finding -- either a client fingerprint or an intermittent block, and
-  # the discriminator is re-running the probe twice (deferred-work.md, Story 2.6, routes A/B/C). Route A
-  # (self-hosted runner) is viable only if Node passes there; route B would be a bmad-correct-course, not
-  # a patch; route C is the documented reopening trigger for the balldontlie entry.
+  # openSink()/readTeams() to the adapter. CAP-1's serialization is proven on the same batch: jobs ran
+  # back-to-back with no overlap (06:16:55->06:16:59, 06:17:23->06:17:26), and the 5 s "cancelled" run
+  # is GitHub's documented rule -- a newer queued run cancels a pending one in the group -- not a hand
+  # cancel. THE CADENCE IS BLOCKED: three nba_com dry dispatches (06:15/06:19/06:56) each spent 81 s =
+  # three FETCH_TIMEOUT_MS attempts with zero response bytes, 9/9. Node on the owner's machine PASSes
+  # the byte-identical URL (06:29, again 07:38) while curl with the same six headers gets (56) reset
+  # (07:10, again 07:40): the one passing cell is Node+residential, exactly route A (self-hosted
+  # runner); B would be a bmad-correct-course. Evidence + the curl -v mechanism: deferred-work.md.
   # Still owed regardless: sheet step 1 (source=fantrax) and step 5 (close #8, re-fire, confirm a
   # fresh issue) -- both zero-network, both reachable today.
   2-6-scheduled-workflows-failure-notification-sm-4: review
