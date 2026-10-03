@@ -41,6 +41,10 @@ permissions:
 jobs:
   rehearse:
     runs-on: ubuntu-latest
+    # The replay itself is seconds; the rest of the ceiling is the `postgres:16`
+    # image pull, which is the one step that can stall without failing — and a
+    # stall here means an expired verdict going uncertified.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 

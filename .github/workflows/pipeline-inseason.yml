@@ -64,6 +64,13 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    # A hung run is the one failure this design cannot otherwise hear: the job
+    # never fails, so `if: failure()` never fires, and the shared
+    # `pipeline-writes` group with `cancel-in-progress: false` makes the hang
+    # block every later cron. The ceiling is generous (the runner's own fetch
+    # loop self-limits to 25 s x 3 attempts per leg) so it can only ever cut off
+    # a stall, never a slow-but-healthy season run.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 

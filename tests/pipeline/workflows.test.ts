@@ -39,7 +39,7 @@ interface WorkflowDoc {
   on: Triggers;
   concurrency?: { group: string; 'cancel-in-progress'?: boolean };
   permissions?: Record<string, string>;
-  jobs: Record<string, { 'runs-on'?: string; steps: Step[] }>;
+  jobs: Record<string, { 'runs-on'?: string; 'timeout-minutes'?: number; steps: Step[] }>;
 }
 
 interface Triggers {
@@ -110,6 +110,11 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // The flag comes from this file, never from a default: `schedule` always
     // alarms, a dispatch only when the operator asks it to.
     expect(run?.env?.WANT_REQUIRE_FEED).toBe("${{ github.event_name == 'schedule' || inputs.require_feed }}");
+    // …and the bash has to READ that variable. Pinning only the env expression
+    // would stay green if the script stopped consulting it — either by renaming
+    // or by making the flag unconditional — and both edits silently move the
+    // schedule-vs-dispatch rule back into the runner, which the design forbids.
+    expect(run?.run).toContain('"$WANT_REQUIRE_FEED"');
   });
 
   it('offers the dispatch inputs that make the alarm provable before April', () => {
@@ -164,17 +169,6 @@ describe('both pipeline workflows — the shared mechanics', () => {
       expect(docOf(rel).concurrency).toEqual({ group: 'pipeline-writes', 'cancel-in-progress': false });
     });
 
-    it(`${rel}: no wider than reading the repo and filing an issue`, () => {
-      expect(docOf(rel).permissions).toEqual({ contents: 'read', issues: 'write' });
-    });
-
-    it(`${rel}: Node pinned where native type stripping exists`, () => {
-      // run.ts is executed as TypeScript by Node itself; ci.yml's floating
-      // 22.x is not evidence a runner can do that.
-      const setup = stepsOf(rel).find((step) => (step.uses ?? '').includes('setup-node'));
-      expect(setup?.with?.['node-version']).toBe('24.x');
-    });
-
     it(`${rel}: the credential enters only as a secret reference, never on a command line`, () => {
       for (const step of stepsOf(rel)) {
         for (const [key, value] of Object.entries(step.env ?? {})) {
@@ -192,6 +186,16 @@ describe('both pipeline workflows — the shared mechanics', () => {
       const guard = stepsOf(rel).find((step) => step.name === 'Refuse on a missing secret');
       expect(guard?.run).toContain('SUPABASE_SERVICE_ROLE_KEY');
       expect(guard?.run).toContain('exit 1');
+      // Presence is not the guarantee. The whole point of the guard is that it
+      // runs BEFORE anything that could consume the credential, so the order is
+      // pinned as a number: moving it below the pipeline step must go red.
+      const names = stepsOf(rel).map((step) => step.name ?? step.uses ?? step.run ?? '');
+      const indexOf = (label: string) => names.findIndex((name) => name.includes(label));
+      const guardAt = indexOf('Refuse on a missing secret');
+      expect(guardAt).toBeGreaterThanOrEqual(0);
+      expect(guardAt).toBeLessThan(indexOf('npm ci'));
+      expect(guardAt).toBeLessThan(indexOf('Run the pipeline'));
+      expect(guardAt).toBeLessThan(indexOf('File a loud failure'));
     });
 
     it(`${rel}: every non-zero exit is heard (SM-4)`, () => {
@@ -200,6 +204,37 @@ describe('both pipeline workflows — the shared mechanics', () => {
       expect(notify?.if).toBe('failure()');
     });
   }
+});
+
+describe('the three new jobs — the pins that are not pipeline-specific', () => {
+  for (const rel of [INSEASON, OFFSEASON, REHEARSAL]) {
+    it(`${rel}: no wider than reading the repo and filing an issue`, () => {
+      expect(docOf(rel).permissions).toEqual({ contents: 'read', issues: 'write' });
+    });
+
+    it(`${rel}: Node pinned where native type stripping exists`, () => {
+      // run.ts is executed as TypeScript by Node itself; ci.yml's floating
+      // 22.x is not evidence a runner can do that.
+      const setup = stepsOf(rel).find((step) => (step.uses ?? '').includes('setup-node'));
+      expect(setup?.with?.['node-version']).toBe('24.x');
+    });
+
+    it(`${rel}: a stalled run fails instead of hanging the cadence`, () => {
+      // `if: failure()` is only loud when the job can end. Without a ceiling a
+      // hung install, pull, or `gh` call sits in GitHub's 360-minute default,
+      // files nothing, and (for the pair) blocks every later cron through the
+      // shared `pipeline-writes` group that queues rather than cancels.
+      const job = docOf(rel).jobs[rel === REHEARSAL ? 'rehearse' : 'pipeline'];
+      expect(job?.['timeout-minutes'], `${rel} declares a ceiling`).toBeGreaterThan(0);
+    });
+  }
+
+  it('nightly-gate.yml keeps the permission its alarm needs', () => {
+    // The step moved into the shared action, so nothing in that file still
+    // spells out why it needs to write issues — which is exactly how a later
+    // cleanup would drop it and silence the nightly gate with a green suite.
+    expect(docOf(NIGHTLY).permissions).toEqual({ contents: 'read', issues: 'write' });
+  });
 });
 
 describe('migration-rehearsal.yml — the replay certification (CAP-5)', () => {
@@ -257,6 +292,11 @@ describe('notify-failure — one definition of loud (D-4 = B)', () => {
     // one issue, and the comment carries the new SHA so a fresh break is visible.
     expect(run).toContain('Still red:');
     expect(run).toContain('${GITHUB_SHA:0:7}');
+    // The lookup is allowed to fail; the filing is not. The runner's bash is
+    // `-e`, so an unguarded `gh issue list` that errors would abort the step
+    // before the create branch and leave a broken cadence with a red check and
+    // no issue — the one shape of silence SM-4 exists to end.
+    expect(run.split('\n').find((line) => line.includes('gh issue list'))).toMatch(/gh issue list.*\|\| true\)?$/);
   });
 
   it('authenticates with the run token, not a secret', () => {

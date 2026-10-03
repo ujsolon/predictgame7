@@ -38,6 +38,10 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+    # Same ceiling as the inseason file, for the same reason: a stall never
+    # fails, so `if: failure()` never fires, and this job shares the
+    # `pipeline-writes` concurrency group that queues rather than cancels.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 

@@ -138,12 +138,16 @@ development_status:
   # 2026-10-03 built: three workflow files + the shared .github/actions/notify-failure composite
   # (nightly-gate.yml refactored onto it, keepalive.yml untouched) + the --require-feed runner flag,
   # and tests/pipeline/workflows.test.ts is the first thing in this repo that can go red over
-  # .github/** (Biome's files.includes excludes it; no actionlint exists). Three mutation probes
-  # confirmed the pins bite. Deferred-work closed for the rehearsal-automation entry and the
+  # .github/** (Biome's files.includes excludes it; no actionlint exists). Four mutation probes in
+  # the build pass, and five more in review (one per pin review added), confirmed the pins bite.
+  # Deferred-work closed for the rehearsal-automation entry and the
   # silent-empty-run entry; the Counter=1000 truncation ceiling re-pointed to 2-7, and the
   # shipped-but-unobserved-cron / pull-channel leftovers filed with owners.
   # OWNER STILL OWNS THE VERIFICATION THAT CANNOT RUN LOCALLY: create the SUPABASE_SERVICE_ROLE_KEY
-  # repository secret, push, then the five zero-write deliberate-failure dispatches.
+  # repository secret, push, then the five-step zero-write deliberate-failure run sheet (four
+  # dispatches and the confirmation between them). One review finding is frozen-intent and waits on
+  # the owner: migration-rehearsal.yml's paths: filter omits the curated venue CSV the rehearsal
+  # reads, so widening it (or accepting the gap) renegotiates D-2 = B.
   2-6-scheduled-workflows-failure-notification-sm-4: review
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their
