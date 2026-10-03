@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
     verdict: usable.length > 0
       ? `HOSTED SOURCE EXISTS — ${usable.map((r) => r.name).join(', ')} answered with parseable JSON from a cloud IP. Read each pathProbe before believing it can feed the pipeline: kind "array" with length > 0 is the shape that matters, and a length of 0 may just mean no games that day.`
       : `NO CANDIDATE FED PARSEABLE JSON. Silent (no bytes, same shape as the stats block): ${silent.map((r) => r.name).join(', ') || 'none'}. Answered but not usable (status/shape): ${[...blocked, ...answeredButRefused].map((r) => r.name).join(', ') || 'none'}.`,
-    note: 'One attempt per candidate at 20 s, so a single transient reads as blocked; the stats control already has 2/2 at 25 s from round 1. Pass/fail across four clients and three locations so far tracks the LOCATION: every cloud egress measured (GitHub Actions, Supabase) is refused, and only Node from the owner\'s residential address has ever answered.',
+    note: 'One attempt per candidate at 15 s, so a single transient reads as blocked; the stats control carries 3/3 reds across two runs of this function. Pass/fail across four clients and three locations tracks the LOCATION and the CDN owner, not the scheduler: the whole nba.com family (stats. silent, cdn. 403) refuses cloud egress, while independent hosts answer it fast. This project\'s Supabase egress IP also rotated between runs (3.39.233.171 then 43.201.97.153), so a red is not one address being listed.',
     ranAt: new Date().toISOString(),
     results,
     egressIp: await readEgressIp(),

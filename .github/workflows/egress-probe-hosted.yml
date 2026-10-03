@@ -1,0 +1,76 @@
+# THROWAWAY — Story 2.6's second egress cell. Delete after one dispatch is read (and drop its name
+# from the workflow-set pin in tests/pipeline/workflows.test.ts).
+#
+# Round 2 of the Supabase probe (2026-10-03, 10:30 UTC) proved two things at once: the whole nba.com
+# family refuses a cloud egress IP — `stats.` silently, `cdn.nba.com` with a 403 in ~120 ms — and
+# `site.api.espn.com` answers one in 226 ms with parseable JSON holding real playoff games. That
+# leaves exactly one question standing between "keep the GitHub cron lines Story 2.6 already shipped"
+# and "port the whole run to Supabase": whether a GITHUB-HOSTED runner reaches the same host.
+#
+# ci.yml already shows a hosted runner pulling 44 modules from esm.sh, so the runner is not offline —
+# but a shared CDN vendor (Akamai fronts both the NBA and ESPN) is a different customer policy, and
+# "likely green" is not the evidence a scheduling decision was made on.
+#
+# It fetches four public, unauthenticated URLs and prints their status plus the fields an adapter
+# would need. It checks out nothing, holds no secret, writes no database row, files no issue, and has
+# no cron — `workflow_dispatch` only, so it cannot fire on its own. The step exits non-zero when the
+# hosted-ESPN fetch is not a 2xx, because that is the measurement the decision hangs on: a red run IS
+# the answer, not a broken probe.
+name: Egress probe (hosted runner, throwaway)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch the four candidate sources and report shape
+        run: |
+          set -u
+          verdict=0
+          report() {
+            label="$1"; url="$2"; decisive="${3:-no}"; shift 3
+            body="$(mktemp)"
+            meta="$(curl -sS -o "$body" --max-time 20 -w '%{http_code} %{size_download} %{time_total}' "$@" "$url" || echo "000 0 0 curl-exit")"
+            code="${meta%% *}"
+            echo "== $label: $meta"
+            if [ "$decisive" = yes ] && [ "$code" != 200 ]; then verdict=1; fi
+            if [ -s "$body" ] && [ "$(head -c 1 "$body")" = "{" ]; then
+              jq -r '
+                "   events      : " + (if .events then (.events | length | tostring) else "no .events key" end),
+                "   game 1 date : " + (.events[0].date // "absent"),
+                "   venue       : " + (.events[0].competitions[0].venue.fullName // "ABSENT"),
+                "   round note  : " + (.events[0].competitions[0].notes[0].headline // "ABSENT"),
+                "   game type   : " + (.events[0].competitions[0].type.shortName // "absent"),
+                "   status      : " + (.events[0].status.type.description // "absent"),
+                "   matchup     : " + ([.events[0].competitions[0].competitors[] | "\(.homeAway) \(.team.abbreviation // .team.displayName // "?") score=\(.score // "?")"] | join(" / ")),
+                "   abbrevs all : " + ([.events[].competitions[0].competitors[0].team.abbreviation] | join(","))
+              ' "$body" || echo "   jq could not read the payload"
+            else
+              echo "   body head   : $(head -c 180 "$body" | tr -d '\r\n')"
+            fi
+            rm -f "$body"
+          }
+
+          # Controls first: both are expected to fail, and their failure calibrates this runner.
+          report stats_control 'https://stats.nba.com/stats/leaguegamelog?Counter=1000&DateFrom=&DateTo=&GameSegment=&LastNGames=0&LeagueID=00&Location=&Month=0&OpponentTeamID=0&Outcome=&PORound=0&Period=0&PlayerOrTeam=T&Season=2026-27&SeasonSegment=&SeasonType=Playoffs&SortColumn=DATE&SortDir=ASC' no \
+            -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36' \
+            -H 'Accept: application/json' -H 'Referer: https://www.nba.com/' -H 'Origin: https://www.nba.com' \
+            -H 'x-nba-stats-origin: stats' -H 'x-nba-stats-token: true'
+          report cdn_control 'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json' no
+
+          # The decision: a past Finals window, so a 200 carries finished games with scores.
+          report espn_finals_window 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260601-20260620' yes
+          report espn_one_day 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260420' no
+
+          if [ "$verdict" -ne 0 ]; then
+            echo "HOSTED-ESPN RED: a GitHub-hosted runner cannot get the source the cloud can reach."
+            echo "The schedule must move off Actions, or the source moves again."
+          else
+            echo "HOSTED-ESPN GREEN: the shipped GitHub cadence can keep the feed."
+          fi
+          exit "$verdict"
