@@ -11,11 +11,14 @@
 # but a shared CDN vendor (Akamai fronts both the NBA and ESPN) is a different customer policy, and
 # "likely green" is not the evidence a scheduling decision was made on.
 #
-# It fetches four public, unauthenticated URLs and prints their status plus the fields an adapter
-# would need. It checks out nothing, holds no secret, writes no database row, files no issue, and has
-# no cron — `workflow_dispatch` only, so it cannot fire on its own. The step exits non-zero when the
-# hosted-ESPN fetch is not a 2xx, because that is the measurement the decision hangs on: a red run IS
-# the answer, not a broken probe.
+# It fetches public, unauthenticated URLs and prints their status plus the fields an adapter would
+# need. It checks out nothing, holds no secret, writes no database row, files no issue, and has no
+# cron — `workflow_dispatch` only, so it cannot fire on its own. The step exits non-zero only when NO
+# ESPN date form returns parseable JSON: a red run is then the answer, not a broken probe. (The first
+# dispatch of this file went red for the wrong reason — it marked a `dates=YYYYMMDD-YYYYMMDD` range
+# decisive and that parameter form answers 400 with 80 unreadable bytes, while the single-date form
+# beside it returned 200, 46,895 bytes, 0.078 s and three real games. One bad parameter was not
+# allowed to decide the cell.)
 name: Egress probe (hosted runner, throwaway)
 
 on:
@@ -28,17 +31,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fetch the four candidate sources and report shape
+      - name: Fetch the candidate sources and report shape
         run: |
           set -u
-          verdict=0
+          espn_green=0
           report() {
             label="$1"; url="$2"; decisive="${3:-no}"; shift 3
             body="$(mktemp)"
-            meta="$(curl -sS -o "$body" --max-time 20 -w '%{http_code} %{size_download} %{time_total}' "$@" "$url" || echo "000 0 0 curl-exit")"
+            meta="$(curl -sS --compressed -o "$body" --max-time 20 -w '%{http_code} %{size_download} %{time_total}' "$@" "$url" || echo "000 0 0 curl-exit")"
             code="${meta%% *}"
             echo "== $label: $meta"
-            if [ "$decisive" = yes ] && [ "$code" != 200 ]; then verdict=1; fi
+            if [ "$decisive" = yes ] && [ "${code#2}" != "$code" ] && [ -s "$body" ] && [ "$(head -c 1 "$body")" = "{" ]; then
+              espn_green=1
+            fi
             if [ -s "$body" ] && [ "$(head -c 1 "$body")" = "{" ]; then
               jq -r '
                 "   events      : " + (if .events then (.events | length | tostring) else "no .events key" end),
@@ -51,7 +56,8 @@ jobs:
                 "   abbrevs all : " + ([.events[].competitions[0].competitors[0].team.abbreviation] | join(","))
               ' "$body" || echo "   jq could not read the payload"
             else
-              echo "   body head   : $(head -c 180 "$body" | tr -d '\r\n')"
+              # Printable bytes only: the 400 body below is not text, and the log must not choke on it.
+              echo "   body bytes (printable) : $(head -c 220 "$body" | tr -dc '[:print:]')"
             fi
             rm -f "$body"
           }
@@ -63,14 +69,19 @@ jobs:
             -H 'x-nba-stats-origin: stats' -H 'x-nba-stats-token: true'
           report cdn_control 'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json' no
 
-          # The decision: a past Finals window, so a 200 carries finished games with scores.
-          report espn_finals_window 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260601-20260620' yes
-          report espn_one_day 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260420' no
+          # The decision: does ANY valid ESPN date form give a hosted runner parseable JSON? Three
+          # forms, because the adapter still has to learn which ones exist — one playoff date the
+          # Supabase probe already answered, a June date (a Finals slot), and a short range to see
+          # whether the 400 came from the range form itself or from the missing Accept-Encoding.
+          report espn_one_day 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260420' yes
+          report espn_finals_day 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260605' yes
+          report espn_short_range 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20260601-20260608' yes
 
-          if [ "$verdict" -ne 0 ]; then
-            echo "HOSTED-ESPN RED: a GitHub-hosted runner cannot get the source the cloud can reach."
+          if [ "$espn_green" -eq 0 ]; then
+            echo "HOSTED-ESPN RED: no ESPN date form gave parseable JSON to a GitHub-hosted runner."
             echo "The schedule must move off Actions, or the source moves again."
           else
-            echo "HOSTED-ESPN GREEN: the shipped GitHub cadence can keep the feed."
+            echo "HOSTED-ESPN GREEN: at least one ESPN date form answered from this runner. The shipped GitHub cadence can keep a feed."
           fi
-          exit "$verdict"
+          # espn_green is 1 on success, so the exit status is its complement.
+          exit "$((1 - espn_green))"
