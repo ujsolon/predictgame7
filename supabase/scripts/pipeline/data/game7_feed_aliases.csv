@@ -8,7 +8,11 @@
 #   one side of the pair matches a curated slot exactly, and the unmapped code occupies
 #   the other slot. Aliasing closes it without a second source.
 #
-# How an alias is allowed to fire (enforced in venueBackfill.ts, tested):
+# How an alias is allowed to fire (enforced in venueBackfill.ts, tested). Rules 1-3
+#   govern the MATCHING pass — deciding which curated row a feed season answers. The
+#   probe's later, per-code use of this table is governed by the slot-aware rule
+#   spelled out after rule 3, and its trigger is different: a code from a series that
+#   HAS matched.
 #   1. Direct matching happens first, over every series in the season. A pair that
 #      matches a curated row without substitution wins, and claims that row.
 #   2. An alias is consulted only for a series that matched NOTHING, and only against
@@ -16,10 +20,14 @@
 #   3. After substitution, exactly one row may remain. Zero is unmatched; two or more is
 #      AMBIGUOUS and is never guessed — the probe prints it for you instead.
 # Rule 1 keeps the MATCH safe: the 2017 Celtics-Wizards row matches directly and is
-#   never reinterpreted as the 1970s Bullets. It does not cover the probe's POST-match
-#   use of resolveFeedCode on the home/winner codes — the context-free WAS->WSB
-#   collision there is deferred as P3-1 (see deferred-work.md, "Story 2.8 build +
-#   review" section); NOT fixed as of 2026-10-02.
+#   never reinterpreted as the 1970s Bullets. Since Story 2.12 the same rule governs
+#   the probe's POST-match use of resolveFeedCode on the home/winner codes: the
+#   resolver is slot-aware — a feed code that already names one of the matched row's
+#   two abbreviations is used verbatim and this table is consulted only when it names
+#   neither — so the WAS->WSB row cannot shadow the live Wizards abbreviation. The
+#   context-free collision that used to refuse a correct paste target (deferred-work
+#   P3-1, "Story 2.8 build + review" section) is closed by that change (Story 2.12,
+#   built and reviewed 2026-10-04).
 #
 # Columns: feed_abbr,teams_abbr,evidence
 #   feed_abbr  — the code the feed prints

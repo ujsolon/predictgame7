@@ -302,6 +302,32 @@ describe('renderMigration — the single emitted copy of 00016', () => {
     }
   });
 
+  // Story 2.12 (spec-2-12 O-2, option c): the two guards an uncovered PENDING
+  // series actually reach must name the case the operator cannot append — a
+  // series with no Game 7 played has no venue to curate. Fails on the pre-2.12
+  // text, which told the operator to append such a series to
+  // game7_venues_curated.csv (advice a pending row can never satisfy). The
+  // leading clauses stay verbatim because the rehearsal's failure assertions
+  // (rehearse-migration-00014.mjs:1069-1070, :1095-1096) match them.
+  it('the uncovered-row guards name the no-Game-7 case in their advice (Story 2.12, O-2)', () => {
+    for (const guard of ['league_backfill_complete', 'venue_coverage']) {
+      const at = text.indexOf(`00016 guard ${guard}`);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const message = text.slice(at, text.indexOf('USING ERRCODE', at));
+      expect(message).toContain('no Game 7 played');
+      expect(message).toContain('winner_team_id IS NULL');
+      expect(message).toContain('has no venue to curate');
+      // The old unactionable instruction must not stand alone any more: the
+      // append-the-newer-series advice is now explicitly fenced to series that
+      // HAVE a Game 7 (the pending case is named as not-appendable).
+      expect(message).toMatch(/cannot be appended/);
+    }
+    // And per O-2 the census population line stays exactly as written: league
+    // only, no winner_team_id filter — the two guards above already refuse the
+    // pending state before the census runs.
+    expect(text).toContain("SELECT count(*) INTO v_population FROM public.series WHERE league IN ('NBA', 'BAA');");
+  });
+
   it('ships no dead code, and its census guard ASSERTS the population it names (E6)', () => {
     // The unused `v_found` would have been inherited by every future reader
     // of 00016; the 117 only means nba.com's 117-43 over exactly 160 NBA/BAA
@@ -576,6 +602,28 @@ describe('the scripts/** coverage gap (E5)', () => {
     expect(res.stdout).toContain('FIXTURE REPORT OK');
     expect(res.status).toBe(0);
   });
+
+  it('the venue probe passes the matched row\'s slots at every resolver call (Story 2.12)', () => {
+    // The resolver's slot parameter is required in TypeScript, but `scripts/**` is
+    // in no gate program (AGENTS.md: Biome's includes stop at src/, tsc -b covers
+    // src + supabase/scripts/pipeline), so a call site regressing to the two-arg
+    // form parses, lints, type-checks and tests green — and fails only in the
+    // owner's next live run, which is the run Story 2.12 exists to protect. This
+    // asserts the shape the story's whole fix depends on, and that the refusal
+    // branch for a code naming neither slot survived the fix.
+    const probe = readFileSync(new URL('../../scripts/probe-game7-venues.mjs', import.meta.url), 'utf8');
+    const calls = probe.match(/generator\.resolveFeedCode\([^)]*\)/g) ?? [];
+    expect(calls.length).toBe(2);
+    for (const call of calls) {
+      expect(call).toContain('[m.row.teamA, m.row.teamB]');
+    }
+    expect(probe).toContain('if (home !== m.row.teamA && home !== m.row.teamB)');
+    expect(probe).toContain('refusing to print a paste target');
+    // The `[via alias …]` suffix is the probe's report that an alias, not a direct
+    // match, carried the answer — the resolver tests prove the resolution, this
+    // proves the reporting surface that tells the owner which one fired is intact.
+    expect(probe).toContain('[via alias ${m.via.aliases.map');
+  });
 });
 
 describe('classifySeason — when a quiet season is news (curation run, P2-4/P2-5)', () => {
@@ -730,8 +778,54 @@ describe('the era-code alias table and the two-pass season matcher (curation opt
     expect(matched.map((m) => m.row.line)).toEqual([2, 3]);
     // The home side is the aliased code here, so resolution has to carry it into the
     // matched row's own vocabulary — and the row's slots are what the parser accepts.
-    expect(resolveFeedCode('GOS', aliases).abbr).toBe('GSW');
-    expect(resolveFeedCode('GOS', aliases).alias).toMatchObject({ feed: 'GOS', teams: 'GSW' });
+    // Story 2.12: the slots are now an argument (raw-code-first), so this call site
+    // says explicitly that `GOS` names neither slot of its own row before the alias
+    // fires.
+    expect(resolveFeedCode('GOS', aliases, ['PHX', 'GSW']).abbr).toBe('GSW');
+    expect(resolveFeedCode('GOS', aliases, ['PHX', 'GSW']).alias).toMatchObject({ feed: 'GOS', teams: 'GSW' });
+  });
+
+  // Story 2.12 (spec-2-12 D-1, closing deferred-work P3-1): the resolver is
+  // slot-aware. A feed code that already names one of the matched row's two
+  // abbreviations is used verbatim and the alias table is not consulted; only when
+  // it names neither may an approved alias fire. These cases fail on the old
+  // context-free behavior, which mapped every `WAS` to `WSB` and made the venue
+  // probe REFUSE a correct paste target on modern Wizards rows
+  // (`00005:133` Wizards and `00007:37` Bullets are both real, distinct codes).
+  it('a modern WAS names its own slot and is never reinterpreted as the 1970s alias (fails on the context-free resolver)', () => {
+    // 2017-style direct match: slots BOS/WAS, feed home code WAS → verbatim, no alias.
+    const resolved = resolveFeedCode('WAS', aliases, ['BOS', 'WAS']);
+    expect(resolved.abbr).toBe('WAS');
+    expect(resolved.alias).toBeNull();
+  });
+
+  it('the 1976 WAS still resolves to WSB — the fix removes the shadowing, not the alias', () => {
+    // The CSV's `WAS,WSB` row (cited by content, not line number — its header
+    // comment grows with every story): raw WAS names neither slot, so
+    // the approved alias fires exactly as before.
+    const resolved = resolveFeedCode('WAS', aliases, ['CLE', 'WSB']);
+    expect(resolved.abbr).toBe('WSB');
+    expect(resolved.alias).toMatchObject({ feed: 'WAS', teams: 'WSB' });
+  });
+
+  it('the winner-inversion read gets the same slot-aware resolution — no false alias on a modern row, unchanged on an aliased one', () => {
+    // The probe's inversion branch (probe:287-292) resolves the feed winner through
+    // this same call, so the two outcomes it depends on are pinned here at the
+    // resolver: on a modern BOS/WAS row a feed winner of `WAS` stays `WAS` (a real
+    // inversion reported against the raw code), where the context-free version
+    // returned `WSB`, matched neither slot and silently skipped the report. The
+    // 1976 case is untouched: `WAS` on a CLE/WSB row still resolves to `WSB`
+    // (teamB) and is reported as the inversion the alias evidences. The call-site
+    // wiring itself is pinned by the probe source-shape case in the scripts/** gap
+    // describe (no gate program covers that file).
+    expect(resolveFeedCode('WAS', aliases, ['BOS', 'WAS']).abbr).toBe('WAS');
+    expect(resolveFeedCode('WAS', aliases, ['CLE', 'WSB']).abbr).toBe('WSB');
+  });
+
+  it('a code that names neither slot and no alias stays raw — the probe slot check still refuses it', () => {
+    // The refusal branch at probe:262-267 is only reachable when resolution lands
+    // outside both slots; the resolver must not invent an answer there.
+    expect(resolveFeedCode('ZZQ', aliases, ['BOS', 'WAS'])).toEqual({ abbr: 'ZZQ', alias: null });
   });
 
   it('1987-88: the alias pass runs after the WHOLE direct pass, so three LAL series disambiguate', () => {

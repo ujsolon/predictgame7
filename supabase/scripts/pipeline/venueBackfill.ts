@@ -74,9 +74,14 @@ export const LEAGUES = ['NBA', 'BAA', 'ABA'];
  * The rule that goes with it: if the live archive has grown by apply time, the
  * fix is to **re-measure it (owner-run), append the newer series to the curated
  * CSV, and change these constants in that same commit** — never to relax or
- * delete a guard. The 178 total and the 1,246 row count are pinned alongside
- * them by `parseVenuesCsv`'s one-row-per-series contract and the rehearsal's
- * fixture census.
+ * delete a guard. One case cannot be appended (Story 2.12, O-2): a series with
+ * no Game 7 played (`winner_team_id IS NULL`, pending per AD-4) has no venue to
+ * curate, so no curated row for it can exist — the two uncovered-row guards
+ * (`league_backfill_complete`, `venue_coverage`) name that in their messages,
+ * and the census population line stays as written because those guards already
+ * refuse the pending state before the census runs. The 178 total and the 1,246
+ * row count are pinned alongside them by `parseVenuesCsv`'s one-row-per-series
+ * contract and the rehearsal's fixture census.
  */
 export const EXPECTED_NBA_BAA = 160;
 export const EXPECTED_ABA = 18;
@@ -501,15 +506,28 @@ export function matchSeasonFeedSeries(input: {
 }
 
 /**
- * Map one raw feed code through the approved aliases. Used on the resolved side of a
- * match (the Game-7 home team), so a caller can require the answer to be one of the
- * matched row's own two slots — the same rule `parseVenuesCsv` enforces on input.
- * Context-free by design: a code like `WAS` is both a 1970s Bullets alias (-> `WSB`)
- * and a live seed abbreviation, so applying this AFTER a match can reinterpret a
- * modern row. Deferred as P3-1 (`_bmad-output/implementation-artifacts/deferred-work.md`,
- * Story 2.8 section; owner: Story 2.9) — NOT fixed here.
+ * Map one raw feed code through the approved aliases — slot-aware since Story 2.12
+ * (spec-2-12 D-1; closes deferred-work P3-1, the "context-free WAS→WSB shadowing"
+ * carry-over from Story 2.8's review). `slots` is the matched curated row's own two
+ * abbreviations, and a code that already names one of them is used verbatim: the
+ * alias table is consulted only when the code names neither. This is the alias
+ * table's rule 1 (direct matching outranks aliasing, `game7_feed_aliases.csv`)
+ * applied AFTER a match — the context-free version let the 1970s Bullets alias
+ * `WAS` → `WSB` shadow the live Washington Wizards abbreviation (`00005:133` and
+ * `00007:37`, where `WAS` and `WSB` are both real, distinct franchises), so the
+ * venue probe refused a correct paste target on a modern `WAS` row. The caller can
+ * still require the answer to be one of the row's slots — the same rule
+ * `parseVenuesCsv` enforces on input — but with the slots passed in, a directly
+ * named slot can never be reinterpreted.
  */
-export function resolveFeedCode(code: string, aliases: readonly FeedAlias[]): { abbr: string; alias: FeedAlias | null } {
+export function resolveFeedCode(
+  code: string,
+  aliases: readonly FeedAlias[],
+  slots: readonly [string, string],
+): { abbr: string; alias: FeedAlias | null } {
+  if (code === slots[0] || code === slots[1]) {
+    return { abbr: code, alias: null };
+  }
   const alias = aliases.find((candidate) => candidate.feed === code) ?? null;
   return { abbr: alias === null ? code : alias.teams, alias };
 }
@@ -750,7 +768,7 @@ BEGIN
       JOIN public.teams tb ON tb.id = s.team_b_id
      WHERE s.league IS NULL
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive. Either curation is incomplete or the live archive grew after it was cut (spec-2-8 D5): re-measure the table, append the newer series to game7_venues_curated.csv and re-derive the pinned counts in the same commit. Relaxing this guard is not the route',
+    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive. Either curation is incomplete or the live archive grew after it was cut (spec-2-8 D5): re-measure the table, append the newer series to game7_venues_curated.csv and re-derive the pinned counts in the same commit. One case cannot be appended (Story 2.12): a series with no Game 7 played — winner_team_id IS NULL, pending per AD-4 — has no venue to curate, so no curated row for it can exist; let the pipeline decide that Game 7 (its winner then names a real venue) and re-measure, and never delete a series row to satisfy this guard. Relaxing this guard is not the route',
       v_null, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;
@@ -839,7 +857,7 @@ BEGIN
               OR (tta.abbreviation = c.team_b AND ttb.abbreviation = c.team_a))
        )
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route. If these rows are newer than the curated file, the archive grew after it was cut (spec-2-8 D5): append them and re-derive the pinned counts in the same commit that changes this migration',
+    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route. If these rows are newer than the curated file, the archive grew after it was cut (spec-2-8 D5): append them and re-derive the pinned counts in the same commit that changes this migration. One case cannot be appended (Story 2.12): a series with no Game 7 played — winner_team_id IS NULL, pending per AD-4 — has no venue to curate, so appending it to game7_venues_curated.csv is impossible advice; let the pipeline decide that Game 7 (its winner then names a real venue) and re-measure, and never delete a series row to satisfy this guard',
       v_missing, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;

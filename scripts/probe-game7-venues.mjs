@@ -258,7 +258,14 @@ async function runVenueProbe(seasonOverrideRaw) {
       });
 
       for (const m of matched) {
-        const home = generator.resolveFeedCode(m.series.homeCode, feedAliases).abbr;
+        // Story 2.12: the resolver is slot-aware — a feed code that already names
+        // one of the matched row's two abbreviations is used verbatim, and the
+        // alias table is consulted only when it names neither. Without the slots
+        // the context-free WAS->WSB alias shadowed a modern Wizards row and this
+        // next check refused a correct paste target (deferred-work P3-1). The
+        // check itself stays: a code that names neither slot and no approved
+        // alias places is still a refusal, not a guess.
+        const home = generator.resolveFeedCode(m.series.homeCode, feedAliases, [m.row.teamA, m.row.teamB]).abbr;
         if (home !== m.row.teamA && home !== m.row.teamB) {
           unmatchedProbeAnswers.push(
             `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — Game 7 home resolved to "${home}", which is not one of that row's two slots: refusing to print a paste target`,
@@ -273,7 +280,11 @@ async function runVenueProbe(seasonOverrideRaw) {
         printed += 1;
         answeredKeys.add(pairKey(m.row.year, m.row.teamA, m.row.teamB));
 
-        const feedWinner = generator.resolveFeedCode(m.series.winnerCode, feedAliases).abbr;
+        // Slot-aware here too (Story 2.12): the raw winner code of a modern row
+        // is compared as itself, so `WAS` winning a `BOS`/`WAS` series reports a
+        // real inversion instead of silently resolving to `WSB` and matching
+        // neither slot.
+        const feedWinner = generator.resolveFeedCode(m.series.winnerCode, feedAliases, [m.row.teamA, m.row.teamB]).abbr;
         if (feedWinner === m.row.teamB) {
           winnerInversions.push(
             `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — the feed says ${feedWinner} won this series, while the curated row holds ${m.row.teamA} in the winner-first slot. Resolution is by UNORDERED pair so the venue still lands on the right row; this is a provenance question about the row, not a blocker.`,

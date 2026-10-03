@@ -432,7 +432,7 @@ BEGIN
       JOIN public.teams tb ON tb.id = s.team_b_id
      WHERE s.league IS NULL
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive. Either curation is incomplete or the live archive grew after it was cut (spec-2-8 D5): re-measure the table, append the newer series to game7_venues_curated.csv and re-derive the pinned counts in the same commit. Relaxing this guard is not the route',
+    RAISE EXCEPTION '00016 guard league_backfill_complete: % series row(s) left with NULL league (e.g. %, %, %) — the curated file does not cover the archive. Either curation is incomplete or the live archive grew after it was cut (spec-2-8 D5): re-measure the table, append the newer series to game7_venues_curated.csv and re-derive the pinned counts in the same commit. One case cannot be appended (Story 2.12): a series with no Game 7 played — winner_team_id IS NULL, pending per AD-4 — has no venue to curate, so no curated row for it can exist; let the pipeline decide that Game 7 (its winner then names a real venue) and re-measure, and never delete a series row to satisfy this guard. Relaxing this guard is not the route',
       v_null, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;
@@ -521,7 +521,7 @@ BEGIN
               OR (tta.abbreviation = c.team_b AND ttb.abbreviation = c.team_a))
        )
      LIMIT 1;
-    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route. If these rows are newer than the curated file, the archive grew after it was cut (spec-2-8 D5): append them and re-derive the pinned counts in the same commit that changes this migration',
+    RAISE EXCEPTION '00016 guard venue_coverage: % NBA/BAA archived series have no curated Game-7 venue row (e.g. %, %, %) — curation is incomplete and hand-bypass is not a route. If these rows are newer than the curated file, the archive grew after it was cut (spec-2-8 D5): append them and re-derive the pinned counts in the same commit that changes this migration. One case cannot be appended (Story 2.12): a series with no Game 7 played — winner_team_id IS NULL, pending per AD-4 — has no venue to curate, so appending it to game7_venues_curated.csv is impossible advice; let the pipeline decide that Game 7 (its winner then names a real venue) and re-measure, and never delete a series row to satisfy this guard',
       v_missing, v_example.year, v_example.a, v_example.b
       USING ERRCODE = '23514';
   END IF;
