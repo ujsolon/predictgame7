@@ -170,10 +170,10 @@ development_status:
   # cancel. THE CADENCE IS BLOCKED: three nba_com dry dispatches (06:15/06:19/06:56) each spent 81 s =
   # three FETCH_TIMEOUT_MS attempts with zero response bytes, 9/9. Node on the owner's machine PASSes
   # the byte-identical URL (06:29, again 07:38) while curl with the same six headers gets (56) reset
-  # (07:10, again 07:40): the one passing cell is Node+residential, exactly route A (self-hosted
-  # runner); B would be a bmad-correct-course. Evidence + the curl -v mechanism: deferred-work.md.
-  # Still owed regardless: sheet step 1 (source=fantrax) and step 5 (close #8, re-fire, confirm a
-  # fresh issue) -- both zero-network, both reachable today.
+  # (07:10, again 07:40). BOTH LOCAL ROUTES ARE REJECTED -- "I really dont want to run it locally" --
+  # and the lean is hosting the run in Supabase (pg_cron + Edge Function), gated on the one untested
+  # cell, Supabase's egress: probe feed-egress-probe, then correct-course on CAP-1/3/4 + D-5/D-7, then
+  # the port as a story. Record: deferred-work.md. Still owed: sheet 1 (fantrax) + 5 (re-fire, #8).
   2-6-scheduled-workflows-failure-notification-sm-4: review
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their
