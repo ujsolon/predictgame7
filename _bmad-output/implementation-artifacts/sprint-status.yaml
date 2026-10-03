@@ -128,7 +128,19 @@ development_status:
   # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
   # alias collision in the venue probe's resolver, and game7_home_win_census counting pending series.
   # Owner's condition: split either out into its own story at 2-6's planning turn if it does not fit.
+  # 2026-10-03: spec authored at _bmad-output/specs/spec-2-6-scheduled-pipelines/ (SPEC.md + workflow-
+  # inventory / failure-modes / decisions companions). All seven of its open decisions were closed by
+  # the owner the same day: D-1 repository secret, D-2 path-filtered migration-rehearsal.yml, D-3 the
+  # new --require-feed runner flag (refused with manual_csv), D-4 one shared composite notify action
+  # that nightly-gate.yml also calls, D-5 a three-line 09:30 UTC bracket (Apr 16-30 / May / Jun 1-30)
+  # with two workflow files, D-6 the carry-overs SPLIT OUT into 2-12 below, D-7 accepted: an un-run
+  # cadence alarms on nothing and Story 2.7's drill owns the glance.
   2-6-scheduled-workflows-failure-notification-sm-4: backlog
+  # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
+  # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their
+  # own story -- the content of the never-authored spec-2-8b. Ordered BEFORE 2-7 because the drill
+  # re-runs the venue probe and must not inherit two known defects. Registered epics.md:403.
+  2-12-venue-probe-and-census-followup: backlog
   2-7-epic-verification-simulated-playoff-week: backlog
   epic-2-retrospective: optional
 
