@@ -531,7 +531,15 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
     `nba_com: ${reconstructed.length} series in feed, ${statuses.length} Game-7 candidate(s) ` +
     `(${pendingCount} pending 3-3, ${decidedCount} decided through game 7) — excluded: ${excludedEnded} ended before game 7, ` +
     `${excludedInProgress} in flight, ${excludedUnexplained} unexplainable; ${withheldGameIds.size} game(s) played on ${runDateKey} withheld`;
-  const report: AdapterRunReport = { countsLine, histogramLine, notes };
+  const report: AdapterRunReport = {
+    countsLine,
+    histogramLine,
+    // Every pair the feed carried, before the chain walk excluded any of them
+    // — `--require-feed`'s alarm asks "did anything come back", not "was any
+    // of it a Game 7".
+    feedSeriesCount: reconstructed.length,
+    notes,
+  };
   return { statuses, scores, report };
 }
 

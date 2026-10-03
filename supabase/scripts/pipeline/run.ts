@@ -30,6 +30,15 @@
  * otherwise read as if it had.
  * A refresh failure reaches the same exit-2 path as any other step.
  *
+ * Story 2.6 additions: `--require-feed` makes an empty feed a failure rather
+ * than a quiet success, so a scheduled inseason run that reached the endpoint
+ * and got nothing back exits non-zero and alarms. The runner stays date-blind
+ * — no Apr–Jun branch lives here — so the flag is opt-in, declared by
+ * `.github/workflows/pipeline-inseason.yml` and by nothing in code. It is
+ * refused up front (before any credential is read) with an adapter that
+ * carries no run report, because `manual_csv`'s rows are a file the operator
+ * edited rather than a feed that can come back empty.
+ *
  * `.env` must supply SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the same
  * names the handle-contact function uses; NFR-S1 — never a `VITE_*` name,
  * never a committed value).
@@ -38,6 +47,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  adapterHasRunReport,
   assertAdapterImplemented,
   createAdapterSource,
   DEFAULT_ADAPTER_NAME,
@@ -106,7 +116,12 @@ function flagValue(argv: string[], name: string): string | undefined {
  */
 function unknownFlag(argv: string[]): string | undefined {
   return argv.find(
-    (arg) => arg.startsWith('--') && arg !== '--dry-run' && arg !== '--refresh-insights' && !/^--(source|csv|season)=\S/.test(arg),
+    (arg) =>
+      arg.startsWith('--') &&
+      arg !== '--dry-run' &&
+      arg !== '--refresh-insights' &&
+      arg !== '--require-feed' &&
+      !/^--(source|csv|season)=\S/.test(arg),
   );
 }
 
@@ -172,10 +187,11 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const stray = unknownFlag(argv);
     if (stray) {
       throw new PipelineRunError(
-        `unrecognised flag "${stray}" — supported: --dry-run, --refresh-insights, --source=<adapter>, --csv=<path>, --season=<YYYY-YY> ` +
+        `unrecognised flag "${stray}" — supported: --dry-run, --refresh-insights, --require-feed, --source=<adapter>, ` +
+          '--csv=<path>, --season=<YYYY-YY> ' +
           '(--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived ' +
           'year reaches the runner\'s archive guard, never a rewrite; --refresh-insights runs only the Story 2.5 insights-cache ' +
-          'refresh and exits)',
+          'refresh and exits; --require-feed turns an empty feed into a failure)',
       );
     }
     const dryRun = argv.includes('--dry-run');
@@ -184,6 +200,12 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // outside a winner-filling run. It never replaces the frozen automatic
     // trigger below; it is an additional, operator-initiated path.
     const refreshInsightsOnly = argv.includes('--refresh-insights');
+    // Story 2.6 / SM-4: an empty *plan* is legitimate (a day with no completed
+    // games); an empty *feed* inside the playoff window is the anomaly. The
+    // runner never decides which window it is in — the workflow file that
+    // passes this flag does — so the flag is off by default and the date
+    // expression stays singular (the cron line).
+    const requireFeed = argv.includes('--require-feed');
     // The two scoping flags are read once, up here, because both paths
     // validate them — the run path against the selected adapter, the refresh
     // path against the fact that it selects no adapter at all.
@@ -205,6 +227,16 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       throw new PipelineRunError(
         '--refresh-insights cannot be combined with --dry-run — dry-run promises zero writes and the insights refresh writes three ' +
           'insights_cache rows. Drop one flag: the refresh is an operator action, not a preview.',
+      );
+    }
+    if (refreshInsightsOnly && requireFeed) {
+      // Refused by validation, not by ordering: the operator refresh reads the
+      // archive through `pipeline_refresh_insights_cache` and fetches no feed,
+      // so there is no feed for it to require — and a flag that could check
+      // nothing would read as if it had.
+      throw new PipelineRunError(
+        '--require-feed cannot be combined with --refresh-insights — the operator refresh recomputes the cache from the archived ' +
+          'series and never fetches a feed, so there is no feed to require. Drop one flag.',
       );
     }
     if (refreshInsightsOnly) {
@@ -256,6 +288,19 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
           `Flags this adapter understands: ${allowed.length > 0 ? allowed.map((name) => `--${name}=`).join(', ') : 'none'}.`,
       );
     }
+    // Story 2.6: the same refusal shape as the block above, one layer up. An
+    // adapter that declares no run report has no feed count to check, so
+    // `--require-feed` against it cannot pass or fail — it can only pretend.
+    // Refusing here (before `openSink()` and before the adapter is even
+    // constructed) also makes the alarm's own contract testable and
+    // dispatchable with no credentials and zero HTTP to the database.
+    if (requireFeed && !adapterHasRunReport(sourceName)) {
+      throw new PipelineRunError(
+        `--require-feed does not apply to adapter "${sourceName}" — the empty-feed alarm reads the adapter's run report and this ` +
+          'adapter declares none: its rows are a file an operator edited, not a feed that can come back empty. Refusing instead of ' +
+          'silently passing a check that can never run; use --source=nba_com.',
+      );
+    }
     // Decision 8: the CSV path is resolved only for the adapter that can read
     // a CSV; an HTTP adapter's deps bag carries no path it could misuse.
     const csvPath = sourceName === 'manual_csv' ? (csvArg ?? DEFAULT_CSV_PATH) : undefined;
@@ -288,6 +333,22 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       log(report.histogramLine);
       for (const note of report.notes) {
         log(note);
+      }
+      // The alarm reads the report's own number, never the wording of the line
+      // printed above it — a copy edit to `countsLine` must not be able to turn
+      // this into a check that silently never matches. Reaching here with the
+      // flag set means the registry declared a report for this adapter (the
+      // refusal above guarantees that) and `tests/pipeline/run.test.ts` pins
+      // the declaration against the adapter's own members. The throw sits
+      // ahead of the dry-run return because this is a refusal, not a write: a
+      // `--dry-run --require-feed` run against an empty feed is red, which is
+      // how the alarm's contract gets proven before the playoff window.
+      if (requireFeed && report.feedSeriesCount === 0) {
+        throw new PipelineRunError(
+          `--require-feed: ${sourceName} returned 0 series — an empty feed inside the playoff window is a failure, not a quiet ` +
+            'success (Story 2.6 / SM-4). No plan was computed and nothing was written; the report lines above are what the feed ' +
+            'carried. Check the endpoint and the derived season before the next cron slot.',
+        );
       }
     }
 

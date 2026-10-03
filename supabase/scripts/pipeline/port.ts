@@ -54,6 +54,14 @@ export interface AdapterRunReport {
   countsLine: string;
   /** The derived depth histogram, rendered by the single shared `formatHistogram`. */
   histogramLine: string;
+  /**
+   * How many series the feed carried, counted BEFORE any of them was excluded
+   * as a non-Game-7 shape. `--require-feed`'s empty-feed alarm (Story 2.6)
+   * reads this number and never the wording of `countsLine`, because a copy
+   * edit to a log string must not be able to turn a check into one that never
+   * matches.
+   */
+  feedSeriesCount: number;
   /** Named exclusions (e.g. a chain depth the walk cannot explain). */
   notes: string[];
 }
@@ -110,12 +118,21 @@ interface AdapterEntry {
   implemented: boolean;
   /** Only implemented adapters carry a factory. */
   create?: (deps: AdapterDeps) => SeriesDataSource;
+  /**
+   * Whether this adapter's source carries a `describeRun` report. Declared
+   * here rather than discovered from the factory because the runner has to
+   * answer it BEFORE the sink exists (`--require-feed` refuses an adapter with
+   * no report before any credential is read), and constructing a source needs
+   * the team table. `tests/pipeline/run.test.ts` pins that this matches the
+   * factory's output, so the declaration cannot drift.
+   */
+  hasRunReport: boolean;
   /** For recognised-but-unimplemented names: why this entry exists (rejection, not silence). */
   rejection?: string;
 }
 
 function unimplementedEntry(rejection?: string): AdapterEntry {
-  return { implemented: false, ...(rejection ? { rejection } : {}) };
+  return { implemented: false, hasRunReport: false, ...(rejection ? { rejection } : {}) };
 }
 
 /**
@@ -128,13 +145,24 @@ function unimplementedEntry(rejection?: string): AdapterEntry {
  * Active Series stale while looking healthy.
  */
 export const ADAPTER_REGISTRY: Record<string, AdapterEntry> = {
-  manual_csv: { implemented: true, create: createManualCsvAdapter },
-  nba_com: { implemented: true, create: createNbaComAdapter },
+  manual_csv: { implemented: true, hasRunReport: false, create: createManualCsvAdapter },
+  nba_com: { implemented: true, hasRunReport: true, create: createNbaComAdapter },
   fantrax: unimplementedEntry(
     'it was rejected by the Story 2.1 spike: Fantrax endpoints are fantasy-scoped and return fantasy point totals and playoff ' +
       'configuration, never a real NBA game score with home/away sides (see _bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md)',
   ),
 };
+
+/**
+ * Whether the named adapter's run report can answer "did the feed carry
+ * anything?" — the question `--require-feed` asks. False for `manual_csv`,
+ * whose rows are a file the operator edited and which declares no
+ * `describeRun`. An unknown or unimplemented name is false too: the runner
+ * rejects those separately, and this predicate never licenses a run.
+ */
+export function adapterHasRunReport(name: string): boolean {
+  return ADAPTER_REGISTRY[name]?.hasRunReport ?? false;
+}
 
 /**
  * Validate an adapter name without touching the environment or the network —

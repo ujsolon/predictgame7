@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-phase.ts';
 import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
+import { ADAPTER_REGISTRY, adapterHasRunReport, createAdapterSource } from '../../supabase/scripts/pipeline/port.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
@@ -785,5 +786,185 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
     expect(sink.calls).toEqual(['refreshInsights']);
     expect(sink.refreshes).toHaveLength(0);
     expect(errors.lines.join('\n')).toMatch(/pipeline_refresh_insights_cache failed/);
+  });
+});
+
+// Story 2.6 — `--require-feed`: the empty-feed alarm. The asymmetry the flag
+// exists to keep is that an empty PLAN is legitimate (a day with no completed
+// games) while an empty FEED inside the playoff window is the anomaly, and the
+// runner must stay date-blind — so the flag is the only thing that decides
+// which case a run is in. Every "did not write" claim below is asserted on the
+// FakeSink call log, the way Story 2.5's rows are.
+describe('runPipeline — Story 2.6 --require-feed', () => {
+  /** The rowSet column names — the twin of `nba-com.test.ts` HEADERS. */
+  const FEED_COLUMNS = ['GAME_ID', 'GAME_DATE', 'TEAM_ID', 'TEAM_ABBREVIATION', 'MATCHUP', 'PTS', 'WL'];
+  const feedBody = (rowSet: unknown[][]) => ({ resultSets: [{ headers: FEED_COLUMNS, rowSet }] });
+  const stubFeed = (body: unknown) => async () => ({ ok: true, status: 200, json: async () => body });
+  /** June 2027, so `deriveSeason` asks for the postseason being played. */
+  const runNow = () => new Date(Date.UTC(2027, 5, 20));
+  /** One game between two abbreviations `FakeSink.teams` really holds. */
+  const ONE_SERIES_ROWSET = [
+    ['004270101', '2027-05-01', 999, 'OKC', 'OKC vs. DEN', 110, 'W'],
+    ['004270101', '2027-05-01', 888, 'DEN', 'DEN @ OKC', 100, 'L'],
+  ];
+  /** The manual_csv floor with no data rows at all — the floor's own "empty feed". */
+  const headerOnlyCsv = () => 'year,round,game_number,home_team,away_team,home_score,away_score';
+
+  const runOver = async (
+    sink: FakeSink,
+    argv: string[],
+    opts: { body?: unknown; readFile?: () => string } = {},
+  ) => {
+    const out = capture();
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv,
+      createSink: () => sink,
+      fetch: stubFeed(opts.body ?? feedBody([])),
+      now: runNow,
+      readFile: opts.readFile ?? headerOnlyCsv,
+      log: out.log,
+      logError: errors.log,
+    });
+    return { code, lines: out.lines.join('\n'), errors: errors.lines.join('\n') };
+  };
+
+  it('an empty feed with the flag exits 2, after the report lines that explain it', async () => {
+    const sink = new FakeSink();
+    const run = await runOver(sink, ['--source=nba_com', '--require-feed']);
+    expect(run.code).toBe(2);
+    expect(run.errors).toMatch(/--require-feed: nba_com returned 0 series/);
+    // The alarm prints what the feed carried BEFORE it fails, so the Actions
+    // log diagnoses without a local repro (CAP-4) — the report line is the
+    // evidence that the run reached the endpoint at all.
+    expect(run.lines).toMatch(/nba_com: 0 series in feed/);
+    // Failure precedes planning and writing entirely: no readCurrent, no write.
+    expect(sink.calls).toEqual(['readTeams']);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+    expect(sink.refreshes).toHaveLength(0);
+  });
+
+  it('the same empty feed is green WITHOUT the flag — the flag is the whole difference', async () => {
+    // The other half of the pair above: an offseason edge run against an empty
+    // bracket must stay quiet, so nothing here may make zero rows an error by
+    // default. Read the two tests together; either alone proves nothing.
+    const sink = new FakeSink();
+    const run = await runOver(sink, ['--source=nba_com']);
+    expect(run.code).toBe(0);
+    expect(run.errors).toBe('');
+    expect(run.lines).toMatch(/nba_com: 0 series in feed/);
+    expect(run.lines).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)/);
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent']);
+  });
+
+  it('a feed that carried series passes the flag silently', async () => {
+    const sink = new FakeSink();
+    const run = await runOver(sink, ['--source=nba_com', '--require-feed'], { body: feedBody(ONE_SERIES_ROWSET) });
+    expect(run.code).toBe(0);
+    expect(run.errors).toBe('');
+    expect(run.lines).toMatch(/nba_com: 1 series in feed/);
+    // One game is not a Game 7, so this proves the flag does not also demand a
+    // non-empty PLAN — feed rows were carried, so the alarm is satisfied.
+    expect(run.lines).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)/);
+  });
+
+  it('the flag refuses manual_csv before any client is built — with or without --source=', async () => {
+    // `createSink` throwing is the credential-free evidence: the refusal must
+    // reach the operator before `requiredEnv` runs, which is what makes this
+    // path dispatchable and testable with no database to talk to.
+    const sink = new FakeSink();
+    const buildMustNotRun = () => {
+      throw new Error('test seam violated: the run opened a sink before refusing the flag');
+    };
+    for (const argv of [['--source=manual_csv', '--require-feed'], ['--require-feed']]) {
+      const errors = capture();
+      const code = await runPipeline({
+        env: {},
+        argv,
+        createSink: buildMustNotRun,
+        readFile: fixture,
+        logError: errors.log,
+      });
+      expect(code).toBe(2);
+      expect(errors.lines.join('\n')).toMatch(
+        /--require-feed does not apply to adapter "manual_csv" — the empty-feed alarm reads the adapter's run report/,
+      );
+    }
+    expect(sink.calls).toEqual([]);
+  });
+
+  it('the flag refuses the operator refresh, which reads the archive and fetches no feed', async () => {
+    const sink = new FakeSink();
+    const errors = capture();
+    const code = await runPipeline({
+      env: {},
+      argv: ['--require-feed', '--refresh-insights'],
+      createSink: () => {
+        throw new Error('test seam violated: the flag/refresh conflict built a client');
+      },
+      fetch: () => {
+        throw new Error('test seam violated: the refresh path fetched a feed');
+      },
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(/--require-feed cannot be combined with --refresh-insights/);
+    expect(sink.calls).toEqual([]);
+  });
+
+  it('the alarm is a refusal, not a write: it is red under --dry-run too', async () => {
+    // This is what gives the alarm a zero-write red in October instead of
+    // April: dispatch the inseason workflow with dry_run and require_feed both
+    // set and the schedule's own failure path is exercised without a bracket.
+    const sink = new FakeSink();
+    const run = await runOver(sink, ['--source=nba_com', '--require-feed', '--dry-run']);
+    expect(run.code).toBe(2);
+    expect(run.errors).toMatch(/--require-feed: nba_com returned 0 series/);
+    expect(run.lines).not.toMatch(/dry-run: 0 rows written/);
+    expect(sink.calls).toEqual(['readTeams']);
+  });
+
+  it('a near-miss typo of the flag is still refused, and the supported list names it', async () => {
+    const sink = new FakeSink();
+    const run = await runOver(sink, ['--requirefeed', '--source=nba_com']);
+    expect(run.code).toBe(2);
+    expect(run.errors).toMatch(/unrecognised flag "--requirefeed"/);
+    expect(run.errors).toMatch(/--require-feed/);
+    expect(sink.calls).toEqual([]);
+  });
+
+  it('no adapter can satisfy --require-feed vacuously', async () => {
+    // The failure this pins is silent: if `hasRunReport` ever said true for an
+    // adapter whose source declares no `describeRun`, the report block would
+    // skip the check and a zero-row run would exit 0 while looking alarmed.
+    // So the behavioural guard runs against every implemented adapter with its
+    // own zero-row source.
+    const implemented = Object.entries(ADAPTER_REGISTRY).filter(([, entry]) => entry.implemented);
+    expect(implemented.map(([name]) => name).sort()).toEqual(['manual_csv', 'nba_com']);
+    for (const [name] of implemented) {
+      const sink = new FakeSink();
+      const run = await runOver(sink, [`--source=${name}`, '--require-feed']);
+      expect(run.code, `--require-feed must never pass vacuously for ${name}`).toBe(2);
+      expect(sink.calls).not.toContain('birth');
+      expect(sink.calls).not.toContain('complete');
+    }
+  });
+
+  it('the registry declaration agrees with each adapter own members', async () => {
+    for (const [name, entry] of Object.entries(ADAPTER_REGISTRY)) {
+      if (!entry.implemented) continue;
+      const source = createAdapterSource(name, {
+        csvPath: 'whatever.csv',
+        readFile: headerOnlyCsv,
+        teamIdByAbbreviation: () => undefined,
+        fetch: stubFeed(feedBody([])),
+        now: runNow,
+      });
+      expect(adapterHasRunReport(name), `ADAPTER_REGISTRY.hasRunReport drifted for ${name}`).toBe(source.describeRun !== undefined);
+    }
+    expect(adapterHasRunReport('fantrax')).toBe(false);
+    expect(adapterHasRunReport('not_an_adapter')).toBe(false);
   });
 });
