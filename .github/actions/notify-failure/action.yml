@@ -1,0 +1,51 @@
+name: Notify failure
+
+# Story 2.6, owner decision D-4 — the single definition of "loud". This is the
+# step `nightly-gate.yml` shipped with, moved here behaviour-for-behaviour:
+# open the titled issue when none is open, otherwise comment on the open one.
+# Three workflows asking for the same dedupe rule is the point at which a copy
+# stops being a copy, and the dedupe rule is exactly what SM-4's test reads (a
+# still-broken cadence stays one issue, not a daily pile).
+#
+# The callers pass prose only. The run link and the commit line are appended
+# here, in a shell that can compute them — a `with:` value is expression
+# context, where `$GITHUB_SHA` would arrive as literal text and
+# `github.sha` is the full 40 characters rather than the 7 the issue body
+# prints.
+
+description: >-
+  Open the titled GitHub issue naming a failed run, or comment on that issue
+  when it is already open.
+
+inputs:
+  title:
+    description: >-
+      Exact issue title. It is the dedupe key, so it must be stable across
+      runs — changing it strands the open issue and lets a new breakage look
+      like a different problem.
+    required: true
+  body:
+    description: >-
+      Issue body for a FRESH issue, without the run link or commit line (this
+      action appends both). Interpolate in expression context, not shell:
+      github.ref_name works here, $GITHUB_REF_NAME does not.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Open or comment on the failure issue
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        FULL_BODY="$(printf '%s\n\nRun: %s\nCommit: %s on %s\n' "$BODY" "$RUN_URL" "${GITHUB_SHA:0:7}" "$GITHUB_REF_NAME")"
+        EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq 'map(.number) | .[0] // empty')
+        if [ -n "$EXISTING" ]; then
+          gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "Still red: $RUN_URL (\`${GITHUB_SHA:0:7}\`)"
+        else
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$FULL_BODY"
+        fi

@@ -1,0 +1,130 @@
+name: Pipeline - inseason daily
+
+# Story 2.6 (FR-21, SM-4). Active Series stop being this workflow's output only
+# when the owner remembers to type a command: the Apr-Jun 2027 window is where
+# the product's traffic is measured, and data that went stale in May
+# invalidates the measurement itself.
+#
+# Three cron lines are ONE bracket written three ways — a cron day-of-month
+# range cannot express "mid-April through June" in a single line (owner decision
+# D-5, which chose the generous bracket over a date the owner re-declares every
+# spring). 09:30 UTC deliberately follows the 09:00 keepalive instead of sharing
+# its minute, so warming a sleeping Supabase instance is not made this
+# cadence's failure mode.
+#
+# These three lines are the only date expression in the design. `--require-feed`
+# is declared here rather than defaulted in the runner, because the runner stays
+# date-blind (AD-4, Story 2.4 Decision 2 — the reason `deriveSeason` is a
+# fetch-scope rule and never a state rule). The alternative was a second Apr-Jun
+# rule in code that could disagree with the cron it is meant to match. When the
+# bracket moves — a lockout, a shifted Play-In, a Finals running past June 30 —
+# the edit happens in this file and nowhere else.
+#
+# The known cost of the generous bracket: a false alarm on the leading edge in a
+# year the postseason feed is still empty on April 16. That is one human read,
+# then the line above moves; Story 2.7's drill measures the real first-non-empty
+# date so it stops being assumed.
+
+on:
+  schedule:
+    - cron: '30 9 16-30 4 *'
+    - cron: '30 9 * 5 *'
+    - cron: '30 9 1-30 6 *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Compute and print the plan, write nothing'
+        type: boolean
+        default: false
+      require_feed:
+        description: 'Fail if the feed carried no series (what the schedule does)'
+        type: boolean
+        default: false
+      source:
+        description: 'Adapter: nba_com is the feed, manual_csv the floor, fantrax the refusal'
+        type: choice
+        options:
+          - nba_com
+          - manual_csv
+          - fantrax
+        default: nba_com
+
+# One group shared with pipeline-offseason.yml. A hand dispatch queues behind a
+# scheduled run instead of interleaving a completion write with it, and
+# cancel-in-progress is off because killing a run halfway through its write
+# phase is the one outcome worse than waiting.
+concurrency:
+  group: pipeline-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          # Native type stripping (Node >= 22.18) is what lets `node run.ts`
+          # execute at all. ci.yml's floating 22.x is not evidence: that job
+          # never runs this entry point.
+          node-version: '24.x'
+          cache: npm
+
+      # The absence of a secret must arrive as the NAME of a variable, never as
+      # a fetch error several legs into the run (CAP-4). Only names are echoed.
+      - name: Refuse on a missing secret
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=()
+          if [ -z "$SUPABASE_URL" ]; then missing+=(SUPABASE_URL); fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then missing+=(SUPABASE_SERVICE_ROLE_KEY); fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing repository secrets: ${missing[*]}"
+            echo "Add them in Settings -> Secrets and variables -> Actions. A rotation has to land in both stores - this one and the local .env."
+            exit 1
+          fi
+
+      # `@supabase/supabase-js` is a runtime dependency, so the production
+      # install is enough to run the pipeline.
+      - run: npm ci --omit=dev
+
+      - name: Run the pipeline
+        # Note what is NOT here: `--env-file=.env`, which is how the operator
+        # command is written in the docs. A runner has no .env, and Node treats
+        # a missing env-file as fatal — so the credentials arrive through the
+        # env: block instead and the command line stays free of them.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PIPELINE_SOURCE: ${{ inputs.source || 'nba_com' }}
+          WANT_REQUIRE_FEED: ${{ github.event_name == 'schedule' || inputs.require_feed }}
+          WANT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          flags=()
+          if [ "$WANT_REQUIRE_FEED" = "true" ]; then flags+=(--require-feed); fi
+          if [ "$WANT_DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
+          echo "adapter=$PIPELINE_SOURCE flags=${flags[*]}"
+          node supabase/scripts/pipeline/run.ts "--source=$PIPELINE_SOURCE" "${flags[@]}"
+
+      - name: File a loud failure
+        if: failure()
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Pipeline inseason run failed
+          body: >-
+            The daily inseason pipeline run went non-zero. The log above carries
+            the adapter's run report (series counted, depth histogram, named
+            exclusions) and the runner's refusal message, so the diagnosis needs
+            no local reproduction. If the message names a missing environment
+            variable, the repository secret is absent or rotated. If it reads
+            `--require-feed: nba_com returned 0 series`, the endpoint answered
+            and had nothing: that is the alarm working inside the declared
+            window, and the question is whether the postseason really has no
+            games on the wire yet.

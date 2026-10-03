@@ -1,0 +1,71 @@
+name: Migration rehearsal
+
+# Story 2.6 (CAP-5, owner decision D-2).
+# scripts/rehearse-migration-00014.mjs certifies that supabase/migrations/
+# replays in filename order on a clean database and that each guard in 00015
+# through 00017 can actually fail. Until this file existed no gate step and no
+# job ran it, so its verdict was believed because it had passed once — and a
+# verdict like that expires the moment anybody edits a migration.
+#
+# The trigger is a migration edit, because that is what can expire the verdict.
+# A nightly run was considered and rejected (D-2 option C): it buys defence
+# against runner-image drift at the cost of a container every night, and if
+# image drift ever reddens master, that is the moment to add it, not now.
+#
+# What this job touches: a throwaway postgres:16 container that ubuntu-latest
+# starts for it, on a loopback port it publishes to nothing. No secrets, no .env
+# file, and no reference of any kind to the linked project — that reference IS
+# production, and no job in this repo may reach it. Nothing here applies a
+# migration to anything a reader sees; the owner does that, by hand.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - supabase/migrations/**
+      - scripts/rehearse-migration-00014.mjs
+      - supabase/scripts/pipeline/venueBackfill.ts
+  pull_request:
+    paths:
+      - supabase/migrations/**
+      - scripts/rehearse-migration-00014.mjs
+      - supabase/scripts/pipeline/venueBackfill.ts
+  # Infra reds are indistinguishable from real ones on a Docker-dependent job,
+  # so a re-run has to be possible without inventing a commit to push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          # The rehearsal is Node builtins plus a type-stripped import of
+          # venueBackfill.ts (Node >= 22.18), so it needs no dependency
+          # install — and installing dev deps would only add a way for this
+          # job to go red for a reason unrelated to the replay.
+          node-version: '24.x'
+
+      - name: Rehearse the migration replay order
+        run: node scripts/rehearse-migration-00014.mjs
+
+      - name: File a loud failure
+        if: failure()
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Migration rehearsal failed
+          body: >-
+            The throwaway-database migration rehearsal went red. Read it as
+            infrastructure first: a Docker or image availability change can
+            redden master with no repo change, so re-run this job before
+            blaming the commit (an exit 2 is that class; an exit 1 is a failed
+            assertion). If it is red on an assertion, the log names the guard or
+            the pinned literal that stopped matching. Relaxing either one to get
+            a zero is forbidden — the whole value of this job is that those
+            numbers are allowed to be wrong in public.

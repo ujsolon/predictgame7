@@ -25,13 +25,26 @@ interface SeriesDataSource {
 Definition: `supabase/scripts/pipeline/port.ts`.
 
 **`describeRun?()` is an optional third member** (`AdapterRunReport`: counts
-line, depth histogram, named-exclusion notes) that lets an adapter print
-what its parse saw before the runner plans anything. AD-5 as written names
-only the two fetch operations; it does not forbid an optional member, so
-this ships compliant, but amending the spine text to record the extension is
-an owner architecture act (Review Triage row 9 deferred it) — until then
-this paragraph is the only place the extension is contractually described.
+line, depth histogram, `feedSeriesCount`, named-exclusion notes) that lets an
+adapter print what its parse saw before the runner plans anything. AD-5 as
+written names only the two fetch operations; it does not forbid an optional
+member, so this ships compliant, but amending the spine text to record the
+extension is an owner architecture act (Review Triage row 9 deferred it) —
+until then this paragraph is the only place the extension is contractually
+described.
 `manual_csv` has no report; a run with it prints none of those lines.
+
+**`feedSeriesCount` is the one member a machine reads** (Story 2.6). It is the
+number of series the feed carried *before* any adapter-side exclusion, so
+`--require-feed` can decide on a number rather than on `countsLine`'s wording —
+the wording belongs to the human log and may be rephrased without breaking the
+alarm. `histogramLine` and `notes` stay prose.
+
+**`hasRunReport` on the registry entry** (`port.ts`) is what lets the runner
+answer "does this adapter have a report?" *before* the sink exists, so
+`--require-feed` handed to `manual_csv` refuses the run up front instead of
+silently passing a check that can never run. `tests/pipeline/run.test.ts` pins
+that the declared flag agrees with the adapter's actual `describeRun` member.
 
 ## Row shapes
 
@@ -379,7 +392,57 @@ adapter.
 
 `.env` supplies `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (owner-only;
 never committed). Drop `--dry-run` to apply. Exit 0 = plan applied (or
-empty); exit 2 = refused or failed, message names the row. Checked by
+empty); exit 2 = refused or failed, message names the row. Only those two codes
+exist — there is no third. Exit codes are the runner's own: it sets
+`process.exitCode`, never `process.exit`. Checked by
 `npm run gate` end to end: Biome (`supabase/scripts/**/*.ts`),
 `tsc -b` via `tsconfig.pipeline.json`, and Vitest `tests/pipeline/*.test.ts`
 against the fake sink.
+
+**`--require-feed` (Story 2.6) turns a silent empty run into a failure.** The
+runner was always date-blind, so nothing in code knows it is April: the flag is
+how a workflow file says "this schedule is inside the playoff window, so zero
+series from the feed is an alarm". It reads `report.feedSeriesCount`, throws
+before any plan is computed and before any write, and so applies to `--dry-run`
+too — which is what gives the alarm a zero-write red the owner can prove in
+October instead of waiting for April. Two refusals come with it, both up front
+before a credential is read and before the adapter is constructed: `--refresh-insights`
+(the operator refresh recomputes from the archive and never fetches, so there is
+no feed to require), and `--source=manual_csv` (that adapter declares no run
+report — its rows are a file the operator edited, not a feed that can come back
+empty). A recognised-but-unimplemented name like `fantrax` refuses one step
+earlier, as unimplemented, which is why dispatching the inseason workflow with
+`source=fantrax` is a zero-write red the alarm can be proven against.
+The scheduled inseason workflow adds the flag unconditionally; a
+`workflow_dispatch` can ask for it with the `require_feed` input. The offseason
+edge runs deliberately carry it nowhere: an empty feed at the bracket's edges is
+legitimate, and alarming there would train the owner to ignore the alarm that
+matters.
+
+## The scheduled pipelines (Story 2.6)
+
+`.github/workflows/pipeline-inseason.yml`, `pipeline-offseason.yml` and
+`migration-rehearsal.yml` are the cadence FR-20/21 requires without the owner
+remembering a command, and all three end with
+`./.github/actions/notify-failure` — one composite action, `if: failure()`,
+which files a titled issue and comments "Still red:" on a later break instead
+of opening a duplicate. The workflows' contract is pinned by
+`tests/pipeline/workflows.test.ts`: before it, nothing in `npm run gate` read
+`.github/**` at all (Biome's `files.includes` excludes it and no actionlint
+exists here), so a dropped flag or a widened permission could only be found in
+April.
+
+Two things a reader must not get wrong from that file:
+
+- **The three inseason cron lines are one bracket.** A cron day-of-month range
+  cannot express mid-April through June in a single line, so `30 9 16-30 4 *` /
+  `30 9 * 5 *` / `30 9 1-30 6 *` together *are* the design's only date
+  expression — the runner still derives nothing from a date. When the bracket
+  moves (lockout, shifted Play-In, Finals past June 30) the edit happens in that
+  file and nowhere else.
+- **`--env-file` is absent on purpose.** Node treats a missing env-file as
+  fatal and a runner has no `.env`, so credentials enter through the step's
+  `env:` block from repository secrets — never on a command line, never from a
+  committed value (NFR-S1). The guard step that names a missing secret before
+  the run exists so a rotation failure reports as a name, not as a fetch error
+  several legs late.

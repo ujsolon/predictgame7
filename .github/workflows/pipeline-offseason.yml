@@ -1,0 +1,87 @@
+name: Pipeline - offseason bracket edges
+
+# Story 2.6 (FR-20, SM-4). The AC's "initialize at playoff start, finalize at
+# playoff end, idempotently" is not a separate mechanism: one runner invocation
+# over the postseason feed does both, because the write is a certified 3-3 birth
+# or a game-7 completion and never anything else. So this file schedules the same
+# command at the two edges of the bracket rather than adding a code path —
+# there is nothing here to get out of sync with the daily run.
+#
+# What this file deliberately lacks is `--require-feed`. These two dates sit
+# OUTSIDE the alarm window on purpose: an empty feed in mid-April before the
+# postseason really starts, and one at the end of June after it has, are both
+# legitimate, and making them red would train the owner to ignore the one alarm
+# that matters (failure mode 1). The absence is the design decision, which is
+# why it is visible in a workflow file and not derived from a date in code.
+
+on:
+  schedule:
+    - cron: '30 9 12 4 *'
+    - cron: '30 9 25 6 *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Compute and print the plan, write nothing'
+        type: boolean
+        default: false
+
+# Shared with pipeline-inseason.yml for the same reason: one run at a time
+# against the write RPCs, and never a cancelled half-written series.
+concurrency:
+  group: pipeline-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Refuse on a missing secret
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=()
+          if [ -z "$SUPABASE_URL" ]; then missing+=(SUPABASE_URL); fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then missing+=(SUPABASE_SERVICE_ROLE_KEY); fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing repository secrets: ${missing[*]}"
+            echo "Add them in Settings -> Secrets and variables -> Actions. A rotation has to land in both stores - this one and the local .env."
+            exit 1
+          fi
+
+      - run: npm ci --omit=dev
+
+      - name: Run the pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WANT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          flags=()
+          if [ "$WANT_DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
+          echo "adapter=nba_com flags=${flags[*]} (no empty-feed alarm on this schedule, by design)"
+          node supabase/scripts/pipeline/run.ts --source=nba_com "${flags[@]}"
+
+      - name: File a loud failure
+        if: failure()
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Pipeline offseason run failed
+          body: >-
+            The postseason bracket edge run went non-zero. This schedule carries
+            no empty-feed alarm, so a red here is something that should not have
+            happened at all: a failed fetch, a feed shape the parser refused, a
+            series the archive guard rejected, or a missing repository secret.
+            The log above names which, and it carried no credential value into
+            the command line to do it.

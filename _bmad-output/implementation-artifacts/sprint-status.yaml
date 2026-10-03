@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-03-2026 06:59
+last_updated: 10-03-2026 13:02
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -135,7 +135,16 @@ development_status:
   # that nightly-gate.yml also calls, D-5 a three-line 09:30 UTC bracket (Apr 16-30 / May / Jun 1-30)
   # with two workflow files, D-6 the carry-overs SPLIT OUT into 2-12 below, D-7 accepted: an un-run
   # cadence alarms on nothing and Story 2.7's drill owns the glance.
-  2-6-scheduled-workflows-failure-notification-sm-4: backlog
+  # 2026-10-03 built: three workflow files + the shared .github/actions/notify-failure composite
+  # (nightly-gate.yml refactored onto it, keepalive.yml untouched) + the --require-feed runner flag,
+  # and tests/pipeline/workflows.test.ts is the first thing in this repo that can go red over
+  # .github/** (Biome's files.includes excludes it; no actionlint exists). Three mutation probes
+  # confirmed the pins bite. Deferred-work closed for the rehearsal-automation entry and the
+  # silent-empty-run entry; the Counter=1000 truncation ceiling re-pointed to 2-7, and the
+  # shipped-but-unobserved-cron / pull-channel leftovers filed with owners.
+  # OWNER STILL OWNS THE VERIFICATION THAT CANNOT RUN LOCALLY: create the SUPABASE_SERVICE_ROLE_KEY
+  # repository secret, push, then the five zero-write deliberate-failure dispatches.
+  2-6-scheduled-workflows-failure-notification-sm-4: review
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their
   # own story -- the content of the never-authored spec-2-8b. Ordered BEFORE 2-7 because the drill

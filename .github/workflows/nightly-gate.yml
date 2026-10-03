@@ -42,15 +42,14 @@ jobs:
 
       - name: File a loud failure
         if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          TITLE="Nightly gate is red"
-          BODY="The verification gate failed on a scheduled run of \`$GITHUB_REF_NAME\` at \`${GITHUB_SHA:0:7}\`.\n\nRun: $RUN_URL\n\nSteps: \`npm run lint\`, \`npm run typecheck\`, \`npm run test\`, \`npm run build\` — the first red one is in the log above."
-          EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq 'map(.number) | .[0] // empty')
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "Still red: $RUN_URL (\`${GITHUB_SHA:0:7}\`)"
-          else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$(echo -e "$BODY")"
-          fi
+        # Story 2.6 / D-4: this workflow's issue step is now the shared
+        # definition rather than a private copy, because the pipeline
+        # workflows need the same dedupe rule. The title, the cron and the
+        # meaning are unchanged — only where the step lives.
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Nightly gate is red
+          body: >-
+            The verification gate failed on a scheduled run of `${{ github.ref_name }}`.
+            Steps: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run
+            build` — the first red one is in the log above.
