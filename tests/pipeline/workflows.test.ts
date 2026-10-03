@@ -238,9 +238,18 @@ describe('the three new jobs — the pins that are not pipeline-specific', () =>
 });
 
 describe('migration-rehearsal.yml — the replay certification (CAP-5)', () => {
-  it('triggers on exactly the paths that can expire the verdict (D-2 = B)', () => {
+  it('triggers on exactly the paths that can expire the verdict (D-2 = B, widened by the owner 2026-10-03)', () => {
     const triggers = triggersOf(REHEARSAL);
-    const expected = ['scripts/rehearse-migration-00014.mjs', 'supabase/migrations/**', 'supabase/scripts/pipeline/venueBackfill.ts'];
+    // The trigger set equals the rehearsal's input set: the two data files are
+    // read by `scripts/rehearse-migration-00014.mjs` (`:510`, `:558`, `:332`),
+    // so an edit to either can expire the verdict just as a migration can.
+    const expected = [
+      'docs/NBASeriesResults.xlsx',
+      'scripts/rehearse-migration-00014.mjs',
+      'supabase/migrations/**',
+      'supabase/scripts/pipeline/data/game7_venues_curated.csv',
+      'supabase/scripts/pipeline/venueBackfill.ts',
+    ];
     expect([...(triggers.push?.paths ?? [])].sort()).toEqual(expected);
     expect([...(triggers.pull_request?.paths ?? [])].sort()).toEqual(expected);
     expect(triggers.push?.branches).toEqual(['master']);

@@ -143,11 +143,22 @@ development_status:
   # Deferred-work closed for the rehearsal-automation entry and the
   # silent-empty-run entry; the Counter=1000 truncation ceiling re-pointed to 2-7, and the
   # shipped-but-unobserved-cron / pull-channel leftovers filed with owners.
-  # OWNER STILL OWNS THE VERIFICATION THAT CANNOT RUN LOCALLY: create the SUPABASE_SERVICE_ROLE_KEY
-  # repository secret, push, then the five-step zero-write deliberate-failure run sheet (four
-  # dispatches and the confirmation between them). One review finding is frozen-intent and waits on
-  # the owner: migration-rehearsal.yml's paths: filter omits the curated venue CSV the rehearsal
-  # reads, so widening it (or accepting the gap) renegotiates D-2 = B.
+  # OWNER STILL OWNS THE VERIFICATION THAT CANNOT RUN LOCALLY. DONE 2026-10-03: the
+  # SUPABASE_SERVICE_ROLE_KEY repository secret exists and master is pushed (all six
+  # workflows report `active`; none of the three new ones has fired -- the first scheduled
+  # fire is 2027-04-12 offseason / 2027-04-16 inseason, and migration-rehearsal.yml
+  # correctly did not trigger on that push because its range touched none of its paths).
+  # STILL OWED: the five-step zero-write deliberate-failure run sheet (four dispatches and
+  # the confirmation between them), plus one rehearsal dispatch to prove the
+  # Docker-dependent job on a runner, where it has never run.
+  # BOTH REVIEW QUESTIONS ANSWERED BY THE OWNER THE SAME DAY, both recorded in spec-2-6's
+  # Implementation Notes: the frozen-intent one (migration-rehearsal.yml's paths: filter
+  # omitted the curated venue CSV and the series-results sheet the rehearsal reads) resolved
+  # as WIDEN -- D-2 = B's shape stands, its enumeration went three to five, so the trigger set
+  # now equals the script's input set and the sorted pin in workflows.test.ts grew to match;
+  # and whether an empty feed reaches the alarm, resolved as rowSet: [] on the owner's answer,
+  # which is the shape that fires --require-feed's own message. The widening is unpushed, so it
+  # only governs triggers from the next push onward.
   2-6-scheduled-workflows-failure-notification-sm-4: review
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their

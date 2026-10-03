@@ -28,6 +28,8 @@ The rehearsal (`scripts/rehearse-migration-00014.mjs`, `COVERED_THROUGH = 17`) n
 
 **DECIDED (owner, 2026-10-03): B.** Path-filtered `migration-rehearsal.yml` on `supabase/migrations/**`, `scripts/rehearse-migration-00014.mjs`, and `supabase/scripts/pipeline/venueBackfill.ts`. The verdict expires on a migration edit, so the trigger is a migration edit; C stays unbought — if runner-image drift ever reddens `master`, that's the argument for adding a nightly run then, not now. CAP-5's "wherever its verdict can expire" resolves to this file's `on:` block.
 
+**Widened by the owner, same day, on Story 2.6's review finding #6.** `scripts/rehearse-migration-00014.mjs` also reads `supabase/scripts/pipeline/data/game7_venues_curated.csv` (`:510`, `:558` — the fixture seed and the pinned-coverage cross-check at `:505`) and `docs/NBASeriesResults.xlsx` (`:332` — the real scores U11 required), so B's enumeration grows from three paths to five and the trigger set equals the rehearsal's input set. The shape of B is unchanged — path-filtered, no nightly, no `ci.yml` step — and the accepted cost is one container run on a venue- or sheet-edit. The alternative the owner rejected is the misattribution: a data edit that expires the verdict, then goes red on the next unrelated migration commit.
+
 ## D-3 — How an empty feed alarms
 
 The asymmetry that must survive any choice: an empty **plan** is legitimate (a day with no completed games), while an empty **feed** from `nba_com` inside the window is the anomaly. And `manual_csv` declares no `describeRun` (`run.ts:285-292`), so it prints no counts line to key anything on.

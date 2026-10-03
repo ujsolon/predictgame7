@@ -22,14 +22,25 @@ on:
   push:
     branches: [master]
     paths:
+      # The trigger set is the rehearsal's input set, not a subset of it: the
+      # replay builds its fixture archive from the curated venue CSV
+      # (`rehearse-migration-00014.mjs:510`, `:558`, cross-checked at `:505`) and
+      # takes its real scores from the series-results sheet (`:332`). Owner
+      # widening of D-2 = B, 2026-10-03, after Story 2.6's review found the two
+      # reads. The cost is a container run on a venue-edit; the alternative is a
+      # red on an unrelated commit.
       - supabase/migrations/**
       - scripts/rehearse-migration-00014.mjs
       - supabase/scripts/pipeline/venueBackfill.ts
+      - supabase/scripts/pipeline/data/game7_venues_curated.csv
+      - docs/NBASeriesResults.xlsx
   pull_request:
     paths:
       - supabase/migrations/**
       - scripts/rehearse-migration-00014.mjs
       - supabase/scripts/pipeline/venueBackfill.ts
+      - supabase/scripts/pipeline/data/game7_venues_curated.csv
+      - docs/NBASeriesResults.xlsx
   # Infra reds are indistinguishable from real ones on a Docker-dependent job,
   # so a re-run has to be possible without inventing a commit to push.
   workflow_dispatch:
