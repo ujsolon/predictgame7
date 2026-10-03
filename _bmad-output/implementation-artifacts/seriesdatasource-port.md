@@ -213,6 +213,21 @@ fully computed and asserted before the sink is touched).
 - `complete(PlannedCompletion)` → `SELECT pipeline_complete_series(p_series_id,
   p_game jsonb, p_winner_team_id)` — one RPC: append (or repair) game 7 and
   fill `winner_team_id`, one transaction.
+- `refreshInsights()` → `SELECT pipeline_refresh_insights_cache()` —
+  **Story 2.5, migration `00017`**. One RPC, **no arguments**: recomputes all
+  three `insights_cache` keys (`game_6_winner_stats`, `home_team_stats`,
+  `avg_point_differential`) from `series` / `series_game_scores` and writes
+  the three rows in ONE statement (`ON CONFLICT (insight_key) DO UPDATE`),
+  so either all three land or none does. Population: archived series
+  (`winner_team_id IS NOT NULL`), each one's game-7 row,
+  `league IN ('NBA','BAA')` — the league filter is the "this Game-7 venue is
+  real" marker from `00016`; the 18 ABA series are excluded from every card.
+  `win_rate` members are **percentages** (seed units — the page appends `%`).
+  Returns the census jsonb (`total_game_sevens`, `home_team_wins`,
+  `game_6_winners_won`, `average_margin`) so the run's report line prints
+  what the server wrote instead of re-reading the table; a null census
+  throws (birth's second-throw convention). Like the other two, it is
+  `SECURITY DEFINER` with `EXECUTE` for `service_role` only.
 
 The payload keys are the SQL parameter names verbatim, `p_`-prefixed:
 `client.rpc(name, params)` hands the object to PostgREST, which binds by
@@ -226,7 +241,63 @@ functions only exist on a database the agent never touches.
 `service_role` comes from the environment (`SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` — non-`VITE_*`, NFR-S1); the runner never accepts
 an anon key for writes. No step writes `series.status` — the column is gone
-(00014). A `--dry-run` prints the plan and issues zero writes.
+(00014). A `--dry-run` prints the plan and issues zero writes, refresh
+included.
+
+## Insights cache refresh (Story 2.5, migration 00017)
+
+Two firing paths, one shared implementation (`sink.refreshInsights()`), one
+report line — printed **only on the branch that refreshed**, because an
+unconditional "cache refreshed" line on a run that did nothing would be a
+false report:
+
+1. **Automatic (the frozen trigger).** A run refreshes the cache only when it
+   filled at least one winner — a completion, or a birth carrying its Game 7
+   follow-up (that write *is* the active→archive transition, AD-4). The
+   refresh runs **after** the write phase, never before. A purely offseason
+   run fills none and refreshes nothing; production currently holds no
+   pending series, so today no ordinary run can fire this branch — it is the
+   future path, shipped per the frozen rule.
+2. **Operator (`--refresh-insights`, owner decision U10).** A bare flag that
+   short-circuits right after the sink is built and before `sink.readTeams()`:
+   one RPC against the archive as it stands, one census line, exit 0. No
+   adapter is fetched, no `series` row is read or written — enforced by
+   structure (everything downstream is simply not reached), asserted by the
+   call log in `tests/pipeline/run.test.ts`. `--refresh-insights --dry-run` is
+   refused by the flag validator **before any credential is read or client
+   built** — dry-run promises zero writes and the refresh is three; the two
+   are mutually exclusive by validation, not by ordering. `--csv=` and
+   `--season=` are refused on this path by the same rule: it selects no
+   adapter, so no scoping flag can narrow it and silently discarding one
+   would mislead the operator. Adapter selection is not validated here at all
+   — a `SERIES_SOURCE` naming an unimplemented adapter cannot refuse a refresh
+   that uses none.
+
+A refresh failure on either path exits 2 naming
+`pipeline_refresh_insights_cache` (the single catch already turns any sink
+throw into exit 2); series writes from a completed write phase stay landed —
+a PostgREST client cannot roll them back — and the run is not a success.
+
+Rehearsal: `scripts/rehearse-migration-00014.mjs` section 6 exercises the
+function in the replayed 00001–00017
+schema over four archive states — the synthetic 178-fixture archive,
+hand-authored mechanics fixtures (zero denominator, pending exclusion, ABA
+exclusion, game-7-only read, percentage-unit pins), the empty population, and
+U11's real-score fixture built in-repo from the committed
+`docs/NBASeriesResults.xlsx` joined to the committed
+`supabase/scripts/pipeline/data/game7_venues_curated.csv` on the **unordered
+(year, team pair)** — never slot order — with game-7 rows seeded venue-true
+from the CSV and seeded **after** the ordered replay so `00016`'s pinned
+census guards are never asked to run over a 159-series archive. Section 6e
+then tampers the schema — drops `series.league` and re-applies `00017` inside
+one transaction — so that migration's `league_column_present` guard is
+**observed refusing**, and asserts the tamper left nothing behind (Story 2.8's
+convention: a guard never seen to fail is not yet a guard); 6f flips one
+curated Game-7 home side in memory to prove the pinned 117 is *sensitive*
+rather than sticky, which is the only in-repo check the "backfill short or
+mis-keyed" row has. `node
+scripts/rehearse-migration-00014.mjs --fixture-report` runs the
+join-and-measure half alone, no Docker, no database.
 
 ## Reference implementation: `manual_csv`
 
@@ -285,7 +356,16 @@ column reach the database through migration `00016` instead, emitted by
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --season=2016-17 --dry-run
+node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights
 ```
+
+The last line is **the owner's Story 2.5 command** (U10): after `npx supabase
+db push` applies `00017`, it is how the insights cache gets its first real
+population without waiting for a winner-filling run. It writes only the three
+`insights_cache` rows, prints one census line, and its home-card reading is
+expected to match the recorded **117 of 160** pair
+(`epic-2-context.md:44`); a mismatch stops the story in Story 2.8's scope,
+not here.
 
 Requires **Node ≥ 22.18** (also 23.6+; the repo develops on 24) — `run.ts` is
 a plain `.ts` file executed by Node's native type-stripping, with no build

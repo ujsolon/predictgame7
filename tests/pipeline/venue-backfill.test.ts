@@ -546,8 +546,10 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
 describe('the scripts/** coverage gap (E5)', () => {
   // No gate step type-checks or lints scripts/** (AGENTS.md), so at minimum
   // the two Story 2.8 additions must parse under Node's own syntax check.
-  // Anything deeper is the Docker rehearsal's job — which also runs in no
-  // gate step, and says so in its header.
+  // Beyond parsing, the Docker rehearsal's job stays outside the gate — except
+  // for the one thing that does not need a container: U11's `--fixture-report`,
+  // run below, which executes the real-score reader, its join and the pinned
+  // literals in-process.
   for (const script of ['probe-game7-venues.mjs', 'rehearse-migration-00014.mjs']) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
@@ -557,6 +559,23 @@ describe('the scripts/** coverage gap (E5)', () => {
       expect(res.status).toBe(0);
     });
   }
+
+  it('scripts/rehearse-migration-00014.mjs --fixture-report reproduces U11\'s pinned literals with no Docker and no database', () => {
+    // The `node --check` above only proves the file parses. Everything U11
+    // measures — the xlsx reader, the join to the committed curated CSV, the
+    // 159/117/59 pins — is otherwise executed by NOTHING automatic: the Docker
+    // rehearsal runs in no gate step, so a renamed `venueBackfill` export or a
+    // moved sheet column made the story's numbers silently unreproducible while
+    // `npm run gate` stayed green. `--fixture-report` exists precisely because
+    // it needs neither container nor database; the script's own exit is the
+    // assertion (it goes 1 when a pinned literal stops reproducing).
+    const res = spawnSync(process.execPath, ['scripts/rehearse-migration-00014.mjs', '--fixture-report'], {
+      encoding: 'utf8',
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+    });
+    expect(res.stdout).toContain('FIXTURE REPORT OK');
+    expect(res.status).toBe(0);
+  });
 });
 
 describe('classifySeason — when a quiet season is news (curation run, P2-4/P2-5)', () => {

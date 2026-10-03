@@ -24,7 +24,7 @@ import { createManualCsvAdapter } from '../../supabase/scripts/pipeline/adapters
 import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { FeedFetch, FeedRequestInit, FeedResponseLike } from '../../supabase/scripts/pipeline/port.ts';
-import type { PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
+import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
 /** The `00005` seed's ids (alphabetical by city) — the only id space the sink's FKs accept. */
 const SEED_IDS: Record<string, number> = {
@@ -727,6 +727,15 @@ class RecordingSink implements PipelineSink {
       away_score: completion.game.away_score,
     });
     row.winner_team_id = completion.winner_team_id;
+  }
+  /**
+   * Story 2.5 widened `PipelineSink`, and `runPipeline` calls the refresh on
+   * any run that filled a winner — these feed-fixture runs do, so the fake
+   * carries the member. Nothing here asserts on it; `run.test.ts` owns the
+   * refresh ordering/unit/flag cases against the richer FakeSink.
+   */
+  async refreshInsights(): Promise<InsightsRefreshCensus> {
+    return { total_game_sevens: 0, home_team_wins: 0, game_6_winners_won: 0, average_margin: 0 };
   }
 }
 

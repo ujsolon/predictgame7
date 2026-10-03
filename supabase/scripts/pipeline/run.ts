@@ -19,6 +19,17 @@
  * adapter cannot use refuses the run, and an adapter that carries a run
  * report (`describeRun`) prints it before planning.
  *
+ * Story 2.5 additions: a run that filled at least one winner (a completion,
+ * or a birth carrying its Game 7 follow-up) refreshes the insights cache
+ * through the 00017 RPC after its own writes land, and U10's operator flag
+ * `--refresh-insights` runs *only* that refresh and exits — no adapter
+ * selected, fetched, or validated, no series row read or written. It is
+ * refused up front when combined with `--dry-run` (dry-run promises zero
+ * writes; the refresh is three) and when combined with a `--csv=` /
+ * `--season=` scoping flag, which could narrow nothing here and would
+ * otherwise read as if it had.
+ * A refresh failure reaches the same exit-2 path as any other step.
+ *
  * `.env` must supply SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the same
  * names the handle-contact function uses; NFR-S1 — never a `VITE_*` name,
  * never a committed value).
@@ -34,7 +45,7 @@ import {
   type FeedFetch,
 } from './port.ts';
 import { groupSourceRows, planPipeline, type CurrentSeriesRow, type Plan } from './plan.ts';
-import { createSupabaseSink, type PipelineSink, type SinkOptions } from './writer.ts';
+import { createSupabaseSink, type InsightsRefreshCensus, type PipelineSink, type SinkOptions } from './writer.ts';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_CSV_PATH = join(moduleDir, 'data', 'series_manual.csv');
@@ -94,7 +105,22 @@ function flagValue(argv: string[], name: string): string | undefined {
  * an unrecognised flag refuses the run instead.
  */
 function unknownFlag(argv: string[]): string | undefined {
-  return argv.find((arg) => arg.startsWith('--') && arg !== '--dry-run' && !/^--(source|csv|season)=\S/.test(arg));
+  return argv.find(
+    (arg) => arg.startsWith('--') && arg !== '--dry-run' && arg !== '--refresh-insights' && !/^--(source|csv|season)=\S/.test(arg),
+  );
+}
+
+/**
+ * The refresh's one report line (Story 2.5) — printed only on the branch
+ * that refreshed, and naming the population the *server* counted (the RPC's
+ * own census, never a client-side re-read). The `AdapterRunReport` style:
+ * one line saying what happened and over what.
+ */
+export function insightsRefreshLine(census: InsightsRefreshCensus): string {
+  return (
+    `insights cache refreshed: 3 keys rewritten over ${census.total_game_sevens} NBA/BAA Game 7(s) — ` +
+    `home wins ${census.home_team_wins}, game-6 winners won ${census.game_6_winners_won}, average margin ${census.average_margin}`
+  );
 }
 
 function requiredEnv(env: RunDeps['env'], name: string): string {
@@ -146,12 +172,66 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const stray = unknownFlag(argv);
     if (stray) {
       throw new PipelineRunError(
-        `unrecognised flag "${stray}" — supported: --dry-run, --source=<adapter>, --csv=<path>, --season=<YYYY-YY> ` +
+        `unrecognised flag "${stray}" — supported: --dry-run, --refresh-insights, --source=<adapter>, --csv=<path>, --season=<YYYY-YY> ` +
           '(--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived ' +
-          'year reaches the runner\'s archive guard, never a rewrite)',
+          'year reaches the runner\'s archive guard, never a rewrite; --refresh-insights runs only the Story 2.5 insights-cache ' +
+          'refresh and exits)',
       );
     }
     const dryRun = argv.includes('--dry-run');
+    // U10 (owner decision 2026-10-03): a bare operator flag that runs ONLY the
+    // refresh and exits — the deliberate entry that populations the cache
+    // outside a winner-filling run. It never replaces the frozen automatic
+    // trigger below; it is an additional, operator-initiated path.
+    const refreshInsightsOnly = argv.includes('--refresh-insights');
+    // The two scoping flags are read once, up here, because both paths
+    // validate them — the run path against the selected adapter, the refresh
+    // path against the fact that it selects no adapter at all.
+    const csvArg = flagValue(argv, 'csv');
+    const seasonArg = flagValue(argv, 'season');
+    // Secrets are read and the client built at one site so both paths share
+    // one credential check. Lazy by shape: the run path still calls it only
+    // after adapter selection has been validated, so an unimplemented
+    // `SERIES_SOURCE` never reaches the environment.
+    const openSink = (): PipelineSink =>
+      (deps.createSink ?? createSupabaseSink)({
+        supabaseUrl: requiredEnv(deps.env, ENV_SUPABASE_URL),
+        serviceRoleKey: requiredEnv(deps.env, ENV_SERVICE_ROLE_KEY),
+      });
+    if (refreshInsightsOnly && dryRun) {
+      // Refused here, before any secret is read or client is built: the two
+      // are mutually exclusive BY VALIDATION, not by ordering — dry-run's
+      // contract is zero writes and the refresh is three cache rows.
+      throw new PipelineRunError(
+        '--refresh-insights cannot be combined with --dry-run — dry-run promises zero writes and the insights refresh writes three ' +
+          'insights_cache rows. Drop one flag: the refresh is an operator action, not a preview.',
+      );
+    }
+    if (refreshInsightsOnly) {
+      // The same operator-misdirection the ADAPTER_FLAGS block below refuses
+      // for a mismatched adapter: a scoping flag on this path narrows nothing,
+      // so it is refused by name rather than parsed and discarded — the
+      // operator must not believe a season or a file steered a refresh that
+      // reads neither.
+      const scoped = csvArg !== undefined ? 'csv' : seasonArg !== undefined ? 'season' : undefined;
+      if (scoped !== undefined) {
+        throw new PipelineRunError(
+          `--refresh-insights cannot be combined with --${scoped}= — the operator refresh selects no adapter, so no source file and no ` +
+            'season can narrow it, and the flag would be silently discarded. Run --refresh-insights on its own: it recomputes the cache ' +
+            'over the whole league-filtered archive as it stands.',
+        );
+      }
+      // U10's operator path is a short-circuit, not a mode: one RPC, one report
+      // line, exit — and it sits *ahead* of adapter selection, so nothing here
+      // validates, creates or fetches an adapter (a SERIES_SOURCE naming an
+      // unimplemented one cannot refuse a run that selects none). Everything
+      // below — readTeams, the adapter legs, readCurrent, planning, the write
+      // loops — is structurally unreachable, which is how "no adapter fetched,
+      // no series row read or written" is enforced by shape rather than by care.
+      const census = await openSink().refreshInsights();
+      log(insightsRefreshLine(census));
+      return 0;
+    }
     // An empty SERIES_SOURCE — a CI job that declares the variable with no
     // value — means "unset": the documented default is the manual_csv floor.
     const sourceName = flagValue(argv, 'source') ?? (deps.env.SERIES_SOURCE?.trim() || DEFAULT_ADAPTER_NAME);
@@ -165,8 +245,6 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // believe a file steered a feed run that never read it, and vice versa —
     // the same class of mistake the stray-flag guard above refuses for a
     // `--dryrun` typo.
-    const csvArg = flagValue(argv, 'csv');
-    const seasonArg = flagValue(argv, 'season');
     const passedFlags = [csvArg !== undefined ? 'csv' : undefined, seasonArg !== undefined ? 'season' : undefined].filter(
       (name): name is string => name !== undefined,
     );
@@ -182,10 +260,8 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // a CSV; an HTTP adapter's deps bag carries no path it could misuse.
     const csvPath = sourceName === 'manual_csv' ? (csvArg ?? DEFAULT_CSV_PATH) : undefined;
 
-    const supabaseUrl = requiredEnv(deps.env, ENV_SUPABASE_URL);
-    const serviceRoleKey = requiredEnv(deps.env, ENV_SERVICE_ROLE_KEY);
+    const sink = openSink();
 
-    const sink = (deps.createSink ?? createSupabaseSink)({ supabaseUrl, serviceRoleKey });
     const teams = await sink.readTeams();
     const teamIds = new Map<string, number>(teams.map((team) => [team.abbreviation, team.id]));
     const adapterDeps: AdapterDeps = {
@@ -249,6 +325,21 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       log(`wrote completion ${completion.label} on series ${completion.series_id}`);
     }
     log(`applied: ${plan.births.length} birth(s), ${plan.completions.length} completion(s), ${plan.skips.length} skip(s)`);
+
+    // Story 2.5's frozen trigger: a run refreshes the cache only when it
+    // filled at least one winner — a completion, or a birth carrying its
+    // Game 7 follow-up (that write IS the active→archive transition, AD-4).
+    // A purely offseason run fills none and refreshes nothing; the census
+    // line above already reports every write, and printing a refresh line on
+    // a branch that did not refresh would be a false report. The refresh runs
+    // AFTER the write phase, never before; a throw here reaches the single
+    // catch below and exits 2 naming the step (series writes stay landed — a
+    // PostgREST client cannot roll them back).
+    const winnerFilled = plan.completions.length > 0 || plan.births.some((birth) => birth.followup !== null);
+    if (winnerFilled) {
+      const census = await sink.refreshInsights();
+      log(insightsRefreshLine(census));
+    }
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

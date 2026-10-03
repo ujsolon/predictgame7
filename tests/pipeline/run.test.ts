@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-phase.ts';
 import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
-import type { PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
+import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
 const TEAMS: TeamRow[] = [
   { id: 10, abbreviation: 'GSW' },
@@ -57,16 +57,30 @@ class FakeSink implements PipelineSink {
   births: PlannedBirth[] = [];
   completions: PlannedCompletion[] = [];
   failNextBirth: Error | null = null;
+  /** Story 2.5: every sink method logs its name, so "never called" is an assertion on evidence that can fail (elicitation P6). */
+  calls: string[] = [];
+  refreshes: InsightsRefreshCensus[] = [];
+  failNextRefresh: Error | null = null;
+  /** A fixed census so the report line has a deterministic source to pin against. */
+  refreshCensus: InsightsRefreshCensus = {
+    total_game_sevens: 160,
+    home_team_wins: 117,
+    game_6_winners_won: 59,
+    average_margin: 9.46,
+  };
 
   async readTeams(): Promise<TeamRow[]> {
+    this.calls.push('readTeams');
     return this.teams;
   }
 
   async readCurrent(): Promise<CurrentSeriesRow[]> {
+    this.calls.push('readCurrent');
     return this.current.map((row) => ({ ...row, scores: [...row.scores] }));
   }
 
   async birth(birthOp: PlannedBirth): Promise<string> {
+    this.calls.push('birth');
     if (this.failNextBirth) throw this.failNextBirth;
     // Enforce 00015's birth rules here too: an end-to-end test must never be
     // able to certify a write the production RPC would reject.
@@ -102,6 +116,7 @@ class FakeSink implements PipelineSink {
   }
 
   async complete(completion: PlannedCompletion): Promise<void> {
+    this.calls.push('complete');
     this.completions.push(completion);
     const row = this.current.find((candidate) => candidate.id === completion.series_id);
     if (!row) throw new Error(`fake sink: completion for unknown series ${completion.series_id}`);
@@ -129,6 +144,13 @@ class FakeSink implements PipelineSink {
       });
     }
     row.winner_team_id = completion.winner_team_id;
+  }
+
+  async refreshInsights(): Promise<InsightsRefreshCensus> {
+    this.calls.push('refreshInsights');
+    if (this.failNextRefresh) throw this.failNextRefresh;
+    this.refreshes.push(this.refreshCensus);
+    return this.refreshCensus;
   }
 }
 
@@ -432,5 +454,336 @@ describe('runPipeline — refusal rows of the matrix', () => {
     expect(errors.lines.join('\n')).toMatch(/identity assertion failed/);
     expect(sink.births).toHaveLength(0);
     expect(sink.completions).toHaveLength(0);
+  });
+});
+
+// Story 2.5 — the insights-cache refresh: the frozen trigger's rule is that
+// only a run which filled a winner refreshes; U10's operator flag runs only
+// the refresh. Every "did not run" claim below is asserted on the FakeSink
+// call log (elicitation P6), never on an unasserted absence.
+describe('runPipeline — Story 2.5 insights cache refresh', () => {
+  /** The fixture minus the finished 2016 series: one bare birth at 3–3, no winner filled. */
+  const pendingOnlyCsv = () => FIXTURE_CSV.split('\n').filter((line) => !line.startsWith('2016,')).join('\n');
+
+  /** The adapter seam that must never be touched (U10's frozen I/O row). */
+  const fetchMustNotRun = () => {
+    throw new Error('test seam violated: the refresh path fetched an adapter feed');
+  };
+
+  it('a run that filled a winner refreshes exactly once, after every write', async () => {
+    const sink = new FakeSink();
+    const out = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--source=manual_csv'],
+      createSink: () => sink,
+      readFile: fixture,
+      log: out.log,
+    });
+    expect(code).toBe(0);
+    // The trigger's true branch really ran: the fixture's 2016 birth carries
+    // its Game 7 follow-up, so a winner is filled.
+    expect(sink.completions).toHaveLength(1);
+    const refreshIndex = sink.calls.indexOf('refreshInsights');
+    expect(refreshIndex).toBeGreaterThan(-1);
+    expect(sink.calls.filter((call) => call === 'refreshInsights')).toHaveLength(1);
+    // "after the write phase, never before": every write call precedes it,
+    // and it is the very last sink action of the run.
+    expect(sink.calls.slice(refreshIndex + 1)).toEqual([]);
+    const writeCalls = sink.calls.filter((call) => call === 'birth' || call === 'complete');
+    expect(writeCalls.length).toBeGreaterThan(0);
+    expect(sink.calls.slice(0, refreshIndex)).toEqual(expect.arrayContaining(['birth', 'complete']));
+    // The census line prints what the RPC returned — the report names the
+    // population the server counted, not anything the client re-derived.
+    expect(out.lines.join('\n')).toMatch(
+      /insights cache refreshed: 3 keys rewritten over 160 NBA\/BAA Game 7\(s\) — home wins 117, game-6 winners won 59, average margin 9\.46/,
+    );
+  });
+
+  it('the trigger\'s other disjunct — a completion with NO birth follow-up anywhere — refreshes too', async () => {
+    // The frozen rule is `plan.completions.length > 0 || births.some(followup)`.
+    // Every other fixture in this file reaches a winner through a birth that
+    // carries its own Game 7, so deleting the completions disjunct left the
+    // whole suite green. Here the 3–3 series is ALREADY on the table and the
+    // CSV only supplies its Game 7: one completion, zero births, so this is the
+    // only shape in which that disjunct is the live half of the trigger.
+    const sink = new FakeSink();
+    sink.current.push({
+      id: 'pending-2027',
+      year: 2027,
+      team_a_id: 21, // OKC — game 1's home team, AD-5's slot convention
+      team_b_id: 8, // DEN
+      winner_team_id: null,
+      scores: [
+        { game_number: 1, home_team_id: 21, away_team_id: 8, home_score: 110, away_score: 102 },
+        { game_number: 2, home_team_id: 21, away_team_id: 8, home_score: 104, away_score: 115 },
+        { game_number: 3, home_team_id: 8, away_team_id: 21, home_score: 108, away_score: 99 },
+        { game_number: 4, home_team_id: 8, away_team_id: 21, home_score: 101, away_score: 112 },
+        { game_number: 5, home_team_id: 21, away_team_id: 8, home_score: 120, away_score: 110 },
+        { game_number: 6, home_team_id: 8, away_team_id: 21, home_score: 98, away_score: 95 },
+      ],
+    });
+    // The fixture's live 3–3 series plus its Game 7, and no finished 2016 row.
+    const completesPending = () =>
+      `${FIXTURE_CSV.split('\n')
+        .filter((line) => !line.startsWith('2016,'))
+        .join('\n')}\n2027,Western Conference First Round,7,OKC,DEN,112,105`;
+    const out = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: [],
+      createSink: () => sink,
+      readFile: completesPending,
+      log: out.log,
+    });
+    expect(code).toBe(0);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(1);
+    expect(out.lines.join('\n')).toMatch(/plan: 0 birth\(s\), 1 completion\(s\), 0 skip\(s\)/);
+    // Refresh fired, and it fired after the completion landed — the last sink
+    // action of the run.
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent', 'complete', 'refreshInsights']);
+    expect(sink.refreshes).toHaveLength(1);
+    expect(out.lines.join('\n')).toMatch(/insights cache refreshed: 3 keys rewritten over 160 NBA\/BAA Game 7\(s\)/);
+  });
+
+  it('a run that filled no winner does not refresh at all (frozen trigger)', async () => {
+    const sink = new FakeSink();
+    const out = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: [],
+      createSink: () => sink,
+      readFile: pendingOnlyCsv,
+      log: out.log,
+    });
+    expect(code).toBe(0);
+    expect(sink.births).toHaveLength(1); // the bare 3–3 birth — no followup, no winner
+    expect(sink.completions).toHaveLength(0);
+    expect(sink.calls).not.toContain('refreshInsights');
+    expect(sink.refreshes).toHaveLength(0);
+    // The refresh line is only printed on the branch that refreshed — an
+    // unconditional line here would be a false report about a run that did
+    // nothing (Design Notes: "What the run's print can honestly say").
+    expect(out.lines.join('\n')).not.toMatch(/insights cache refreshed/);
+  });
+
+  it('the idempotent second run (all skips) refreshes nothing', async () => {
+    const sink = new FakeSink();
+    expect(await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture })).toBe(0);
+    expect(sink.calls.filter((call) => call === 'refreshInsights')).toHaveLength(1);
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture });
+    expect(code).toBe(0);
+    // Nothing was filled on the replay, so the trigger stays closed: still
+    // exactly one refresh across both runs.
+    expect(sink.calls.filter((call) => call === 'refreshInsights')).toHaveLength(1);
+  });
+
+  it('--dry-run issues zero writes, refresh included', async () => {
+    const sink = new FakeSink();
+    const out = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--dry-run'],
+      createSink: () => sink,
+      readFile: fixture,
+      log: out.log,
+    });
+    expect(code).toBe(0);
+    expect(sink.calls).not.toContain('refreshInsights');
+    expect(out.lines.join('\n')).not.toMatch(/insights cache refreshed/);
+    expect(out.lines.join('\n')).toMatch(/dry-run: 0 rows written/);
+  });
+
+  it('a refresh failure after landed writes exits 2 naming the step — success cannot be reported', async () => {
+    const sink = new FakeSink();
+    sink.failNextRefresh = new Error('pipeline_refresh_insights_cache failed: connection reset');
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: [],
+      createSink: () => sink,
+      readFile: fixture,
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(/pipeline_refresh_insights_cache failed/);
+    // The series writes stayed landed (a PostgREST client cannot roll them
+    // back) — the frozen matrix row's state, asserted, not assumed.
+    expect(sink.births).toHaveLength(2);
+    expect(sink.completions).toHaveLength(1);
+  });
+
+  it('U10: --refresh-insights is recognised, refreshes, and touches nothing else', async () => {
+    const sink = new FakeSink();
+    const out = capture();
+    let readFileCalled = false;
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--refresh-insights'],
+      createSink: () => sink,
+      readFile: () => {
+        readFileCalled = true;
+        return fixture();
+      },
+      // The adapter fetch seam throws if invoked (elicitation P6): "no
+      // adapter fetched" is asserted on evidence that can fail.
+      fetch: fetchMustNotRun,
+      log: out.log,
+    });
+    expect(code).toBe(0);
+    expect(sink.calls).toEqual(['refreshInsights']);
+    expect(sink.calls).not.toContain('readTeams');
+    expect(sink.calls).not.toContain('readCurrent');
+    expect(sink.calls).not.toContain('birth');
+    expect(sink.calls).not.toContain('complete');
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+    expect(readFileCalled).toBe(false);
+    expect(out.lines.join('\n')).toMatch(/insights cache refreshed: 3 keys rewritten over 160 NBA\/BAA Game 7\(s\)/);
+    // No adapter rows were read, so no plan or write lines printed either.
+    expect(out.lines.join('\n')).not.toMatch(/BIRTH|COMPLETE|SKIP|plan:/);
+  });
+
+  it('U10: the flag bypasses adapter selection — it works with the default, with --source=nba_com, and with an unimplemented SERIES_SOURCE alike', async () => {
+    // The third case is the one that pins the bypass: the short-circuit needs
+    // only the sink, so a `SERIES_SOURCE` naming a recognised-but-unimplemented
+    // adapter cannot refuse an adapter-free refresh (and cannot reach
+    // `assertAdapterImplemented`, which validates a selection this path never
+    // makes).
+    for (const [argv, env] of [
+      [['--refresh-insights'], envWith()],
+      [['--refresh-insights', '--source=nba_com'], envWith()],
+      [['--refresh-insights'], envWith({ SERIES_SOURCE: 'fantrax' })],
+    ] as [string[], Record<string, string | undefined>][]) {
+      const sink = new FakeSink();
+      const errors = capture();
+      const code = await runPipeline({
+        env,
+        argv,
+        createSink: () => sink,
+        fetch: fetchMustNotRun,
+        logError: errors.log,
+      });
+      expect(code).toBe(0);
+      expect(errors.lines.join('')).toBe('');
+      expect(sink.calls).toEqual(['refreshInsights']);
+    }
+  });
+
+  it('U10: --refresh-insights refuses a scoping flag instead of silently discarding it', async () => {
+    // `--csv=` / `--season=` parse fine on this path and narrow nothing: the
+    // refresh reads no source file and no season. Silently dropping them is the
+    // exact mistake the ADAPTER_FLAGS block refuses for a mismatched adapter,
+    // so they are refused by name — and asserted refused on the sink's call log
+    // too, because a refusal that still refreshed would pass a message-only
+    // check.
+    for (const [name, flag, env] of [
+      ['season', '--season=2016-17', envWith({ SERIES_SOURCE: 'nba_com' })],
+      ['csv', '--csv=operator.csv', envWith({ SERIES_SOURCE: 'manual_csv' })],
+    ] as [string, string, Record<string, string | undefined>][]) {
+      const sink = new FakeSink();
+      const errors = capture();
+      const code = await runPipeline({
+        env,
+        argv: ['--refresh-insights', flag],
+        createSink: () => sink,
+        readFile: () => {
+          throw new Error('test seam violated: a refused flag still read a file');
+        },
+        fetch: fetchMustNotRun,
+        logError: errors.log,
+      });
+      expect(code).toBe(2);
+      expect(errors.lines.join('\n')).toMatch(new RegExp(`--refresh-insights cannot be combined with --${name}=`));
+      expect(errors.lines.join('\n')).toMatch(/selects no adapter/);
+      expect(sink.calls).not.toContain('refreshInsights');
+      expect(sink.refreshes).toHaveLength(0);
+    }
+  });
+
+  it('U10: --refresh-insights with --dry-run is refused by validation before any credential or client', async () => {
+    let sinkBuilt = false;
+    const errors = capture();
+    // No credentials in env at all: if the refusal did not come first, the
+    // run would fail on SUPABASE_URL instead of on the flag conflict — the
+    // message below is what proves the refusal sits ahead of the secrets.
+    const code = await runPipeline({
+      env: {},
+      argv: ['--refresh-insights', '--dry-run'],
+      createSink: () => {
+        sinkBuilt = true;
+        return new FakeSink();
+      },
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    const text = errors.lines.join('\n');
+    expect(text).toMatch(/--refresh-insights cannot be combined with --dry-run/);
+    expect(text).toMatch(/dry-run promises zero writes/);
+    expect(text).not.toMatch(/SUPABASE_URL|SERVICE_ROLE/);
+    expect(sinkBuilt).toBe(false);
+  });
+
+  it('a typo of the operator flag still refuses the run (the allowlist literal stays closed)', async () => {
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--refresh-insight'],
+      createSink: () => new FakeSink(),
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(/unrecognised flag "--refresh-insight"/);
+    expect(errors.lines.join('\n')).toMatch(/--refresh-insights/);
+  });
+
+  it('matrix "Run aborts before writes": a plan abort never reaches the refresh', async () => {
+    // The abort is Story 2.4's slot-swap identity assertion, which fires while
+    // planning, before any write. The refresh must not run off a run that
+    // failed: its trigger is a winner this run filled, and it filled none.
+    const sink = new FakeSink();
+    sink.current.push({
+      id: 'swapped-row',
+      year: 2016,
+      team_a_id: 6,
+      team_b_id: 10,
+      winner_team_id: null,
+      scores: [],
+    });
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: [],
+      createSink: () => sink,
+      readFile: fixture,
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(/identity assertion failed/);
+    expect(sink.calls).not.toContain('refreshInsights');
+    expect(sink.refreshes).toHaveLength(0);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+  });
+
+  it('matrix "Flag refresh fails": a failing operator refresh exits 2 and stays the only call', async () => {
+    // The I/O row's point: the absence of series writes is the state, not a
+    // mitigating factor — a refresh that failed must not report success just
+    // because nothing else was at risk.
+    const sink = new FakeSink();
+    sink.failNextRefresh = new Error('pipeline_refresh_insights_cache failed: connection reset');
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--refresh-insights'],
+      createSink: () => sink,
+      fetch: fetchMustNotRun,
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(sink.calls).toEqual(['refreshInsights']);
+    expect(sink.refreshes).toHaveLength(0);
+    expect(errors.lines.join('\n')).toMatch(/pipeline_refresh_insights_cache failed/);
   });
 });

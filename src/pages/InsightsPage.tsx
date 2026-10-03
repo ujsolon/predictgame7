@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { supabase } from '@/db/supabase';
+import { sampleSetSentence } from '@/lib/insights';
 import { Loader2, TrendingUp, Home, Target } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -211,6 +212,15 @@ export default function InsightsPage() {
           </div>
         </CardContent>
       </Card>
+      {/* Story 2.5, owner decision U4/U12: the sample-set footer — the page's
+          last node, one static sentence naming the population the three cards
+          count. The number is the cached total_game_sevens the refresh writes
+          (never a literal), styled at the page's own type scale with
+          text-on-muted so it clears WCAG 1.4.3 at small size. No control, no
+          event — an explanation is not an interaction. */}
+      <p className="text-sm text-on-muted">
+        {sampleSetSentence(insights.game_6_winner_stats?.total_game_sevens ?? 0)}
+      </p>
     </div>
   );
 }

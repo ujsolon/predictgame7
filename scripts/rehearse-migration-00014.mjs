@@ -57,9 +57,39 @@
 // committed by the curation commit → the ordered replay itself applies the
 // committed file over the seeded fixture, and section 5 tampers the committed
 // text, runs the generator's --check against the real CSV<->migration pair,
-// and re-applies the committed file for the census.
+// and re-applies the committed file for the census. Since Story 2.5 section 6
+// exercises 00017's pipeline_refresh_insights_cache() over four archive
+// states — the synthetic fixture, hand-authored mechanics fixtures (zero
+// denominator, pending exclusion, ABA exclusion, game-7-only read), the empty
+// population, and U11's real-score fixture built in-repo from the committed
+// docs/NBASeriesResults.xlsx joined to the committed curated CSV by
+// (year, unordered team pair). The real-fixture arithmetic is a TRANSCRIPTION
+// check (fixture and cross-check share one join — agreement proves the SQL
+// faithful to the join, not the join faithful to reality); the two anchors
+// that answer to the world (nba.com's published 117-43, planning's separately
+// derived 59 of 159) are named in its output.
 //
-// Usage: node scripts/rehearse-migration-00014.mjs
+// Section 6 has SIX sub-sections, and the last two are this story's negative
+// proofs — do not "clean them up". Story 2.8 set the convention 00017 inherits:
+// a guard that has never been seen to reject is not yet a guard, and both
+// load-bearing docs (docs/CURRENT_DATA_MODEL.md § "Insights cache refresh",
+// spec-2-5-insights-cache-refresh.md Verification) name 6e/6f as the answers to
+// the frozen I/O matrix's two negative rows:
+//   6e drops `series.league` inside one transaction and re-applies 00017, so its
+//      `league_column_present` guard is OBSERVED REFUSING — the next assertion
+//      then proves the tamper left nothing behind.
+//   6f flips one curated Game-7 home side in memory (no database, the committed
+//      CSV untouched) and shows the measured home wins move off the pinned 117
+//      while the population holds — the pin is sensitive, not sticky, which is
+//      the only in-repo answer "Venue backfill short or mis-keyed" has.
+// `node scripts/rehearse-migration-00014.mjs --fixture-report` runs just the
+// real-fixture parser and its measurements, with no Docker and no database —
+// which is what makes U11's numbers reproducible from inside the gate (see the
+// `the scripts/** coverage gap (E5)` suite in tests/pipeline/venue-backfill.test.ts).
+//
+// Usage: node scripts/rehearse-migration-00014.mjs [--fixture-report] — no other
+// argument is accepted: a typo (`--fixture-repor`) refuses the run rather than
+// silently starting the full Docker rehearsal.
 // Exit: 0 = every claim held; non-zero on the first miss (fail-fast, so a
 // stale or broken state can never pass it). Checked by running it — like
 // every file under scripts/, Biome's files.includes does not cover it.
@@ -69,6 +99,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { inflateRawSync } from 'node:zlib';
 
 // The Story 2.8 generator, imported — not reimplemented — so section 5's
 // self-test exercises the shipped emit path (native type-stripping, Node
@@ -95,7 +126,10 @@ const dbName = 'rehearse';
 // venue is blank, so the ceiling tracked curation, not code — while the venues
 // were blank the file above 15 did not exist and section 5 certified the
 // machinery off a temp-path self-test rendering instead.
-const COVERED_THROUGH = 16;
+// Story 2.5 raises it to 17 in the same commit that emits
+// 00017_pipeline_insights_refresh.sql — the hand-written-migration sharing
+// rule, the same pairing 00014's own bump established.
+const COVERED_THROUGH = 17;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
@@ -180,6 +214,329 @@ function waitForReady(maxSeconds = 120) {
     sleepSync(2000);
   }
   throw new Error(`postgres did not accept a connection to ${dbName} within ${maxSeconds}s`);
+}
+
+// ---------------------------------------------------------------------------
+// Story 2.5, owner decision U11 — the real-score fixture machinery.
+//
+// Built in-repo from the two COMMITTED sources, by the proven zip/XML route
+// (no parser dependency): `docs/NBASeriesResults.xlsx` read through a minimal
+// central-directory walk + `inflateRawSync`, `t="s"` cells resolved against
+// `xl/sharedStrings.xml`. The sheet speaks franchise full names (the `League`
+// column is B, retained here and dropped by the original loader), so names
+// resolve to `teams.abbreviation` through the committed 00005 + 00007 seed —
+// the same 59 rows `00016` resolves through. The join to
+// `data/game7_venues_curated.csv` is on the (year, unordered team pair) —
+// never on slot order (the 2026 WCF is the stored counter-example, and the
+// sheet itself is winner-first for 177 of its rows). Game-7 rows are seeded
+// venue-TRUE from the curated CSV; only `home_team_stats` can be skewed by a
+// winner-first seeding, which is why that is a rule and not taste.
+//
+// The sheet carries 177 Game-7 rows and its NBA/BAA population is 159, not
+// production's 160 — the 2026 Western Conference Finals is the row it lacks,
+// and that row is one of the archive's 43 home LOSSES, so the fixture's home
+// numerator is production's 117 while its denominator is honestly 159. The
+// 117-of-160 pair therefore stays the owner's post-apply read against
+// epic-2-context.md:44; nothing printed by this fixture may claim 160.
+// ---------------------------------------------------------------------------
+
+/** Read one named entry out of a zip buffer (xlsx) — central-directory walk, stored or raw-deflate. */
+function readZipEntry(zip, wantedName) {
+  const EOCD = 0x06054b50;
+  let eocd = -1;
+  for (let i = zip.length - 22; i >= Math.max(0, zip.length - 66000); i--) {
+    if (zip.readUInt32LE(i) === EOCD) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd === -1) throw new Error(`${wantedName}: xlsx has no End of Central Directory — not a zip archive`);
+  const total = zip.readUInt16LE(eocd + 10);
+  let off = zip.readUInt32LE(eocd + 16);
+  for (let n = 0; n < total; n++) {
+    if (zip.readUInt32LE(off) !== 0x02014b50) throw new Error(`${wantedName}: corrupt central directory at ${off}`);
+    const method = zip.readUInt16LE(off + 10);
+    const compSize = zip.readUInt32LE(off + 20);
+    const nameLen = zip.readUInt16LE(off + 28);
+    const extraLen = zip.readUInt16LE(off + 30);
+    const commentLen = zip.readUInt16LE(off + 32);
+    const localOff = zip.readUInt32LE(off + 42);
+    const name = zip.toString('utf8', off + 46, off + 46 + nameLen);
+    if (name === wantedName) {
+      const localNameLen = zip.readUInt16LE(localOff + 26);
+      const localExtraLen = zip.readUInt16LE(localOff + 28);
+      const dataStart = localOff + 30 + localNameLen + localExtraLen;
+      const raw = zip.subarray(dataStart, dataStart + compSize);
+      return method === 0 ? raw : inflateRawSync(raw);
+    }
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+  throw new Error(`xlsx has no ${wantedName} entry`);
+}
+
+/** `<si>…</si>` → plain strings (the sheet stores team/round labels as shared strings). */
+function parseSharedStrings(xml) {
+  return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+}
+
+/** One data row of sheet1 as Map<columnLetter, string>; row 1 (the header) is skipped. */
+function parseSheetRows(sheetXml, shared) {
+  const rows = [];
+  for (const rowMatch of sheetXml.matchAll(/<row [^>]*r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
+    if (Number(rowMatch[1]) === 1) continue;
+    const cells = new Map();
+    for (const c of rowMatch[2].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>(?:<v>([\s\S]*?)<\/v>)?<\/c>)/g)) {
+      const isShared = /t="s"/.test(c[2]);
+      cells.set(c[1], c[3] === undefined ? '' : isShared ? shared[Number(c[3])] : c[3]);
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+/** franchise full_name (lowercased) → teams.abbreviation, from the committed 00005 + 00007 seed. */
+function teamsSeedNames() {
+  const seedText =
+    readFileSync(join(migrationsDir, '00005_release_1_data_model.sql'), 'utf8') +
+    readFileSync(join(migrationsDir, '00007_backfill_missing_historical_series.sql'), 'utf8');
+  const byName = new Map();
+  for (const m of seedText.matchAll(/\((\d+),\s*'([^']+)',\s*'([A-Z]{3})',/g)) {
+    byName.set(m[2].toLowerCase(), m[3]);
+  }
+  if (byName.size !== venueBackfill.EXPECTED_TEAM_COUNT) {
+    throw new Error(
+      `teams seed parse found ${byName.size} names, expected exactly ${venueBackfill.EXPECTED_TEAM_COUNT} (00005 + 00007) — fix the reader before trusting a fixture built on it`,
+    );
+  }
+  return byName;
+}
+
+/** Half-up round to 2 decimals of num/den, in exact BigInt arithmetic — the same reading PostgreSQL's round(numeric,2) gives. */
+function round2OfFraction(num, den) {
+  const scaledNum = BigInt(num) * 100n;
+  const d = BigInt(den);
+  const q = scaledNum / d;
+  const r = scaledNum % d;
+  const rounded = r * 2n >= d ? q + 1n : q;
+  return Number(rounded) / 100;
+}
+
+/**
+ * Parse + join + measure. Returns the NBA/BAA Game-7 fixture rows (venue-true
+ * game 7 already resolved), the ABA rows (winner-fiction as archived), and
+ * every measurement the harness cross-checks the RPC against — all from THIS
+ * one join, so agreement is a transcription check by construction (elicitation
+ * P5 says exactly that, and the section prints it that way).
+ */
+function loadRealGame7Fixture(curatedRows) {
+  const xlsx = readFileSync(join(repoRoot, 'docs', 'NBASeriesResults.xlsx'));
+  const shared = parseSharedStrings(readZipEntry(xlsx, 'xl/sharedStrings.xml').toString('utf8'));
+  const rows = parseSheetRows(readZipEntry(xlsx, 'xl/worksheets/sheet1.xml').toString('utf8'), shared);
+  const nameToAbbr = teamsSeedNames();
+
+  // Sheet columns (verified against row 1): A year, B league, C series type,
+  // D winner team, E winner games, F loser team, G loser games, H total games,
+  // I..O = G1..G7 winner score, P..V = G1..G7 loser score.
+  const abbr = (value) => {
+    const name = String(value ?? '').trim().toLowerCase();
+    const code = nameToAbbr.get(name);
+    if (code === undefined) throw new Error(`sheet team name "${value}" is not in the 00005+00007 teams seed`);
+    return code;
+  };
+
+  const curatedByPair = new Map();
+  for (const row of curatedRows) {
+    const key = `${row.year}|${[row.teamA, row.teamB].sort().join('|')}`;
+    if (curatedByPair.has(key)) throw new Error(`curated CSV holds two rows for ${key} — parseVenuesCsv should have refused it`);
+    curatedByPair.set(key, row);
+  }
+
+  const g7Rows = [];
+  for (const cells of rows) {
+    const totalGames = Number(cells.get('H'));
+    if (!Number.isFinite(totalGames) || totalGames !== 7) continue;
+    const year = Number(cells.get('A'));
+    const league = String(cells.get('B') ?? '').trim();
+    if (!Number.isFinite(year) || !['NBA', 'BAA', 'ABA'].includes(league)) {
+      throw new Error(`sheet row for year ${cells.get('A')} has league "${cells.get('B')}" — expected NBA/BAA/ABA on a Game-7 row`);
+    }
+    const winner = abbr(cells.get('D'));
+    const loser = abbr(cells.get('F'));
+    const games = [];
+    for (let g = 0; g < 7; g++) {
+      const w = Number(cells.get(String.fromCharCode(73 + g))); // I..O
+      const l = Number(cells.get(String.fromCharCode(80 + g))); // P..V
+      if (!Number.isFinite(w) || !Number.isFinite(l) || w === l) {
+        throw new Error(
+          `sheet ${year} ${winner}/${loser}: game ${g + 1} scores "${cells.get(String.fromCharCode(73 + g))}" vs "${cells.get(String.fromCharCode(80 + g))}" are not a decided pair`,
+        );
+      }
+      games.push([w, l]);
+    }
+    if (games[6][0] <= games[6][1]) throw new Error(`sheet ${year} ${winner}/${loser}: the series winner did not win game 7`);
+    g7Rows.push({ year, league, round: String(cells.get('C') ?? '').trim(), winner, loser, games });
+  }
+
+  const sheetBaaNba = g7Rows.filter((r) => r.league !== 'ABA');
+  const sheetAba = g7Rows.filter((r) => r.league === 'ABA');
+
+  // Join the NBA/BAA rows to the curated CSV on (year, unordered pair).
+  // Every one must join — the fixture population IS the pinned literal.
+  const joined = [];
+  const unmatched = [];
+  const claimedCurated = new Set();
+  for (const row of sheetBaaNba) {
+    const key = `${row.year}|${[row.winner, row.loser].sort().join('|')}`;
+    const curated = curatedByPair.get(key);
+    if (curated === undefined || curated.league !== row.league) {
+      unmatched.push(`${row.year} ${row.winner}/${row.loser} (${row.league})`);
+      continue;
+    }
+    claimedCurated.add(key);
+    joined.push({ ...row, venueHome: curated.home });
+  }
+
+  // The curated rows the sheet does not carry — the named counter-example is
+  // the 2026 Western Conference Finals, the fixture's whole 159-vs-160 story.
+  const curatedNbaBaaKeys = curatedRows
+    .filter((r) => venueBackfill.isNbaBaa(r))
+    .map((r) => `${r.year}|${[r.teamA, r.teamB].sort().join('|')}`);
+  const csvOnly = curatedNbaBaaKeys.filter((k) => !claimedCurated.has(k));
+
+  // ABA rows are seeded (and excluded) when their pair is in the curated CSV
+  // too; the hand-authored fixture always covers the ABA exclusion itself.
+  const abaSeeded = [];
+  const abaUnmatched = [];
+  for (const row of sheetAba) {
+    const key = `${row.year}|${[row.winner, row.loser].sort().join('|')}`;
+    if (curatedByPair.has(key)) abaSeeded.push(row);
+    else abaUnmatched.push(`${row.year} ${row.winner}/${row.loser}`);
+  }
+
+  // A join that lands nothing has no population to measure: dividing by
+  // `joined.length` below would surface as a raw `RangeError: Division by zero`
+  // (and `median` as NaN) instead of naming the broken join. Callers check
+  // `unmatched`/`measures.total` AFTER this function returns, so the abort
+  // lives here, where the empty join is first knowable.
+  if (joined.length === 0) {
+    throw new RehearsalFailure(
+      `the (year, unordered team pair) join between the sheet and the curated CSV produced ZERO NBA/BAA Game-7 rows — nothing to measure ` +
+        `(${sheetBaaNba.length} sheet row(s), ${unmatched.length} of them unmatched, e.g. ${unmatched.slice(0, 3).join('; ') || 'none'}); resolve the join, never a pin`,
+    );
+  }
+
+  const homeWins = joined.filter((r) => r.venueHome === r.winner).length;
+  const g6Won = joined.filter((r) => r.games[5][0] > r.games[5][1]).length;
+  const margins = joined.map((r) => Math.abs(r.games[6][0] - r.games[6][1])).sort((a, b) => a - b);
+  const marginSum = margins.reduce((a, b) => a + b, 0);
+  const median =
+    margins.length % 2 === 1
+      ? margins[(margins.length - 1) / 2]
+      : round2OfFraction(margins[margins.length / 2 - 1] + margins[margins.length / 2], 2);
+
+  return {
+    joined,
+    abaSeeded,
+    abaUnmatched,
+    unmatched,
+    csvOnly,
+    measures: {
+      total: joined.length,
+      homeWins,
+      g6Won,
+      average: round2OfFraction(marginSum, joined.length),
+      median,
+      max: margins[margins.length - 1],
+      min: margins[0],
+      homeRate: round2OfFraction(homeWins * 100, joined.length),
+      g6Rate: round2OfFraction(g6Won * 100, joined.length),
+    },
+  };
+}
+
+/** The seed SQL for the real-score fixture: team_a = winner (the 00007 shape the sheet came through), games 1-6 winner-first, game 7 venue-TRUE from the curated CSV. */
+function renderRealFixtureSeed(fixture) {
+  const idOf = (abbr) => `(SELECT id FROM public.teams WHERE abbreviation = '${abbr}')`;
+  const q = (text) => `'${String(text).replace(/'/g, "''")}'`;
+  const seriesRows = [];
+  const scoreRows = [];
+  const seedOne = (row, venueHome) => {
+    const id = `md5('pg7-2-5-real|${row.year}|${row.winner}|${row.loser}')::uuid`;
+    seriesRows.push(
+      `(${id}, ${row.year}, ${q(row.round)}, ${idOf(row.winner)}, ${idOf(row.loser)}, ${idOf(row.winner)}, ${q(row.league)})`,
+    );
+    for (let g = 0; g < 7; g++) {
+      const gameNumber = g + 1;
+      const [wScore, lScore] = row.games[g];
+      // Games 1-6 carry the archive's winner-first orientation (they are never
+      // a venue claim — Story 2.5's population reads only game 7); game 7 is
+      // venue-true, sides and their scores travelling together.
+      const home = gameNumber === 7 && venueHome !== undefined ? venueHome : row.winner;
+      const away = home === row.winner ? row.loser : row.winner;
+      const homeScore = home === row.winner ? wScore : lScore;
+      const awayScore = home === row.winner ? lScore : wScore;
+      const gameWinner = homeScore > awayScore ? home : away;
+      scoreRows.push(
+        `(${id}, ${gameNumber}, ${idOf(home)}, ${idOf(away)}, ${homeScore}, ${awayScore}, ${idOf(gameWinner)})`,
+      );
+    }
+  };
+  for (const row of fixture.joined) seedOne(row, row.venueHome);
+  for (const row of fixture.abaSeeded) seedOne(row, undefined);
+  return `-- Story 2.5 U11 real-score fixture: the committed docs/NBASeriesResults.xlsx Game-7
+-- rows joined to the committed data/game7_venues_curated.csv on (year,
+-- unordered team pair). NBA/BAA game-7 rows are venue-TRUE; games 1-6 carry
+-- the archive's winner-first orientation; the ABA rows are seeded winner-
+-- fiction exactly as the archive holds them, to be excluded by the league
+-- filter. Throwaway container only — this never touches production data.
+
+DELETE FROM public.series_game_scores;
+DELETE FROM public.series;
+
+INSERT INTO public.series (id, year, round, team_a_id, team_b_id, winner_team_id, league) VALUES
+${seriesRows.join(',\n')};
+
+INSERT INTO public.series_game_scores (series_id, game_number, home_team_id, away_team_id, home_score, away_score, winner_team_id) VALUES
+${scoreRows.join(',\n')};
+`;
+}
+
+/** U11's numbers as pinned by the spec (planning's measurements): the fixture's stop-literals. */
+const U11_PINS = { total: 159, homeWins: 117, g6Won: 59 };
+
+/** `--fixture-report`: run ONLY the parser + join + measurements — no Docker, no database. */
+function fixtureReport() {
+  const curatedRows = venueBackfill.parseVenuesCsv(
+    readFileSync(venueBackfill.CURATED_CSV_PATH, 'utf8'),
+    'game7_venues_curated.csv',
+  );
+  const fixture = loadRealGame7Fixture(curatedRows);
+  const m = fixture.measures;
+  console.log('U11 real-score fixture report (parser + join only — no database was touched):');
+  console.log(
+    `  NBA/BAA Game-7 rows joined to the curated CSV: ${m.total} (pinned literal ${U11_PINS.total}) — the sheet lacks the 2026 Western Conference Finals Game 7, so this is 159, NOT production's 160`,
+  );
+  console.log(`  curated NBA/BAA rows the sheet does not carry: ${fixture.csvOnly.length} (${fixture.csvOnly.join(', ') || 'none'})`);
+  console.log(
+    `  home wins over the fixture (game 7 venue-true from the CSV): ${m.homeWins} (pinned literal ${U11_PINS.homeWins}) — external anchor: nba.com's published 117-43`,
+  );
+  console.log(
+    `  game-6 winners who took the series: ${m.g6Won} (pinned literal ${U11_PINS.g6Won}) — external anchor: planning's separately derived 59 of 159`,
+  );
+  console.log(`  game-7 margins: average ${m.average}, median ${m.median}, max ${m.max}, min ${m.min}`);
+  console.log(`  win rates (percentage units): home ${m.homeRate}, game 6 ${m.g6Rate}`);
+  console.log(`  ABA Game-7 rows seeded as exclusion bait: ${fixture.abaSeeded.length}; ABA rows the curated CSV does not carry: ${fixture.abaUnmatched.join(', ') || 'none'}`);
+  console.log(
+    '  fixture and cross-check share one join, so agreement is a TRANSCRIPTION CHECK, not a second measurement of the world (elicitation P5).',
+  );
+  const ok =
+    fixture.unmatched.length === 0 &&
+    m.total === U11_PINS.total &&
+    m.homeWins === U11_PINS.homeWins &&
+    m.g6Won === U11_PINS.g6Won &&
+    fixture.csvOnly.length === 1;
+  console.log(ok ? 'FIXTURE REPORT OK — every pinned literal reproduces' : 'FIXTURE REPORT FAILED — a pinned literal does not reproduce; resolve the join, never the pin');
+  process.exitCode = ok ? 0 : 1;
 }
 
 function main() {
@@ -879,7 +1236,273 @@ function main() {
       }
     }
 
-    console.log(`\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015's RPCs assert, land atomically, and stay service_role-only, and Story 2.8's ${committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)'}.`);
+    // 6) Story 2.5 — `pipeline_refresh_insights_cache()` (migration 00017),
+    //    exercised over four archive states in the throwaway container:
+    //    6a the synthetic fixture section 5 left behind (the archive whose
+    //       home card is right BY CONSTRUCTION — U11 names that blind spot,
+    //       which is exactly why 6b/6d exist), 6b hand-authored mechanics
+    //       fixtures (zero-safe divisions, the pending exclusion, the ABA
+    //       exclusion, the game-7-only read, the percentage-unit pin), 6c the
+    //       empty population, and 6d U11's real-score fixture: the committed
+    //       sheet joined to the committed curated CSV, seeded as this story's
+    //       own section AFTER the ordered replay, with game-7 rows venue-true
+    //       (seeding before 00016 would put 159 real rows under its pinned
+    //       178/160/18/117 census guards — a foreseeable wrong turn P4 names,
+    //       and relaxing a pin to get past that abort is forbidden).
+    console.log('\n-- 6) Story 2.5: pipeline_refresh_insights_cache over synthetic, hand-authored, zero and real-score fixtures --');
+
+    const CACHE_KEYS = ['game_6_winner_stats', 'home_team_stats', 'avg_point_differential'];
+    const runRefresh = () => {
+      const res = psql({ sql: 'SELECT public.pipeline_refresh_insights_cache()::text', tuplesOnly: true });
+      mustSucceed('pipeline_refresh_insights_cache() call failed', res);
+      return JSON.parse(res.stdout.trim());
+    };
+    const cacheAggregate = () =>
+      psqlValue(`SELECT string_agg(insight_key || '=' || insight_value::text, '#' ORDER BY insight_key) FROM public.insights_cache`);
+    const memberEq = (key, member, value) =>
+      psqlValue(`SELECT (insight_value ->> '${member}')::numeric = ${value}::numeric FROM public.insights_cache WHERE insight_key = '${key}'`) === 't';
+    const updatedVal = (key) => psqlValue(`SELECT updated_at::text FROM public.insights_cache WHERE insight_key = '${key}'`);
+
+    assert(
+      '6a EXECUTE on the refresh RPC belongs to service_role only (anon and authenticated are revoked — NFR-S1, and insights_cache has no write policy for anything else)',
+      psqlValue("SELECT has_function_privilege('service_role', 'public.pipeline_refresh_insights_cache()', 'EXECUTE')") === 't' &&
+        psqlValue("SELECT has_function_privilege('anon', 'public.pipeline_refresh_insights_cache()', 'EXECUTE')") === 'f' &&
+        psqlValue("SELECT has_function_privilege('authenticated', 'public.pipeline_refresh_insights_cache()', 'EXECUTE')") === 'f',
+    );
+
+    // 6a — the synthetic archive (the section-5 end state: 178 committed-CSV
+    //      fixture series venues-corrected by the re-applied 00016, plus the
+    //      2093 pending birth that must not count).
+    const seedBefore = cacheAggregate();
+    const census6a = runRefresh();
+    assert(
+      '6a census over the synthetic archive: population 160, home wins 117, game-6 winners 0 — degenerate exactly as U11 predicts of the synthetic scores',
+      census6a.total_game_sevens === 160 && census6a.home_team_wins === 117 && census6a.game_6_winners_won === 0,
+      JSON.stringify(census6a),
+    );
+    assert(
+      '6a three rows, the three declared keys — one statement, nothing partial',
+      psqlValue('SELECT count(*) FROM public.insights_cache') === '3' &&
+        psqlValue("SELECT count(*) FROM public.insights_cache WHERE insight_key = ANY (ARRAY['game_6_winner_stats','home_team_stats','avg_point_differential'])") === '3',
+    );
+    {
+      const after = cacheAggregate();
+      assert(
+        '6a the seed is replaced, no value traces to it: 62.5 / 8.5 / max 28 / min 2 were in 00001\'s rows before and are in none of them after',
+        seedBefore.includes('62.5') && seedBefore.includes('8.5') && seedBefore.includes('"max": 28') &&
+          !after.includes('62.5') && !after.includes('8.5') && !after.includes('"max": 28') && !after.includes('"min": 2') &&
+          memberEq('game_6_winner_stats', 'total_game_sevens', 160) && memberEq('home_team_stats', 'total_game_sevens', 160),
+      );
+    }
+    assert(
+      '6a the negative pins U11 named: game_6 win_rate 0 on the uniform fixture, every margin exactly 10, and the home rate reads 73.13 (117/160) as a PERCENTAGE',
+      memberEq('game_6_winner_stats', 'win_rate', 0) &&
+        memberEq('avg_point_differential', 'average', 10) && memberEq('avg_point_differential', 'median', 10) &&
+        memberEq('avg_point_differential', 'max', 10) && memberEq('avg_point_differential', 'min', 10) &&
+        memberEq('home_team_stats', 'win_rate', 73.13),
+    );
+    {
+      const textBefore = cacheAggregate();
+      const updatedBefore = CACHE_KEYS.map(updatedVal);
+      sleepSync(1100);
+      runRefresh();
+      assert(
+        '6a idempotence (AD-5 narrowed per elicitation P7): the identical archive recomputes byte-equal insight_values',
+        cacheAggregate() === textBefore,
+      );
+      assert(
+        '6a updated_at moves while the payloads stay byte-equal — the RPC setting it is the column\'s purpose; dropping it from the write would be the forbidden repair',
+        CACHE_KEYS.every((key, i) => updatedVal(key) !== updatedBefore[i]),
+      );
+    }
+
+    // 6b — hand-authored mechanics fixtures: the cases a real archive cannot
+    //      show economically. One team pair (10 GSW / 6 CLE) across six years;
+    //      S1–S4 archived NBA, S5 archived ABA (winner-fiction home, a 30-
+    //      point margin — counting it revives the fabricated 100%), S6 pending
+    //      NBA carrying a decided game-7 row (the winner IS the exclusion, not
+    //      the missing row). Game 1 of S1 is a 50-point distractor: only game
+    //      7 may reach the stats.
+    const handAuthoredSeed = `
+DELETE FROM public.series_game_scores;
+DELETE FROM public.series;
+
+INSERT INTO public.series (id, year, round, team_a_id, team_b_id, winner_team_id, league) VALUES
+  (md5('pg7-2-5-hand|2071')::uuid, 2071, 'Hand Finals', 10, 6, 10, 'NBA'),
+  (md5('pg7-2-5-hand|2072')::uuid, 2072, 'Hand Finals', 10, 6, 10, 'NBA'),
+  (md5('pg7-2-5-hand|2073')::uuid, 2073, 'Hand Finals', 10, 6, 10, 'NBA'),
+  (md5('pg7-2-5-hand|2074')::uuid, 2074, 'Hand Finals', 10, 6,  6, 'NBA'),
+  (md5('pg7-2-5-hand|2075')::uuid, 2075, 'Hand Finals', 10, 6, 10, 'ABA'),
+  (md5('pg7-2-5-hand|2076')::uuid, 2076, 'Hand Finals', 10, 6, NULL, 'NBA');
+
+INSERT INTO public.series_game_scores (series_id, game_number, home_team_id, away_team_id, home_score, away_score, winner_team_id) VALUES
+  (md5('pg7-2-5-hand|2071')::uuid, 1, 10, 6, 120, 70, 10),
+  (md5('pg7-2-5-hand|2071')::uuid, 6, 10, 6, 101, 95, 10),
+  (md5('pg7-2-5-hand|2071')::uuid, 7, 10, 6, 104, 100, 10),
+  (md5('pg7-2-5-hand|2072')::uuid, 6, 10, 6, 95, 101, 6),
+  (md5('pg7-2-5-hand|2072')::uuid, 7, 10, 6, 106, 100, 10),
+  (md5('pg7-2-5-hand|2073')::uuid, 6, 10, 6, 101, 95, 10),
+  (md5('pg7-2-5-hand|2073')::uuid, 7, 10, 6, 103, 100, 10),
+  (md5('pg7-2-5-hand|2074')::uuid, 6, 10, 6, 111, 105, 10),
+  (md5('pg7-2-5-hand|2074')::uuid, 7, 10, 6, 97, 104, 6),
+  (md5('pg7-2-5-hand|2075')::uuid, 6, 10, 6, 120, 110, 10),
+  (md5('pg7-2-5-hand|2075')::uuid, 7, 10, 6, 130, 100, 10),
+  (md5('pg7-2-5-hand|2076')::uuid, 6, 10, 6, 115, 105, 10),
+  (md5('pg7-2-5-hand|2076')::uuid, 7, 10, 6, 120, 80, 10);
+`;
+    mustSucceed('6b hand-authored mechanics fixture seeded', psql({ file: handAuthoredSeed }));
+    const census6b = runRefresh();
+    assert(
+      '6b population is 4 — the ABA archived series and the pending series are both skipped: its game-7 home (the winner, by fiction) and its 30/40-point margins would otherwise move every card',
+      census6b.total_game_sevens === 4 && census6b.home_team_wins === 3 && census6b.game_6_winners_won === 2,
+      JSON.stringify(census6b),
+    );
+    assert(
+      '6b the percentage-unit pin: 3-of-4 home wins prints 75 (the page appends "%", so 0.75 would read 0.75%), and 2-of-4 game-6 winners prints 50',
+      memberEq('home_team_stats', 'win_rate', 75) && memberEq('game_6_winner_stats', 'win_rate', 50),
+    );
+    assert(
+      '6b only game 7 is read: margins {4,6,3,7} give average 5, median (4+6)/2 = 5, max 7 — the 50-point game 1 and the excluded 30/40-point game 7s are what a wrong read would show',
+      memberEq('avg_point_differential', 'average', 5) && memberEq('avg_point_differential', 'median', 5) &&
+        memberEq('avg_point_differential', 'max', 7) && memberEq('avg_point_differential', 'min', 3),
+    );
+
+    // 6c — the empty population (I/O row "No archived game 7 rows"): zeros,
+    //      no division, no NaN; U13 accepts the footer's "0 Game 7s" reading.
+    mustSucceed('6c archive emptied', psql({ sql: 'DELETE FROM public.series_game_scores; DELETE FROM public.series;' }));
+    const census6c = runRefresh();
+    assert(
+      '6c empty archive: every card writes zeros — total_game_sevens 0, win_rates 0, margin trio 0 — and no NaN or JSON null reaches jsonb',
+      census6c.total_game_sevens === 0 && census6c.home_team_wins === 0 && census6c.game_6_winners_won === 0 && census6c.average_margin === 0 &&
+        psqlValue("SELECT count(*) FROM public.insights_cache WHERE insight_value::text ~ 'NaN|null'") === '0' &&
+        psqlValue("SELECT count(*) FROM public.insights_cache WHERE (insight_value ->> 'total_game_sevens')::numeric = 0") === '2' &&
+        psqlValue("SELECT count(*) FROM public.insights_cache WHERE (insight_value ->> 'win_rate')::numeric = 0") === '2' &&
+        memberEq('avg_point_differential', 'average', 0) && memberEq('avg_point_differential', 'median', 0) &&
+        memberEq('avg_point_differential', 'max', 0) && memberEq('avg_point_differential', 'min', 0),
+    );
+
+    // 6d — U11's real-score fixture, run as this story's own section AFTER
+    //      the ordered replay. Honest population statement: 159, not
+    //      production's 160 — the sheet lacks the 2026 WCF Game 7, one of the
+    //      archive's 43 home LOSSES, so the fixture's numerator is
+    //      production's 117 while its denominator is its own. The 117-of-160
+    //      pair stays the owner's post-apply read; nothing printed here
+    //      claims it.
+    const realFixture = loadRealGame7Fixture(curatedRows);
+    const realM = realFixture.measures;
+    console.log(
+      `6d real-score fixture: ${realFixture.joined.length} NBA/BAA Game-7 rows joined on (year, unordered team pair) + ${realFixture.abaSeeded.length} ABA rows seeded for exclusion; margin measures average ${realM.average}, median ${realM.median}, max ${realM.max}, min ${realM.min}`,
+    );
+    if (realFixture.unmatched.length > 0) {
+      throw new RehearsalFailure(`6d: sheet NBA/BAA Game-7 rows that do not join the curated CSV: ${realFixture.unmatched.join('; ')} — resolve the join, never a pin`);
+    }
+    assert(
+      '6d the one curated NBA/BAA row the sheet lacks is the 2026 Western Conference Finals (fixture 159 vs production 160, named, not hidden)',
+      realFixture.csvOnly.length === 1 && realFixture.csvOnly[0].startsWith('2026|'),
+      realFixture.csvOnly.join(', '),
+    );
+    assert(
+      '6d the join reproduces every pinned literal: total 159, home wins 117 (external anchor: nba.com\'s published 117-43), game-6 winners 59 (external anchor: planning\'s separately derived 59 of 159) — a pin that stops matching is a finding, not an obstacle',
+      realM.total === U11_PINS.total && realM.homeWins === U11_PINS.homeWins && realM.g6Won === U11_PINS.g6Won,
+      `measured ${realM.total}/${realM.homeWins}/${realM.g6Won} vs pinned ${U11_PINS.total}/${U11_PINS.homeWins}/${U11_PINS.g6Won}`,
+    );
+    mustSucceed(
+      '6d real-score fixture seeded after the ordered replay, game-7 rows venue-true from the curated CSV (00016\'s pinned census guards ran over the 178 archive in section 5; this 159-row reading never passes under them)',
+      psql({ file: renderRealFixtureSeed(realFixture) }),
+    );
+    assert(
+      '6d seeding rule held in the database: game-7 home = the series winner on exactly 117 of the 159 NBA/BAA rows — winner-first seeding would land 159 and fabricate the 100% back',
+      psqlValue(
+        `SELECT count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id
+          WHERE g.game_number = 7 AND s.league IN ('NBA','BAA') AND g.home_team_id = s.winner_team_id`,
+      ) === '117',
+    );
+    const census6d = runRefresh();
+    console.log(
+      '6d TRANSCRIPTION CHECK (fixture and cross-check come from the same join — agreement proves the SQL faithful to the join, never the join faithful to reality):',
+    );
+    assert(
+      '6d census = the harness measurement of the same join: 159 / 117 / 59 / average margin',
+      census6d.total_game_sevens === realM.total && census6d.home_team_wins === realM.homeWins &&
+        census6d.game_6_winners_won === realM.g6Won && Number(census6d.average_margin) === realM.average,
+      JSON.stringify(census6d),
+    );
+    assert(
+      `6d home card over the real fixture: 117 of 159, win_rate ${realM.homeRate} — the fixture's stop is on its OWN denominator (elicitation P3); production's 117 of 160 stays the owner's post-apply read against epic-2-context.md:44`,
+      memberEq('home_team_stats', 'home_team_wins', 117) && memberEq('home_team_stats', 'total_game_sevens', 159) &&
+        memberEq('home_team_stats', 'win_rate', realM.homeRate),
+    );
+    assert(
+      `6d game-6 card over the real fixture: 59 of 159, win_rate ${realM.g6Rate} — 37.1%, not the seeded 62.5 the "Momentum Matters" prose repeats (routed to Story 5.1 in deferred-work)`,
+      memberEq('game_6_winner_stats', 'game_6_winners_won', 59) && memberEq('game_6_winner_stats', 'total_game_sevens', 159) &&
+        memberEq('game_6_winner_stats', 'win_rate', realM.g6Rate),
+    );
+    assert(
+      '6d margin trio = the same join re-measured in the harness (average, median, max, min), and the ABA rows seeded here changed nothing: the population is 159, not 159 + ABA',
+      memberEq('avg_point_differential', 'average', realM.average) && memberEq('avg_point_differential', 'median', realM.median) &&
+        memberEq('avg_point_differential', 'max', realM.max) && memberEq('avg_point_differential', 'min', realM.min),
+    );
+    console.log(
+      '6d external anchors named: nba.com\'s published 117-43 (the fixture reproduces the 117 numerator; its denominator is 159 because the missing 2026 WCF is one of the 43 home losses) and planning\'s separately derived 59 of 159 (reproduced). No line above or below claims a 160-series population for this fixture.',
+    );
+
+    // 6e — the I/O matrix's "League/venue columns missing" row, observed
+    //      FAILING under its own tamper. Story 2.8 set the convention this
+    //      story inherits: a guard that has never been seen to reject is not
+    //      yet a guard. The tamper runs in one transaction and dies on the
+    //      guard, so the session closes with the transaction uncommitted and
+    //      the certified state of this database is untouched.
+    const migration017File = files.find((f) => f.startsWith('00017'));
+    if (migration017File === undefined) {
+      throw new RehearsalFailure('6e: no 00017* file to tamper — the ceiling claims coverage of a migration that is not on disk');
+    }
+    const migration017Text = readFileSync(join(migrationsDir, migration017File), 'utf8');
+    // Strip the file's own transaction wrapper so the tamper's BEGIN/ROLLBACK
+    // is the only one in play (the plpgsql bodies use bare `BEGIN`, never
+    // `BEGIN;`, so the two anchored replacements cannot touch anything else).
+    const guardTamperSql = `BEGIN;
+ALTER TABLE public.series DROP COLUMN league;
+DROP FUNCTION IF EXISTS public.pipeline_refresh_insights_cache();
+${migration017Text.replace(/^BEGIN;$/m, '').replace(/^COMMIT;$/m, '')}
+ROLLBACK;
+`;
+    const tamper = psql({ file: guardTamperSql });
+    const tamperOutput = `${tamper.stdout ?? ''}${tamper.stderr ?? ''}`;
+    assert(
+      '6e 00017 refuses to exist against a table with no league column — the apply aborts naming guard league_column_present, never falling back to the winner-as-venue reading',
+      tamper.status !== 0 && /league_column_present/.test(tamperOutput),
+      `exit ${tamper.status}: ${tamperOutput.trim().slice(0, 240)}`,
+    );
+    assert(
+      '6e the tamper rolled back with the session: the league column and the refresh RPC are both still present, and 6d\'s real-fixture census is intact (a tamper that leaked state would silently certify a different database than the one measured)',
+      psqlValue("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'") === '1' &&
+        psqlValue("SELECT count(*) FROM pg_proc WHERE proname = 'pipeline_refresh_insights_cache'") === '1' &&
+        memberEq('home_team_stats', 'total_game_sevens', 159) &&
+        memberEq('home_team_stats', 'home_team_wins', 117),
+    );
+
+    // 6f — the I/O row "Venue backfill short or mis-keyed" needs a covering
+    //      check, and 6d alone is not one: a census that reproduces 117 proves
+    //      the join is faithful to the CSV, not that the CSV could be wrong.
+    //      So flip one curated Game-7 home side and confirm the measurement
+    //      MOVES with it — which is what makes the pinned 117 a stop rather
+    //      than a coincidence. Pure parser work: no database is touched, and
+    //      the committed CSV is not modified.
+    {
+      const mutated = curatedRows.map((row) =>
+        row.year === 1998 && venueBackfill.isNbaBaa(row)
+          ? { ...row, home: row.home === row.teamA ? row.teamB : row.teamA }
+          : row,
+      );
+      const mutatedMeasures = loadRealGame7Fixture(mutated).measures;
+      assert(
+        '6f the pin is sensitive, not sticky: swapping the 1998 curated Game-7 home side moves home wins off 117 while the population holds at 159, so a mis-keyed or short backfill cannot pass 6d unnoticed',
+        mutatedMeasures.homeWins !== U11_PINS.homeWins && mutatedMeasures.total === U11_PINS.total,
+        `mutated: home wins ${mutatedMeasures.homeWins} over ${mutatedMeasures.total} (pinned ${U11_PINS.homeWins}/${U11_PINS.total})`,
+      );
+    }
+
+    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', and Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind.');
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });
@@ -895,7 +1518,19 @@ function main() {
 }
 
 try {
-  main();
+  // No argument but `--fixture-report` is accepted. `includes` alone would read
+  // a typo (`--fixture-repor`) as "not the report", i.e. as the full Docker
+  // rehearsal — the operator asks for a parser run and gets a container.
+  const args = process.argv.slice(2);
+  const stray = args.filter((arg) => arg !== '--fixture-report');
+  if (stray.length > 0) {
+    throw new Error(
+      `unrecognised argument(s): ${stray.join(', ')} — this script takes no argument, or the single read-only --fixture-report ` +
+        '(parser + join + measurements, no Docker and no database)',
+    );
+  }
+  if (args.includes('--fixture-report')) fixtureReport();
+  else main();
 } catch (err) {
   if (err instanceof RehearsalFailure) {
     console.error(`FAIL ${err.message}`);

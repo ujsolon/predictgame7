@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-02-2026 14:25
+last_updated: 10-03-2026 06:59
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -119,7 +119,11 @@ development_status:
   2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: backlog
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
-  2-5-insights-cache-refresh: backlog
+  # 2026-10-03: spec approved at CHECKPOINT 1 (owner decisions U10-U13; history split out to
+  # spec-2-5-trail.md), built, and review pass 1 (three layers) applied — 2-5 sits at review pending
+  # the owner's fresh-context code review, exactly as 2-4 and 2-10 do. F7 STAYS OPEN by design:
+  # it closes on the owner's `--refresh-insights` run plus the anon read-back, not on this commit.
+  2-5-insights-cache-refresh: review
   # Carried to this story 2026-10-02 by owner decision (Story 2.10's walkthrough): the two Story 2.8
   # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
   # alias collision in the venue probe's resolver, and game7_home_win_census counting pending series.

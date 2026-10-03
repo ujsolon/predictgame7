@@ -5,7 +5,8 @@
  * Supabase.
  *
  * Writes go through migration 00015's two `SECURITY DEFINER` RPCs (Decision
- * 2): birth and completion each execute as a single function call, so their
+ * 2) and, since Story 2.5, migration 00017's insights-refresh RPC: birth,
+ * completion and refresh each execute as a single function call, so their
  * statements share one transaction — the "in one transaction" AC is
  * literally met, and a rejected write lands nothing. The identity key stays
  * `(year, team_a_id, team_b_id)` (`series_year_team_pair_key`) and the scores
@@ -21,6 +22,19 @@ export interface TeamRow {
   abbreviation: string;
 }
 
+/**
+ * The census `pipeline_refresh_insights_cache()` returns (00017, Story 2.5):
+ * the population the server counted and the headline numbers it wrote. The
+ * run's report line prints this instead of re-reading `insights_cache`, so
+ * what is on screen is what the RPC itself answered.
+ */
+export interface InsightsRefreshCensus {
+  total_game_sevens: number;
+  home_team_wins: number;
+  game_6_winners_won: number;
+  average_margin: number;
+}
+
 /** The sink the runner writes through. Reads back what the tables hold today. */
 export interface PipelineSink {
   readTeams(): Promise<TeamRow[]>;
@@ -29,6 +43,13 @@ export interface PipelineSink {
   birth(birth: PlannedBirth): Promise<string>;
   /** Executes the 00015 completion RPC: append game 7 and fill the winner in one call. */
   complete(completion: PlannedCompletion): Promise<void>;
+  /**
+   * Story 2.5 — executes the 00017 refresh RPC: all three `insights_cache`
+   * rows recomputed and written in one statement, or none. Returns the census
+   * so both callers (the completion-triggered path and U10's
+   * `--refresh-insights` path) share one report source.
+   */
+  refreshInsights(): Promise<InsightsRefreshCensus>;
 }
 
 export function scorePayload(score: PlannedScore | ComparableScore): Record<string, number> {
@@ -123,6 +144,20 @@ export function createSupabaseSink(options: SinkOptions): PipelineSink {
       if (error) {
         throw new Error(`pipeline_complete_series failed for ${completion.label} (series ${completion.series_id}): ${error.message}`);
       }
+    },
+    async refreshInsights() {
+      const { data, error } = await client.rpc('pipeline_refresh_insights_cache');
+      if (error) {
+        throw new Error(`pipeline_refresh_insights_cache failed: ${error.message}`);
+      }
+      // birth's second-throw convention (:112-114): an RPC declared RETURNS
+      // jsonb that answers with no census must throw rather than let the run
+      // print an empty report line about a refresh it cannot prove.
+      const census = data as InsightsRefreshCensus | null;
+      if (!census) {
+        throw new Error('pipeline_refresh_insights_cache returned no census — the refresh cannot be reported without the population it counted');
+      }
+      return census;
     },
   };
 }
