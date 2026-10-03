@@ -159,6 +159,21 @@ development_status:
   # and whether an empty feed reaches the alarm, resolved as rowSet: [] on the owner's answer,
   # which is the shape that fires --require-feed's own message. The widening is unpushed, so it
   # only governs triggers from the next push onward.
+  # WHAT THE DISPATCHES ACTUALLY SHOWED (same day, after the secret + push). CAP-3 and the dedupe
+  # rule are now proven on REAL breakage: issue #8 "Pipeline inseason run failed" opened with the
+  # run link and the short-SHA footer, and three further red runs appended "Still red:" comments
+  # instead of opening three issues; the manual_csv + require_feed dispatch gave the designed
+  # before-the-sink refusal. The credential half is proven too -- the failing step got past
+  # openSink()/readTeams() to the adapter. THE CADENCE ITSELF IS BLOCKED: stats.nba.com never
+  # answers a GitHub-hosted runner (two runs, 81 s of fetch each = three full FETCH_TIMEOUT_MS
+  # attempts, so no response at all), while the identical adapter+headers+URL answered from the
+  # owner's machine in seconds. That makes CAP-2's green dry dispatch unobtainable and CAP-4's
+  # "without manual intervention" false today; the three routes (self-hosted runner / schedule
+  # from the owner's machine / re-open the alternate feed route -- the last is the documented
+  # reopening trigger for the balldontlie entry) are enumerated with evidence in deferred-work.md,
+  # Story 2.6 section, and route B would be a bmad-correct-course, not a patch.
+  # Still owed regardless: sheet step 1 (source=fantrax) and step 5 (close #8, re-fire, confirm a
+  # fresh issue) -- both zero-network, both reachable today.
   2-6-scheduled-workflows-failure-notification-sm-4: review
   # D-6 of spec-2-6, on the owner's own routing rule above: the carry-overs do not fit 2-6 (2-6's diff
   # is YAML plus one flag; these are supabase/scripts + scripts correctness work), so they get their

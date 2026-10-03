@@ -51,7 +51,7 @@ This document provides the complete epic and story breakdown for predictgame7, d
 **Data pipeline**
 - FR-19: Canonical archive data (177 series per the source spreadsheet; **the live table measured 178 rows on 2026-09-30** — Story 2.1's archive audit, proposal §4.10, which pins 177 = spreadsheet and 178 = live. **The one-row delta is now reconciled (2026-10-01, `sprint-change-proposal-2026-10-01.md` §1):** the sheet's Game-7 rows are 158 NBA + 1 BAA + 18 ABA = 177 and it stops at the 2026 conference semifinals, so the live 178th is the 2026 Finals Game 7 and the archive is **160 NBA/BAA + 18 ABA** = nba.com's published 160 to the unit. Story 2.8's `00016` stores that composition as `series.league`. Normalized schema, legacy in `archive` schema) [BASELINE]
 - FR-20: Offseason pipeline mode — idempotent bracket init/finalize at playoff start/end; failed run detectable [IN SCOPE]
-- FR-21: Inseason pipeline mode — daily runs; Active Series reflect latest results; Q-4 feasibility spike (Fantrax preferred, nba.com fallback, manual_csv floor) is a build prerequisite [IN SCOPE]
+- FR-21: Inseason pipeline mode — daily runs; Active Series reflect latest results; Q-4 feasibility spike RESOLVED (nba.com primary via the shipped `nba_com` adapter, `manual_csv` the floor, **Fantrax ruled out** by the spike and the owner's 2026-09-30 call — evidence in `implementation-artifacts/decision-2-1-q-4-data-source.md`; `fantrax` stays in the registry only as the recognised-name refusal) [IN SCOPE]
 
 **Analytics & observability**
 - FR-24: Behavioral analytics — 10-event registry, `identify`/`reset` auth coverage, exception capture [BASELINE — relocated behind AD-1 port, names verbatim]
