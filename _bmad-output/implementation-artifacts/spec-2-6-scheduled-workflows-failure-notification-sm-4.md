@@ -2,7 +2,7 @@
 title: 'Story 2.6 — Scheduled pipeline workflows + failure notification (SM-4)'
 type: 'feature'
 created: '2026-10-03'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 context:
@@ -111,7 +111,7 @@ context:
 
 ## Implementation Notes
 
-**2026-10-03 build. Gate: `npm run gate` exit 0 read from the command itself** (redirected to a file, never piped) — 23 test files / 420 tests, build kept the `/predictgame7/` prefix.
+**2026-10-03 build. Gate: `npm run gate` exit 0 read from the command itself** (redirected to a file, never piped) — 23 test files / 420 tests, build kept the `/predictgame7/` prefix. Re-run after the step-04 patch round: exit 0 again, 23 files / **426** tests (the six workflow pins added below).
 
 **Deliverables as shipped.** `port.ts` gained `AdapterRunReport.feedSeriesCount` and `AdapterEntry.hasRunReport` plus the export `adapterHasRunReport(name)`; `nbaCom.ts:534` sets `feedSeriesCount: reconstructed.length` (pre-exclusion, `:425-430`); `run.ts` gained the flag with its two refusals and the alarm inside `if (adapter.describeRun)` ahead of the dry-run return. Three workflow files + `.github/actions/notify-failure/action.yml` + `nightly-gate.yml:43-56` replaced by the shared call. `tests/pipeline/run.test.ts` +9 cases (39 in the file), `tests/pipeline/workflows.test.ts` new with 34.
 
@@ -125,7 +125,7 @@ context:
 
 **Four mutation probes on the new YAML contract** (each reverted; the final `diff` against a saved copy showed a clean restore): `issues: write`→`read` and the `--require-feed` flag renamed each failed their intended test; adding a fourth cron line failed only the cron pin; `gh issue comment`→`gh issues comment` in the action failed the dedupe test. So `tests/pipeline/workflows.test.ts` is demonstrated to be able to go red, not merely to pass. The step-04 review added five more, one per new pin (see the triage log): `npm ci` moved above the secret guard, `$WANT_REQUIRE_FEED` renamed in the bash, `timeout-minutes` deleted from the rehearsal job, `nightly-gate.yml`'s `issues: write` downgraded, and `|| true` removed from the action's list call — each failed exactly the test that was written for it.
 
-**Step-04 review patch round (same day, applied here rather than by the step-03 implementer — that session was compacted away, and the workflow's fallback is to patch directly).** Six `patch` findings landed: the guard-step ordering pin, the `$WANT_REQUIRE_FEED` read pin, the per-file permission/Node/ceiling pins extended to `migration-rehearsal.yml` plus a `nightly-gate.yml` permission pin, `timeout-minutes` on the three new jobs, `|| true` on the action's dedupe lookup, and the three handoff miscounts. `tests/pipeline/workflows.test.ts` went 34 → 40 tests, and every one of the five new assertions was proven to bite by the mutation probe named beside it in the triage log. One `intent_gap` (#6, the rehearsal's `paths:` set) is with the owner; two findings were filed as defers.
+**Step-04 review patch round (same day, applied here rather than by the step-03 implementer — that session was compacted away, and the workflow's fallback is to patch directly).** Seven `patch` findings landed in two kinds of change — test/YAML code (#1 the guard-step ordering pin, #2 the `$WANT_REQUIRE_FEED` read pin, #3 the per-file permission/Node/ceiling pins extended to `migration-rehearsal.yml` plus a `nightly-gate.yml` permission pin, #4 `timeout-minutes` on the three new jobs, #5 `|| true` on the action's dedupe lookup) and artifact counts (#19, #20 in `sprint-status.yaml`, `deferred-work.md` and this spec). `tests/pipeline/workflows.test.ts` went 34 → 40 tests, and every one of the five new assertions was proven to bite by the mutation probe named beside it in the triage log. One `intent_gap` (#6, the rehearsal's `paths:` set) is with the owner and one `defer` (#11, `rowSet: null`) is filed with its settling evidence; both have entries in `deferred-work.md`.
 
 **One spec contradiction resolved during build, in the YAML rather than in code.** CAP-6 as read literally (the flag always passed by `pipeline-inseason.yml`) would have made CAP-2's own proof — the October dry dispatch expecting a green run — red on a date when an empty feed is legitimate. The resolution is the env expression `github.event_name == 'schedule' || inputs.require_feed`: the cron path always alarms, a hand dispatch alarms only when the operator asks. That keeps the runner date-blind (no Apr–Jun branch), keeps the window in one place, and makes the alarm provable before the window opens — which is what `--dry-run --require-feed` on an empty feed being red is for.
 
@@ -151,7 +151,7 @@ context:
 
 ## Review Triage Log
 
-Pass 1, 2026-10-03 — three layers (Blind Hunter 16 findings, Edge Case Hunter 6, Verification Gap 5 findings + 4 informational notes) over `story26.diff` (= `git diff 1e96951..HEAD`, 120,679 bytes → finding floor N = 10, met). Verdicts were rendered at the cited line, after reading past the changed hunk; the layers' own severities were disregarded. Outcome: **1 intent_gap escalated to the owner (#6, frozen D-2 = B text — `review_loop_iteration` is now 1), 6 patch findings applied by this session (the step-03 implementer is not reachable after compaction, so the patches were applied here), 2 defers filed with owners, 11 rejected, 5 refuted as `false`.** No code was reverted: the escalated finding's remedy is additive to a gate-green, verified tree, and the owner's standing rule for this repo is patch-forward with a question before any revert.
+Pass 1, 2026-10-03 — three layers (Blind Hunter 16 findings, Edge Case Hunter 6, Verification Gap 5 findings + 4 informational notes) over `story26.diff` (= `git diff 1e96951..HEAD`, 120,679 bytes → finding floor N = 10, met). Verdicts were rendered at the cited line, after reading past the changed hunk; the layers' own severities were disregarded. Outcome: **1 intent_gap escalated to the owner (#6, frozen D-2 = B text — `review_loop_iteration` is now 1), 7 patch findings applied by this session (the step-03 implementer is not reachable after compaction, so the patches were applied here), 1 defer filed with its owner and settling evidence (#11), 10 rejected, 6 refuted as `false`.** No code was reverted: the escalated finding's remedy is additive to a gate-green, verified tree, and the owner's standing rule for this repo is patch-forward with a question before any revert.
 
 | # | Finding (source) | Verdict | Route | Evidence / refutation |
 |---|---|---|---|---|
