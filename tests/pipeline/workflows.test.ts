@@ -73,11 +73,9 @@ const cronsOf = (rel: string) => (triggersOf(rel).schedule ?? []).map((entry) =>
 const notifyStepOf = (rel: string) => stepsOf(rel).find((step) => (step.uses ?? '').includes('notify-failure'));
 
 describe('the .github surface exists and parses', () => {
-  it('the workflow set is the three shipped files plus Story 2.6 three plus the throwaway probe', () => {
+  it('the workflow set is the three shipped files plus Story 2.6 three', () => {
     expect(readdirSync(join(repoRoot, '.github', 'workflows')).sort()).toEqual([
       'ci.yml',
-      // THROWAWAY (Story 2.6 egress cell 2): delete the file and this entry together.
-      'egress-probe-hosted.yml',
       'keepalive.yml',
       'migration-rehearsal.yml',
       'nightly-gate.yml',
