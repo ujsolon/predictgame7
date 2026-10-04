@@ -240,4 +240,25 @@ Run ids live in `_bmad-output/specs/spec-2-13-espn-feed-adapter/run-sheet.md` Pa
 not duplicated here. **A is obtained (run `37199559809`, 2026-10-04):** a real hosted runner on the
 pushed `espn` defaults still refuses `fantrax` at selection with exit 2, its failed log contains no
 database-client line at all, and the alarm commented `Still red:` on the open issue #8 rather than
-opening a second one — which is precisely the state step B then resets. B, C and D remain owed.
+opening a second one — which is precisely the state step B then resets.
+
+**B is obtained (run `37202299383`, same day):** with #8 closed, the identical deliberate red opened
+**issue #9** — same title, `Run: …/37202299383`, `931f220 on master` in its body — and #8 stayed
+closed without a sixth `Still red:` comment. The reset half of Story 2.6's dedupe design is now
+shown rather than assumed. #9 is a synthetic alarm; it is closed as soon as this row lands.
+
+**C is obtained (run `37201495284`):** the first time the Docker-dependent rehearsal job ever
+executed on a runner. It reached `REHEARSAL PASSED` and removed its container:
+
+> REHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion,
+> 00015's RPCs assert, land atomically, and stay service_role-only, Story 2.8's committed 00016
+> applied inside the ordered replay over the seeded fixture, --check holds on the committed pair,
+> and every guard was observed failing with the post-reject state measured, and Story 2.5's 00017
+> refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score
+> archives — byte-equal payloads on re-run with updated_at moving, and U11's 159/117/59 reproduced
+> from the committed sheet joined to the committed curated CSV, with 00017's league guard observed
+> refusing under its own tamper and the tamper leaving nothing behind.
+
+That certifies the replay order **through `00017`**: `COVERED_THROUGH` is still 17, so run-sheet step
+2 — extending the harness through `00018`, including the negative proof that a duplicate non-null
+`espn_code` fails the partial unique index — remains its own leg, and **D remains owed** until then.
