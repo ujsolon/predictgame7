@@ -233,3 +233,11 @@ Mechanism verified, because a budget that is not honored is decoration: `--testT
 `venue-backfill.test.ts` went 13 failures → 10 with the suite budget, **none of the 10 inside that
 describe** — which also falsified the assumption that a synchronous `spawnSync` body is out of
 reach of the timeout (vitest reports the overrun after the child returns).
+
+### Dispatch proofs — one row here, full evidence in the run sheet
+
+Run ids live in `_bmad-output/specs/spec-2-13-espn-feed-adapter/run-sheet.md` Part 2; they are
+not duplicated here. **A is obtained (run `37199559809`, 2026-10-04):** a real hosted runner on the
+pushed `espn` defaults still refuses `fantrax` at selection with exit 2, its failed log contains no
+database-client line at all, and the alarm commented `Still red:` on the open issue #8 rather than
+opening a second one — which is precisely the state step B then resets. B, C and D remain owed.
