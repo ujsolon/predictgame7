@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.6] - 2026-10-04
+
+### Added
+
+- `/historical`'s team field matches a team **code** as well as a name, against the row's stored `teams.abbreviation` — typing `SLB`, `WSB` or `NY` now finds the series the database labels that way (Story 2.11, owner decisions U1/U15).
+- The pipeline runs itself: `pipeline-inseason.yml` (daily across the mid-April–June bracket) and `pipeline-offseason.yml` (the two bracket edges), each reporting through the new `notify-failure` composite action, so a dead run sends a signal instead of quietly leaving the data stale (Story 2.6, FR-20/21, SM-4). The bracket is the season window, so nothing fires before April 2027 unless dispatched by hand.
+- `run.ts --require-feed`, the empty-feed alarm: inside the bracket, a fetch that succeeds and returns nothing is a red run. The two offseason edges deliberately omit the flag — an empty feed in mid-April or late June is legitimate, and making those red would train the owner to ignore the alarm that matters (Story 2.6, owner decisions D-3/D-5).
+- `migration-rehearsal.yml` runs `scripts/rehearse-migration-00014.mjs` whenever a migration is edited — the first CI coverage that verdict ever had, on either side of the guard (Story 2.6, CAP-5, D-2).
+
+### Changed
+
+- One team code everywhere. Every surface that holds the `teams` row prints that row's `teams.abbreviation`, resolved as *matching row → placeholder literal → name derivation*: the archive's 39 divergent rows (20 franchises, spanning 1948→1997, all `00007` historical identities) and Predict's database-backed renders print the stored code instead of the helper's modern guess, and the custom-matchup card and result sheet print the codes the picker's own trigger label used (Story 2.11, U6/U15).
+- The search field's placeholder reads "Search by team name or code..." (owner decision U14).
+- Operator tooling, nothing published: `scripts/probe-game7-venues.mjs` and `supabase/scripts/pipeline/venueBackfill.ts` resolve a feed alias by **slot** rather than by name alone, so a franchise appearing on both sides of a series cannot borrow the wrong venue; the two `00016` guard messages now fence their own advice for the one case that cannot be appended — a series with no Game 7 played (Story 2.12, P3-1). `00016`'s data block is untouched and the migration is already applied, so nothing reached the database.
+- Dev-only: `js-yaml` and `@types/js-yaml`, for the workflow YAML contract test in `tests/pipeline/workflows.test.ts`.
+
+### Removed
+
+- `TEAM_ABBREVIATIONS` from `src/lib/nba-utils.ts` — the hardcoded name→code map that was the second source of truth. Removing it changes nothing for any modern team whose row is in hand; it is what makes the divergent rows print correctly (Story 2.11).
+
 ## [0.2.5] - 2026-10-03
 
 ### Added
