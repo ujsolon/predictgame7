@@ -155,6 +155,11 @@ development_status:
   # bracket corrected, the frozen cell left as written).
   # AT REVIEW — the owner's preview look is the acceptance (U15
   # was accepted sight-unseen: "I have to see it to completely verify").
+  # 2026-10-04: the published site already carries this build — the gh-pages tip (1d30317,
+  # 11:59 +0800) serves the bundle whose `index.html` references `assets/index-B2-pLpNs.js`,
+  # md5-identical to the local `dist` of 55de7ee, and that bundle contains the U14 placeholder
+  # string which exists in no earlier commit. So the look can be taken on production, not only
+  # on `npm run preview`; the row stays `review` until it is taken.
   2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: review
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
