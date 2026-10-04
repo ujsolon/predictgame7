@@ -486,7 +486,7 @@ describe('espn — the headline names the round and the game (CAP-4)', () => {
 // CAP-3 — identity is `teams.espn_code`, and nothing else.
 // ---------------------------------------------------------------------------
 describe('espn — teams.espn_code is the only join key (CAP-3)', () => {
-  it('the two measured divergences resolve through espn_code to the right rows', async () => {
+  it('two of the six measured divergences resolve through espn_code to the right rows', async () => {
     const { statuses, scores } = await adapterOver([GAME_SEVEN]);
     // `NY` → the Knicks row (id 20) and `SA` → the Spurs row (id 27). An
     // abbreviation join would find NEITHER, because the table holds NYK/SAS —

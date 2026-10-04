@@ -290,7 +290,7 @@ async function runProbe(datesArg) {
       });
       if (resolved.some((id) => id === undefined)) {
         failures.push(
-          `leg A: dates=${datesArg} printed a provider code the 00005 abbreviation + the two measured divergences do not resolve — ` +
+          `leg A: dates=${datesArg} printed a provider code the 00005 abbreviation + the six measured divergences do not resolve — ` +
             `add it to MEASURED_DIVERGENCES and to payload-contract.md, and seed it in 00018 (codes: ${competitors.map((c) => c.code).join(', ')})`,
         );
       }
@@ -522,7 +522,7 @@ function analyzeTeamList(url, body, seed) {
       const divergence = MEASURED_DIVERGENCES.get(code);
       const abbreviation = seed.has(code) ? code : divergence?.abbreviation;
       if (abbreviation === undefined) {
-        problems.push(`code ${code} ("${name}") resolves through neither the 00005 abbreviations nor the two measured divergences`);
+        problems.push(`code ${code} ("${name}") resolves through neither the 00005 abbreviations nor the six measured divergences`);
         continue;
       }
       if (divergence && !name.toLowerCase().includes(divergence.nameMustContain)) {

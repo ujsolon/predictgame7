@@ -131,14 +131,14 @@ context:
 
 **surface-inventory P3 — verified, no edit made:** `ARCHITECTURE-SPINE.md` AD-5 already names `espn` as the scheduled source and `teams.espn_code` as the join key (the change proposal amended it before this story was built), so the spine needed no touch. Re-read rather than assumed at build time.
 
-**Probe design calls worth knowing when it is run:** the adapter refuses a date parameter, so leg A supplies the *cron-shaped instant* (target date + 1 day at 07:30 UTC) and asserts the shipped `deriveRequestDate` round-trips it — the flag exercises the derivation instead of bypassing it. The team-list endpoint was never measured, so leg B is a deliberately tolerant reader bounded to one-level-deep arrays, followed by verification rather than trust: 30 distinct codes → 30 distinct `teams.id`, with `NY`→Knicks and `SA`→Spurs confirmed by franchise name. Any divergence beyond those two is a **hard failure**, which forces a `payload-contract.md` row before seeding rather than letting a new divergence flow silently into `00018`. Legs are independent and all failures collect into one exit-2 message, so a single paste carries the whole measurement.
+**Probe design calls worth knowing when it is run:** the adapter refuses a date parameter, so leg A supplies the *cron-shaped instant* (target date + 1 day at 07:30 UTC) and asserts the shipped `deriveRequestDate` round-trips it — the flag exercises the derivation instead of bypassing it. The team-list endpoint was unmeasured when this was written, so leg B is a deliberately tolerant reader — since 2026-10-04 depth-bounded to 6 with the winning key path printed and a `$ref` pointer list named as one — followed by verification rather than trust: 30 distinct codes → 30 distinct `teams.id`, with each divergence confirmed by franchise name. The set it must reproduce is the **six measured** ones (`GS→GSW`, `NO→NOP`, `NY→NYK`, `SA→SAS`, `UTAH→UTA`, `WSH→WAS`), pinned as a literal in the probe and re-checked by `npm test` against the committed capture; anything else is a **hard failure**, which forces a `payload-contract.md` row before seeding rather than letting a new divergence flow silently into `00018`. Legs are independent and all failures collect into one exit-2 message, so a single paste carries the whole measurement.
 
 **Not landed at the time of that first draft — all three legs below it have since landed; see the
 two sections that follow the mutation evidence:**
 
 - `supabase/migrations/00018_teams_espn_code.sql` and `docs/CURRENT_DATA_MODEL.md` (same commit) — the 30 seed `UPDATE`s are transcribed from leg B verbatim; nothing was invented, so neither file is authored ahead of the table.
 - `scripts/rehearse-migration-00014.mjs` — `COVERED_THROUGH` → 18 and the duplicate-`espn_code` negative proof through `applyRejected`.
-- Run-sheet Part 2's four transferred dispatch proofs (A–D) and the owner's `npx supabase db push`. Steps A, B and C are recorded as OBTAINED in the run sheet; **D** and the `db push` remain the owner's.
+- Run-sheet Part 2's four transferred dispatch proofs (A–D) and the owner's `npx supabase db push`. **All four are now recorded OBTAINED** — A `37199559809`, B → issue #9, C `37201495284`, D `37235646137` — and the `db push` landed `00018`, which the push also certified on a runner (`migration-rehearsal.yml` run `37235181319`). See "Proof D landed" below.
 
 ## Spec Change Log
 
@@ -460,11 +460,81 @@ because neither capture contains a Knicks or Spurs game. The replay pins cover D
 Cavaliers/Pacers; the transcription audit covers all thirty.
 
 **Still unproven after this leg**, and none of it claimable from a green suite: `status.type.state` `in`/`pre`
-and any `description` other than `Final` (no in-progress NBA game exists to fetch in October 2026); any
-measurement taken from the *scheduled* environment — these captures came off the owner's browser path with DNS
-through a public DoH resolver, which is a property of the capture environment and not of `00018` or the adapter,
-but also not evidence that GitHub's runners resolve `site.api.espn.com`; and the regular-season event bodies,
-measured and quoted above but not committed (the 15-row shape adds nothing the exclude-by-rule tests do not
-already pin). Run-sheet step 1's probe re-run stays the owner's confirmation leg, steps 3 (
-`npx supabase db push`) and Part 2's proof D stay the owner's, and the `espn` dispatch's write half belongs to
-Story 2.7's drill.
+and any `description` other than `Final` (no in-progress NBA game exists to fetch in October 2026); and the
+regular-season event bodies, measured and quoted above but not committed (the 15-row shape adds nothing the
+exclude-by-rule tests do not already pin). Run-sheet step 1's probe re-run stays the owner's confirmation leg.
+The `espn` dispatch's write half belongs to Story 2.7's drill.
+
+The one item that paragraph used to carry — "no measurement taken from the *scheduled* environment" — is
+closed below, by proof D.
+
+## Proof D landed, and it met a payload class no fixture held (run `37235646137`)
+
+`gh workflow run pipeline-inseason.yml --ref master -f source=espn -f dry_run=false -f require_feed=true`,
+on `headSha 2c093c1` — the first time the shipped adapter ran on the environment the cadence actually uses.
+Job `pipeline`, conclusion `success`, both credentials masked in the log, step 6 echoing
+`adapter=espn flags=--require-feed`. The log's own lines, verbatim:
+
+```
+espn: 1 series in feed (dates=20261003), 0 Game-7 candidate(s) — excluded: 0 not final, 0 final but not game 7, 1 unreadable headline
+espn depth histogram {}
+espn: excluded 2026-10-03 TOR/MIA — post/Final, headline "NBA Canada Games 2026" — headline "NBA Canada Games 2026" is not "<round> - Game N", and a new round spelling is never invented to admit a game
+plan: 0 birth(s), 0 completion(s), 0 skip(s) (0 score row(s) planned)
+applied: 0 birth(s), 0 completion(s), 0 skip(s)
+```
+
+What that settles which the fixtures could not:
+
+- **The hosted path works end to end.** `deriveRequestDate` asked for `20261003` (the run instant is
+  21:20 UTC on 2026-10-04, so *yesterday in `America/New_York`* — CAP-5 on the real clock in the real
+  timezone, not a pinned instant), ESPN answered, and `readTeams` succeeded against the **applied**
+  `espn_code` column. This is the measurement the capture path could not provide: the previous record said
+  these fixtures came off the owner's browser with a public DoH resolver, which proved nothing about a
+  runner's resolver. It now has runner-side evidence through the adapter's own code, not `curl`.
+- **`--require-feed` behaves as CAP-7 designed under exactly the condition it was built for.** One series in
+  the feed, zero admitted, and the flag stayed green because `feedSeriesCount` counts *before* exclusions.
+- **CAP-4's refusal held against a real third shape.** A dated scoreboard request returned an **exhibition**
+  game (`NBA Canada Games 2026`, TOR/MIA) — a payload carrying `notes`, so not the regular-season
+  no-`notes` class, and a headline that is not `"<round> - Game N"`, so not the playoff class. The adapter
+  excluded it by name and invented no round spelling. Both franchises resolved against `00018`, which the
+  exit-0 proves rather than assumes: the unknown-code abort walks every event before admission.
+  **No test follows this finding, and that is the right call rather than a gap:** the wrong-pattern class is
+  already pinned at `espn-adapter.test.ts:466-473`, whose comment literally imagines it ("if ESPN ever prints
+  the teams instead of the round, the exclusion must say the form was unreadable") and asserts the exclusion
+  names the pattern, not the vocabulary. Proof D is the real-world instance of that pin. A fixture cannot be
+  added either — the exhibition body itself was not captured, only the adapter's own exclusion line, and
+  inventing a payload to match a log line would be the assumption this story has been removing.
+- **Zero rows moved** — `applied: 0 birth(s), 0 completion(s), 0 skip(s)`.
+
+The hollowness is kept on the record because the owner called it: this proves hosted fetch → plan → exit 0.
+It is **not** a write proof — the feed completes a series and never seeds one, and no `series` row is pending
+(measured 2026-10-02: 178 archived, nothing pending), so a non-dry run had nothing it could legitimately
+write. The write leg is Story 2.7's drill (`run-sheet.md` step E).
+
+The push that carried this commit also produced the hosted counterpart of run-sheet step 2:
+`migration-rehearsal.yml` run `37235181319` (`success`, 49 s, container `pg7-rehearse-00014-2387`) replayed
+`00001..00018` in filename order on a runner and printed the full section-7 block — additivity over 59 rows,
+the six divergences read back from the database, three shape-CHECK refusals plus one legal-code acceptance,
+the partial index refusing a duplicate `ATL`, all four post-condition guards firing, and the tamper read-back
+`30|30|6|0`. Step 3 (`npx supabase db push`) is the owner's and is recorded as done in the run sheet; the
+column's existence in production is evidenced by proof D's successful `readTeams`, not asserted.
+
+**Gate history for this leg, including a red that was not a failure.** After the proof-D records and the
+three stale-wording corrections below, the first `npm run gate` exited **1** with
+`Test Files 21 passed (24)` / `Tests 481 passed (500)` / `Errors 3 errors` — three
+`[vitest-pool]: Worker forks emitted error` → `Worker exited unexpectedly` crashes and **zero** assertion
+failures. `npm test` alone then exited **0** with all 24 files and 541 tests, and a repeated
+`npm run gate` exited **0** (`Checked 128 files`, 541 passed, build emitting the `/predictgame7/` asset
+prefix). Every exit code read from the command itself, never from a pipe. This is the load-sensitivity class
+Story 2.12 opened and Story 2.13 measured once more, with a **third member**: a timeout names its case, a
+died fork names nothing — the signature is `N passed (M)` with `M > N` and no `✗` line anywhere, so the
+standalone re-run is the evidence rather than the count. No budget was raised, no case skipped, nothing
+else changed to get green.
+
+**Three stale wordings the run made false, all corrected in the same commit:** the probe's two failure
+messages still said "the **two** measured divergences" where the shipped table is six
+(`scripts/probe-espn-adapter.mjs:293`, `:525` — operator-facing text, so a stale count there would send the
+next reader to add a divergence that is already recorded); `espn-adapter.test.ts:489`'s title said "the two
+measured divergences" for a case that pins `NY` and `SA`, retitled "two of the six"; and the pre-proof-D
+paragraph above that listed "no measurement from the *scheduled* environment" as unknown was rewritten rather
+than left to contradict the run it now describes.
