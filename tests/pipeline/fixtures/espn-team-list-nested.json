@@ -1,0 +1,316 @@
+{
+ "_comment": "SYNTHETIC. Story 2.13 leg B reader fixture: the nesting the 2026-10-04 live run reported (top-level `sports`) plus a `team` wrapper. The leaf fields are the ones leg A measures on the scoreboard route. Not a captured response.",
+ "sports": [
+  {
+   "uid": "s:40",
+   "leagues": [
+    {
+     "id": "46",
+     "name": "NBA",
+     "teams": [
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1001",
+        "abbreviation": "ATL",
+        "displayName": "ESPN ATL",
+        "location": "Atlanta",
+        "nickname": "Hawks"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1003",
+        "abbreviation": "BKN",
+        "displayName": "ESPN BKN",
+        "location": "Brooklyn",
+        "nickname": "Nets"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1002",
+        "abbreviation": "BOS",
+        "displayName": "ESPN BOS",
+        "location": "Boston",
+        "nickname": "Celtics"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1004",
+        "abbreviation": "CHA",
+        "displayName": "ESPN CHA",
+        "location": "Charlotte",
+        "nickname": "Hornets"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1005",
+        "abbreviation": "CHI",
+        "displayName": "ESPN CHI",
+        "location": "Chicago",
+        "nickname": "Bulls"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1006",
+        "abbreviation": "CLE",
+        "displayName": "ESPN CLE",
+        "location": "Cleveland",
+        "nickname": "Cavaliers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1007",
+        "abbreviation": "DAL",
+        "displayName": "ESPN DAL",
+        "location": "Dallas",
+        "nickname": "Mavericks"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1008",
+        "abbreviation": "DEN",
+        "displayName": "ESPN DEN",
+        "location": "Denver",
+        "nickname": "Nuggets"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1009",
+        "abbreviation": "DET",
+        "displayName": "ESPN DET",
+        "location": "Detroit",
+        "nickname": "Pistons"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1010",
+        "abbreviation": "GSW",
+        "displayName": "ESPN GSW",
+        "location": "Golden",
+        "nickname": "State Warriors"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1011",
+        "abbreviation": "HOU",
+        "displayName": "ESPN HOU",
+        "location": "Houston",
+        "nickname": "Rockets"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1012",
+        "abbreviation": "IND",
+        "displayName": "ESPN IND",
+        "location": "Indiana",
+        "nickname": "Pacers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1013",
+        "abbreviation": "LAC",
+        "displayName": "ESPN LAC",
+        "location": "Los",
+        "nickname": "Angeles Clippers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1014",
+        "abbreviation": "LAL",
+        "displayName": "ESPN LAL",
+        "location": "Los",
+        "nickname": "Angeles Lakers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1015",
+        "abbreviation": "MEM",
+        "displayName": "ESPN MEM",
+        "location": "Memphis",
+        "nickname": "Grizzlies"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1016",
+        "abbreviation": "MIA",
+        "displayName": "ESPN MIA",
+        "location": "Miami",
+        "nickname": "Heat"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1017",
+        "abbreviation": "MIL",
+        "displayName": "ESPN MIL",
+        "location": "Milwaukee",
+        "nickname": "Bucks"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1018",
+        "abbreviation": "MIN",
+        "displayName": "ESPN MIN",
+        "location": "Minnesota",
+        "nickname": "Timberwolves"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1019",
+        "abbreviation": "NOP",
+        "displayName": "ESPN NOP",
+        "location": "New",
+        "nickname": "Orleans Pelicans"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1020",
+        "abbreviation": "NY",
+        "displayName": "New York Knicks",
+        "location": "New",
+        "nickname": "York Knicks"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1021",
+        "abbreviation": "OKC",
+        "displayName": "ESPN OKC",
+        "location": "Oklahoma",
+        "nickname": "City Thunder"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1022",
+        "abbreviation": "ORL",
+        "displayName": "ESPN ORL",
+        "location": "Orlando",
+        "nickname": "Magic"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1023",
+        "abbreviation": "PHI",
+        "displayName": "ESPN PHI",
+        "location": "Philadelphia",
+        "nickname": "76ers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1024",
+        "abbreviation": "PHX",
+        "displayName": "ESPN PHX",
+        "location": "Phoenix",
+        "nickname": "Suns"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1025",
+        "abbreviation": "POR",
+        "displayName": "ESPN POR",
+        "location": "Portland",
+        "nickname": "Trail Blazers"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1026",
+        "abbreviation": "SAC",
+        "displayName": "ESPN SAC",
+        "location": "Sacramento",
+        "nickname": "Kings"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1027",
+        "abbreviation": "SA",
+        "displayName": "San Antonio Spurs",
+        "location": "San",
+        "nickname": "Antonio Spurs"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1028",
+        "abbreviation": "TOR",
+        "displayName": "ESPN TOR",
+        "location": "Toronto",
+        "nickname": "Raptors"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1029",
+        "abbreviation": "UTA",
+        "displayName": "ESPN UTA",
+        "location": "Utah",
+        "nickname": "Jazz"
+       }
+      },
+      {
+       "supportHomeAwayViolation": false,
+       "team": {
+        "id": "1030",
+        "abbreviation": "WAS",
+        "displayName": "ESPN WAS",
+        "location": "Washington",
+        "nickname": "Wizards"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

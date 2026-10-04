@@ -40,10 +40,11 @@ Unobserved and therefore gated by rule, never by expectation: `status.type.state
 
 | ESPN code | Stored row | `teams.abbreviation` | Status |
 |---|---|---|---|
-| `NY` | New York Knicks, id 20 | `NYK` | measured divergence (`00005_release_1_data_model.sql:123`) |
+| `NY` | New York Knicks, id 20 | `NYK` | measured divergence (`00005_release_1_data_model.sql:123`), re-measured live 2026-10-04 (leg A: `NY` → id 20, "New York Knicks") |
 | `SA` | San Antonio Spurs, id 27 | `SAS` | measured divergence (`:130`) |
-| `CLE`, `TOR`, `DEN` | matching rows | same three letters | measured agreement |
-| the other 26 modern franchises | — | — | **assumed to agree; CAP-8's cross-check must measure them before `00018` seeds anything** |
+| `CLE`, `TOR`, `DEN` | matching rows | same three letters | measured agreement, re-measured live 2026-10-04 |
+| `ATL`, `MIN` | Atlanta Hawks id 1, Minnesota Timberwolves id 18 | same three letters | **newly measured live 2026-10-04** (probe leg A) — agree, so no new divergence row |
+| the other 23 modern franchises | — | — | **assumed to agree; CAP-8's cross-check must measure them before `00018` seeds anything** |
 
 The codes cannot be display names: `displayName` is `Knicks` / `Spurs`, and the probe's jq chain was `.team.abbreviation // .team.displayName`.
 

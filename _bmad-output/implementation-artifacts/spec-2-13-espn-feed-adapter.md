@@ -311,3 +311,44 @@ re-run, not by a pin.
 showed the refusal is the machine's default resolver (`RCODE_REFUSED` for that name, google fine,
 `-Server 1.1.1.1` answering normally, `hosts` clean). The fix earned its keep within one cycle:
 the second run was actionable and the first was not. Full record in the run sheet's step-1 note.
+
+### Legs A and C are measured on a live payload; leg B went red on the harness's own reader
+
+The third probe run of the day, on a mobile network (the office resolver refuses `espn.com` — see
+the run sheet), took `--date=20260420` and got three finished first-round games back. That makes
+several claims that had only ever held against fixtures now true of the shipped adapter on real
+JSON: `status.type`/`description`, `notes[0].headline`, `competitors[].team.abbreviation`,
+`.homeAway` and `.score` are all present and parse; six codes were read (`CLE TOR NY ATL DEN MIN`),
+with `NY` resolving to `teams.id=20` — the Knicks divergence, re-measured live — and two codes
+(`ATL`, `MIN`) that `payload-contract.md` had not listed before, both agreeing with
+`teams.abbreviation`, so no new divergence row. All three games were game 2 of 7, so the adapter
+emitted **0 status rows and 0 score rows, and the probe's own cross-check called that an EXACT
+MATCH against the raw payload**: the exclude-by-rule path and CAP-6's alarm distinction, demonstrated
+on a date that had games rather than on a rest day. Leg C re-measured the range form — `HTTP 400`,
+keys `code, message`, no `events` — so CAP-2's single-date-only builder is now confirmed twice.
+
+**Leg B failed, and the fault is ours.** Both team-list routes answered `HTTP 200`: the site route
+with a top-level `sports` array (the franchise rows therefore sit at `sports[0].leagues[0].teams`,
+two levels below anything the reader scanned), the core route with `count, pageIndex, pageSize,
+pageCount, items` where every `items[]` entry is a lone `$ref`. The reader reported both as `entry
+null has no 2-4 capital-letter code` — six times, about an array it had not reached. So the diagnosis
+it printed was wrong about our code, not about ESPN.
+
+Fix, in `scripts/probe-espn-adapter.mjs`: the traversal is depth-bounded to 6 and takes the longest
+array that verifies, a `{ team: { … } }` wrapper is accepted, the winning key path is printed, and a
+pointer list is named as a pointer list rather than as malformed rows. Verification is unchanged and
+still absolute — 30 distinct codes × 30 distinct `teams.id`, divergences confirmed by the franchise
+name, or no table and exit 2.
+
+Because an agent may not fetch, the reader is now executed offline: `--fixture-teamlist=<file>` runs
+the same `analyzeTeamList` over two committed synthetic payloads, and `npm test` spawns it (two cases
+in the E5 block of `tests/pipeline/venue-backfill.test.ts`). That harness paid for itself immediately
+— at the depth I first wrote (4) the nested fixture failed exactly the way the live route did, so the
+bound was raised before asking the owner for another network switch. The fixtures are hand-authored
+from the `00005` abbreviation set; they prove the traversal and the verification, **not** ESPN's shape,
+which the next live leg B run still has to settle.
+
+Mutation evidence for the two new cases, each restored byte-identically: `depth > 6` → `depth > 1`
+reddens the nested-table case; deleting the `$ref` branch reddens the pointer-list case; and
+`nameMustContain: 'knick'` → `'knickerbocker'` reddens the nested case — the last one showing the
+divergence guard is load-bearing rather than decorative.

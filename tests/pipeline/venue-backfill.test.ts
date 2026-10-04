@@ -582,9 +582,10 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // No gate step type-checks or lints scripts/** (AGENTS.md), so at minimum
   // the harnesses added by Stories 2.8, 2.12 and 2.13 must parse under Node's
   // own syntax check. Beyond parsing, the Docker rehearsal's job stays outside
-  // the gate — except for the one thing that does not need a container: U11's
-  // `--fixture-report`, run below, which executes the real-score reader, its
-  // join and the pinned literals in-process.
+  // the gate — except for the legs that need neither container nor network:
+  // U11's `--fixture-report` (the real-score reader, its join, the pinned
+  // literals) and Story 2.13's leg-B reader over `--fixture-teamlist=`, both
+  // executed below as the real scripts.
   for (const script of ['probe-game7-venues.mjs', 'probe-espn-adapter.mjs', 'rehearse-migration-00014.mjs']) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
@@ -606,6 +607,40 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
     });
     expect(res.status).toBe(2);
     expect(res.stderr).toContain('not YYYYMMDD');
+  });
+
+  // Leg B is the live probe's only reader with no measurement behind it: the
+  // owner's 2026-10-04 run showed the first version scanning one level deep
+  // against a payload nested as `sports[0].leagues[0].teams`, so it printed
+  // "entry null has no code" for an array it never reached. The agent may not
+  // fetch, so `--fixture-teamlist=` is the substitute — it runs the SAME
+  // `analyzeTeamList` the live leg calls, over a committed synthetic payload.
+  // It proves the traversal and the verification; it proves nothing about
+  // ESPN's shape, which is what the owner's leg still has to measure.
+  it('the espn probe reads a 30-franchise table off a nested team list, offline', () => {
+    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-team-list-nested.json'], {
+      encoding: 'utf8',
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+    });
+    expect(res.stdout).toContain('codes read from the "sports[0].leagues[0].teams" array');
+    expect(res.stdout).toContain('divergences from teams.abbreviation: 2 — NY→NYK, SA→SAS');
+    expect(res.stdout).toContain('ZERO network');
+    expect(res.status).toBe(0);
+  });
+
+  it('the espn probe names a $ref pointer list as one rather than a table of malformed rows', () => {
+    // The core-API route measured on 2026-10-04 answers `{ count, items: [ {
+    // $ref } ] }`. Reading it as rows is what produced the six identical
+    // "entry null has no code" problems in that run's output; the honest verdict
+    // is "this is a pointer list", and the exit stays 2 either way — a leg that
+    // cannot verify 30 franchises never prints a table.
+    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-team-list-refs.json'], {
+      encoding: 'utf8',
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+    });
+    expect(res.stdout).toContain('pointer list, not team rows');
+    expect(res.stdout).not.toContain('teams.id | teams.abbreviation');
+    expect(res.status).toBe(2);
   });
 
   it('scripts/rehearse-migration-00014.mjs --fixture-report reproduces U11\'s pinned literals with no Docker and no database', () => {

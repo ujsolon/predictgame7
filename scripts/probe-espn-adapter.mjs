@@ -67,20 +67,55 @@ const RANGE_CONTROL = '20260601-20260608';
 
 const dateArgs = process.argv.slice(2).filter((arg) => arg.startsWith('--date='));
 const dateArg = dateArgs[0];
-const otherArgs = process.argv.slice(2).filter((arg) => !dateArgs.includes(arg));
+// `--fixture-teamlist=<file>` runs leg B's READER over a committed payload with
+// zero network. It exists because the agent may not fetch: leg B's traversal was
+// wrong in a way only a live run could show, and a live run costs the owner a
+// network switch. This mode lets the reader be executed by `npm test` instead.
+// It is not CAP-8 evidence and says so on every path.
+const fixtureArgs = process.argv.slice(2).filter((arg) => arg.startsWith('--fixture-teamlist='));
+const otherArgs = process.argv.slice(2).filter((arg) => !dateArgs.includes(arg) && !fixtureArgs.includes(arg));
 if (dateArgs.length > 1) {
   // The run sheet asks for two dates, so this is the shape a real operator run
   // takes by accident; silently keeping the first would print one payload and
   // read as two.
   exit2(`--date= given ${dateArgs.length} times (${dateArgs.join(', ')}) — one date per run, the way the adapter takes it: run the probe once per date`);
 } else if (otherArgs.length > 0) {
-  exit2(`unrecognised argument "${otherArgs[0]}" — supported: --date=<YYYYMMDD> (or no flag for legs B and C only)`);
+  exit2(`unrecognised argument "${otherArgs[0]}" — supported: --date=<YYYYMMDD>, --fixture-teamlist=<file>, or no flag for legs B and C only`);
+} else if (fixtureArgs.length === 1 && dateArg === undefined) {
+  try {
+    await runFixtureTeamList(fixtureArgs[0].slice('--fixture-teamlist='.length));
+  } catch (error) {
+    exit2(error instanceof Error ? error.message : String(error));
+  }
+} else if (fixtureArgs.length > 0) {
+  exit2('--fixture-teamlist= runs no network leg, so pass it alone (no --date=)');
 } else {
   try {
     await runProbe(dateArg ? dateArg.slice('--date='.length) : undefined);
   } catch (error) {
     exit2(error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * leg B's reader, offline: the file is parsed as if it were a team-list response
+ * and the same verification decides the exit code. Prints `FIXTURE MODE` because
+ * a passing traversal proves the READER, never the feed's shape.
+ */
+async function runFixtureTeamList(file) {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const text = readFileSync(resolve(process.cwd(), file), 'utf8');
+  const { rows, notes } = analyzeTeamList(file, JSON.parse(text), await readSeedTable());
+  console.log(`fixture mode — leg B reader over ${file}, ZERO network, not CAP-8 evidence`);
+  for (const note of notes) console.log(`  ${note}`);
+  if (!rows) {
+    console.log('reader result: no verified 30-franchise table (exit 2)');
+    process.exitCode = 2;
+    return;
+  }
+  printTeamTable(rows);
+  console.log(`reader result: 30 verified rows from a hand-authored payload — the reader works; ESPN's real shape still needs the live leg B run (exit 0)`);
 }
 
 async function runProbe(datesArg) {
@@ -299,16 +334,7 @@ async function runProbe(datesArg) {
   console.log('\n===== leg B — the 30-franchise ESPN code table (00018 seeds from this, nowhere else) =====');
   const table = await harvestFranchiseCodes(ESPN_HEADERS, failures);
   if (table) {
-    const divergences = table.filter((row) => row.code !== row.abbreviation);
-    console.log('teams.id | teams.abbreviation | espn_code | agreement | ESPN name');
-    for (const row of [...table].sort((l, r) => l.teamsId - r.teamsId)) {
-      console.log(
-        `  ${String(row.teamsId).padStart(3)}      | ${row.abbreviation.padEnd(18)} | ${row.code.padEnd(9)} | ` +
-          `${(row.code === row.abbreviation ? 'agree' : 'DIVERGES').padEnd(9)} | ${row.name}`,
-      );
-    }
-    console.log(`divergences from teams.abbreviation: ${divergences.length} — ${divergences.map((d) => `${d.code}→${d.abbreviation}`).join(', ') || '(none)'}`);
-
+    const divergences = printTeamTable(table);
     const expected = [...MEASURED_DIVERGENCES.keys()].sort();
     const found = divergences.map((d) => d.code).sort();
     if (found.join(',') !== expected.join(',')) {
@@ -373,23 +399,28 @@ async function runProbe(datesArg) {
 }
 
 /**
- * Reads the franchise codes off ESPN's team list. That endpoint's shape has
- * NEVER been measured in this repo, so this reader is tolerant on purpose: it
- * takes the first array of at least 30 objects whose entries carry a short
- * upper-case code, and then it verifies rather than trusts — 30 distinct codes,
- * each resolving to a distinct `00005` row, the two divergences confirmed by the
- * name beside them. Anything that fails verification returns null after naming
- * what it found, so the owner inspects the real shape instead of seeding `00018`
- * from a misread field.
+ * Reads the franchise codes off ESPN's team list. The leaf fields are measured
+ * (leg A reads `.abbreviation` off `competitors[].team` on the same API family);
+ * the nesting path is not, so this reader is tolerant on purpose and bounded —
+ * it searches every array of objects down to depth 6 and takes the longest one
+ * that verifies. The 2026-10-04 run is what made the depth load-bearing: the
+ * site route answers `{ sports: [ … ] }`, so a one-level scan sees a single
+ * object and finds nothing, and the core route's `items[]` are `{ $ref }`
+ * pagination pointers rather than team rows. Both now report themselves as what
+ * they are instead of failing as "entry null has no code".
+ *
+ * Tolerance never means trust: 30 distinct codes, each resolving to a distinct
+ * `00005` row, with the two divergences confirmed by the name beside them.
+ * Anything that fails verification returns null after naming what it found and
+ * where it found it, so the owner inspects the real shape instead of seeding
+ * `00018` from a misread field.
  */
 async function harvestFranchiseCodes(headers, failures) {
   // The same reason-namer the shipped adapter uses: a connection-class throw
   // arrives as an undifferentiated `fetch failed`, and two blind diagnostics look
   // like the host is down when the cause is DNS, a proxy, or a certificate.
   const { describeFetchThrow } = await import('../supabase/scripts/pipeline/adapters/espn.ts');
-  const migrationText = await readFileSafe('../supabase/migrations/00005_release_1_data_model.sql');
-  const seed = new Map();
-  for (const match of migrationText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seed.set(match[2], Number(match[1]));
+  const seed = await readSeedTable();
 
   const candidates = [
     'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams',
@@ -412,59 +443,133 @@ async function harvestFranchiseCodes(headers, failures) {
       diagnostics.push(`${url} → HTTP ${status}, body is not an object`);
       continue;
     }
-    diagnostics.push(`${url} → HTTP ${status}, top-level keys: ${Object.keys(body).join(', ')}`);
+    const countNote = typeof body.count === 'number' ? `, count=${body.count}` : '';
+    diagnostics.push(`${url} → HTTP ${status}, top-level keys: ${Object.keys(body).join(', ')}${countNote}`);
+    const { rows, notes } = analyzeTeamList(url, body, seed);
+    diagnostics.push(...notes);
+    if (rows) return rows;
+  }
 
-    // Every array-of-objects one level down, longest first: `teams`, `items`,
-    // or whatever the route calls it. Bounded so a wrong guess is visible rather
-    // than deep.
-    const arrays = Object.entries(body)
-      .filter(([, value]) => Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && value[0] !== null)
-      .map(([key, value]) => [key, value])
-      .sort((l, r) => r[1].length - l[1].length);
-    const used = arrays.find(([, value]) => value.length >= 30);
-    if (!used) {
-      diagnostics.push(`  no array of 30+ objects here (largest: ${arrays.map(([k, v]) => `${k}=${v.length}`).join(', ') || 'none'})`);
+  failures.push(`leg B: no team-list route produced a verified 30-franchise table. Diagnostics:\n      ${diagnostics.join('\n      ')}`);
+  return null;
+}
+
+/** The `00005` abbreviation → `teams.id` map, read off the committed migration, never the database. */
+async function readSeedTable() {
+  const migrationText = await readFileSafe('../supabase/migrations/00005_release_1_data_model.sql');
+  const seed = new Map();
+  for (const match of migrationText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seed.set(match[2], Number(match[1]));
+  return seed;
+}
+
+/**
+ * The reader leg B needs and the reader `--fixture-teamlist=` exercises — one
+ * implementation, so the offline pass proves the code the live leg runs. Returns
+ * `rows: null` plus the notes that explain the refusal whenever the payload does
+ * not verify; a partial table never comes back as rows.
+ */
+function analyzeTeamList(url, body, seed) {
+  const notes = [];
+  const arrays = findObjectArrays(body).sort((l, r) => r.entries.length - l.entries.length);
+  if (arrays.length === 0) {
+    return { rows: null, notes: ['  no array of objects anywhere within depth 6'] };
+  }
+  const wide = arrays.filter((a) => a.entries.length >= 30);
+  if (wide.length === 0) {
+    return {
+      rows: null,
+      notes: [`  largest array of objects found is ${arrays[0].entries.length} (< 30) at ${arrays[0].path || '(root)'} — the 30-franchise table is not reachable within depth 6`],
+    };
+  }
+  for (const { path, entries } of wide) {
+    if (entries.every((e) => e.$ref !== undefined && Object.keys(e).length === 1)) {
+      notes.push(
+        `  ${path || '(root)'} holds ${entries.length} objects but every one is a lone \`$ref\` — that is a pointer list, not team rows. ` +
+          'Resolving it means one request per franchise, which this leg does not spend silently, so this route cannot seed 00018 — another has to carry the table.',
+      );
       continue;
     }
-    const [arrayKey, entries] = used;
-
     const rows = [];
     const problems = [];
     for (const entry of entries) {
-      const code = entry.abbreviation ?? entry.displayAbbreviation ?? entry.shortName;
-      const name = entry.displayName ?? entry.name ?? entry.location ?? '';
-      if (typeof code !== 'string' || !/^[A-Z]{2,4}$/.test(code)) {
-        problems.push(`entry ${JSON.stringify(entry.id ?? null)} has no 2-4 capital-letter code (keys: ${Object.keys(entry).join(', ')})`);
+      // Some routes wrap the team in a `team` member; others print it inline.
+      const found = entryCode(entry) ?? entryCode(entry.team);
+      if (!found) {
+        const wrapped = entry.team !== null && typeof entry.team === 'object' ? [`team:${Object.keys(entry.team).join('/')}`] : [];
+        problems.push(`entry ${JSON.stringify(entry.id ?? entry.team?.id ?? null)} has no 2-4 capital-letter code (keys: ${[...Object.keys(entry), ...wrapped].join(', ')})`);
         continue;
       }
+      const { code, name } = found;
       const divergence = MEASURED_DIVERGENCES.get(code);
       const abbreviation = seed.has(code) ? code : divergence?.abbreviation;
       if (abbreviation === undefined) {
         problems.push(`code ${code} ("${name}") resolves through neither the 00005 abbreviations nor the two measured divergences`);
         continue;
       }
-      if (divergence && !String(name).toLowerCase().includes(divergence.nameMustContain)) {
+      if (divergence && !name.toLowerCase().includes(divergence.nameMustContain)) {
         problems.push(`code ${code} was assumed to be the ${divergence.abbreviation} franchise but its name reads "${name}"`);
         continue;
       }
-      rows.push({ code, name: String(name), abbreviation, teamsId: seed.get(abbreviation) });
+      rows.push({ code, name, abbreviation, teamsId: seed.get(abbreviation) });
     }
 
     const uniqueCodes = new Set(rows.map((r) => r.code));
     const uniqueIds = new Set(rows.map((r) => r.teamsId));
     if (rows.length < 30 || uniqueCodes.size !== 30 || uniqueIds.size !== 30) {
-      diagnostics.push(
-        `  ${arrayKey} yielded ${rows.length} of ${entries.length} usable rows (${uniqueCodes.size} distinct codes, ${uniqueIds.size} distinct teams.id); ` +
+      notes.push(
+        `  ${path} yielded ${rows.length} of ${entries.length} usable rows (${uniqueCodes.size} distinct codes, ${uniqueIds.size} distinct teams.id); ` +
           `problems: ${problems.slice(0, 6).join(' | ') || '(none)'} — not seeding 00018 from a partial table`,
       );
       continue;
     }
-    console.log(`source: ${url} — codes read from the "${arrayKey}" array, key path .abbreviation/.displayAbbreviation/.shortName`);
-    return rows;
+    notes.push(`source: ${url} — codes read from the "${path}" array (depth-searched, longest match), key path .abbreviation/.displayAbbreviation/.shortName`);
+    return { rows, notes };
   }
+  return { rows: null, notes };
+}
 
-  failures.push(`leg B: no team-list route produced a verified 30-franchise table. Diagnostics:\n      ${diagnostics.join('\n      ')}`);
-  return null;
+/** Prints leg B's table and returns the divergence rows, so the live leg and fixture mode share it. */
+function printTeamTable(table) {
+  const divergences = table.filter((row) => row.code !== row.abbreviation);
+  console.log('teams.id | teams.abbreviation | espn_code | agreement | ESPN name');
+  for (const row of [...table].sort((l, r) => l.teamsId - r.teamsId)) {
+    console.log(
+      `  ${String(row.teamsId).padStart(3)}      | ${row.abbreviation.padEnd(18)} | ${row.code.padEnd(9)} | ` +
+        `${(row.code === row.abbreviation ? 'agree' : 'DIVERGES').padEnd(9)} | ${row.name}`,
+    );
+  }
+  console.log(`divergences from teams.abbreviation: ${divergences.length} — ${divergences.map((d) => `${d.code}→${d.abbreviation}`).join(', ') || '(none)'}`);
+  return divergences;
+}
+
+/**
+ * Every array of plain objects in the payload, each tagged with the key path it
+ * came from, searched to depth 6. Bounded on purpose: leg B's tolerance is about
+ * not knowing the nesting, not about consuming whatever is deep in a document,
+ * and the printed path lets the owner see which array supplied the table.
+ */
+function findObjectArrays(node, path = '', out = [], depth = 0) {
+  if (node === null || typeof node !== 'object' || depth > 6 || out.length >= 40) return out;
+  if (Array.isArray(node)) {
+    if (node.length > 0 && node.every((v) => v !== null && typeof v === 'object' && !Array.isArray(v))) out.push({ path, entries: node });
+    for (const [index, value] of node.entries()) {
+      if (index >= 3) break;
+      findObjectArrays(value, `${path}[${index}]`, out, depth + 1);
+    }
+    return out;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    findObjectArrays(value, path ? `${path}.${key}` : key, out, depth + 1);
+  }
+  return out;
+}
+
+/** The code fields the measured routes use, or undefined when this object is not a team row. */
+function entryCode(obj) {
+  if (obj === null || typeof obj !== 'object') return undefined;
+  const code = obj.abbreviation ?? obj.displayAbbreviation ?? obj.shortName;
+  if (typeof code !== 'string' || !/^[A-Z]{2,4}$/.test(code)) return undefined;
+  return { code, name: String(obj.displayName ?? obj.name ?? obj.location ?? '') };
 }
 
 function pad(value) {

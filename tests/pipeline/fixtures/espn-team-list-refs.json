@@ -1,0 +1,99 @@
+{
+ "_comment": "SYNTHETIC. The core-API shape measured on 2026-10-04: a `count` and an `items` array whose every entry is a lone `$ref`.",
+ "count": 30,
+ "pageIndex": 1,
+ "pageSize": 30,
+ "pageCount": 1,
+ "items": [
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1001?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1003?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1002?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1004?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1005?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1006?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1007?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1008?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1009?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1010?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1011?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1012?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1013?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1014?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1015?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1016?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1017?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1018?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1019?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1020?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1021?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1022?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1023?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1024?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1025?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1026?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1027?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1028?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1029?lang=en&region=us"
+  },
+  {
+   "$ref": "https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/teams/1030?lang=en&region=us"
+  }
+ ]
+}

@@ -29,7 +29,7 @@ PostgREST.
 
 | # | Command | Proves | Recorded as |
 |---|---|---|---|
-| 1 | `node scripts/probe-espn-adapter.mjs --date=20260420` then `--date=20260605`, then the range control | CAP-8: the field coverage the adapter depends on is present on real payloads, and the **30-franchise ESPN code table** exists as measurement. This table — not a guess list — is what `00018` seeds. The two known divergences (`NY`→Knicks, `SA`→Spurs) must reappear; any *other* code that differs from `teams.abbreviation` is a new finding and gets its own row in `payload-contract.md`. | **NOT OBTAINED — first attempt 2026-10-04 was red on all three legs, no payload measured** (see the note below). When it does run: output pasted **verbatim** into the story record; each `espn_code` value in `00018` traces to a line of it. Exit code from the command itself. |
+| 1 | `node scripts/probe-espn-adapter.mjs --date=20260420` then `--date=20260605`, then the range control | CAP-8: the field coverage the adapter depends on is present on real payloads, and the **30-franchise ESPN code table** exists as measurement. This table — not a guess list — is what `00018` seeds. The two known divergences (`NY`→Knicks, `SA`→Spurs) must reappear; any *other* code that differs from `teams.abbreviation` is a new finding and gets its own row in `payload-contract.md`. | **PARTLY OBTAINED 2026-10-04** — the scoreboard half (leg A) and the range control (leg C) are measured on a live payload; **leg B's code table is not**, so `00018` still has no seed source (see the notes below). When it does run: output pasted **verbatim** into the story record; each `espn_code` value in `00018` traces to a line of it. Exit code from the command itself. |
 | 2 | `node scripts/rehearse-migration-00014.mjs` with `COVERED_THROUGH` extended through `00018` | The additive column and the partial unique index behave on a throwaway database, including the negative proof that a **duplicate non-null `espn_code` fails the index**, and `EXPECTED_TEAM_COUNT = 59` still holds because no row is inserted. Needs Docker; it is the same harness Stories 2.8/2.12 ran. | The run's verdict block, verbatim. |
 | 3 | `npx supabase db push` — **owner only** | `00018` reaches production. The agent never runs `db push`, `db reset`, `db start`, and never points `psql` at `supabase/.temp/project-ref` — that *is* production. | The applied-migration name and date, plus `docs/CURRENT_DATA_MODEL.md` updated in the same commit as the migration file. |
 
@@ -69,6 +69,36 @@ not filtering: point the adapter at a public resolver or use another network, th
 TTL and location-varying addresses. There is **no local substitute if this machine genuinely cannot reach
 ESPN**: the table must come from somewhere that can, and the only shape available is a one-off
 dispatch on a hosted runner — no such workflow exists today, so that is new surface and needs the
+owner's explicit yes. It must not be replaced by inference about what ESPN "probably" prints.
+
+**Third attempt, same day, on a mobile network: legs A and C are now OBTAINED on a real payload,
+and leg B went red for a completely different reason — this repo's reader, not ESPN.** Leg A asked
+for `dates=20260420`, got three finished first-round games, and the shipped adapter did everything
+the contract says it should: every event carried `state="post"`, `description="Final"` and a
+parseable `notes[0].headline` (CAP-3, CAP-4 — six codes read off live JSON: `CLE TOR NY ATL DEN
+MIN`, with `NY` resolving to `teams.id=20`, the measured Knicks divergence re-measured); all three
+were games 2 of 7, so the adapter emitted **0 status rows and 0 score rows and the cross-check
+called that an EXACT MATCH against the raw payload** — the exclude-by-rule path and the
+rest-day-with-games case, proven on unpicked JSON rather than on a fixture. Leg C re-measured the
+range form: `HTTP 400`, top-level keys `code, message`, no `events`. CAP-2's single-date-only
+decision holds a second time.
+
+Leg B's two routes both answered `HTTP 200` and both failed the same one-level scan: the site route
+returns a top-level `sports` array (so the franchise rows sit at `sports[0].leagues[0].teams`,
+which nothing at depth 1 can reach) and the core route returns `count, pageIndex, pageSize,
+pageCount, items` whose every `items[]` entry is a lone `$ref`. The reader reported that as `entry
+null has no 2-4 capital-letter code` six times — a wrong verdict about a shape it had not actually
+looked at. Fixed: the traversal is depth-bounded to 6, accepts a `team` wrapper, prints the key
+path that supplied the table, and names a pointer list as one instead of as malformed rows. The
+verification is unchanged and still absolute — 30 distinct codes, 30 distinct `teams.id`, the two
+divergences confirmed by the franchise name beside them, or no table.
+
+**The 30-franchise table remains unobtained, so `00018` still has no seed source.** Because an
+agent may not fetch, the fixed reader is executed offline in `npm test` over two committed
+synthetic payloads (`--fixture-teamlist=`, `tests/pipeline/fixtures/espn-team-list-*.json`) —
+which is what caught the depth budget being too shallow; at depth 4 the nested fixture failed the
+same way the live route did. Those fixtures prove the traversal, not ESPN's shape: if the next live
+leg B still disagrees, its output now names the array it searched and why it refused.
 owner's explicit yes. It must not be replaced by inference about what ESPN "probably" prints.
 
 ## Part 2 — the four proofs Story 2.6 transferred (owner call C3)
