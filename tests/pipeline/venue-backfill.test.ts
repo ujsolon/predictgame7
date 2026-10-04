@@ -308,7 +308,7 @@ describe('renderMigration — the single emitted copy of 00016', () => {
   // text, which told the operator to append such a series to
   // game7_venues_curated.csv (advice a pending row can never satisfy). The
   // leading clauses stay verbatim because the rehearsal's failure assertions
-  // (rehearse-migration-00014.mjs:1069-1070, :1095-1096) match them.
+  // (rehearse-migration-00014.mjs:1085, :1111) match them.
   it('the uncovered-row guards name the no-Game-7 case in their advice (Story 2.12, O-2)', () => {
     for (const guard of ['league_backfill_complete', 'venue_coverage']) {
       const at = text.indexOf(`00016 guard ${guard}`);
@@ -609,32 +609,41 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
     expect(res.stderr).toContain('not YYYYMMDD');
   });
 
-  // Leg B is the live probe's only reader with no measurement behind it: the
-  // owner's 2026-10-04 run showed the first version scanning one level deep
-  // against a payload nested as `sports[0].leagues[0].teams`, so it printed
-  // "entry null has no code" for an array it never reached. The agent may not
-  // fetch, so `--fixture-teamlist=` is the substitute — it runs the SAME
-  // `analyzeTeamList` the live leg calls, over a committed synthetic payload.
-  // It proves the traversal and the verification; it proves nothing about
-  // ESPN's shape, which is what the owner's leg still has to measure.
-  it('the espn probe reads a 30-franchise table off a nested team list, offline', () => {
-    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-team-list-nested.json'], {
+  // Leg B's reader is now covered against REAL bytes: the two payloads below are
+  // captured ESPN responses, committed verbatim on 2026-10-04 (the owner released
+  // the no-agent-fetch rule for that one capture, and `run-sheet.md` step 1
+  // records the provenance). That matters because the first version of this
+  // reader scanned one level deep against a payload nested as
+  // `sports[0].leagues[0].teams`, printed "entry null has no code" for an array it
+  // never reached, and three owner round-trips went by before the misread was
+  // visible. A synthetic stand-in could not have caught that class of bug, because
+  // the bug WAS the assumption about the shape.
+  // `--fixture-teamlist=` runs the SAME `analyzeTeamList` the live leg calls, so
+  // the traversal and the verification are pinned by the gate. What it cannot pin
+  // is the present tense — whether ESPN still answers this way — and that stays
+  // the live leg's job.
+  it('the espn probe reads the 30-franchise table off the captured site route, offline', () => {
+    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-teams-site-20261004.json'], {
       encoding: 'utf8',
       cwd: fileURLToPath(new URL('../..', import.meta.url)),
     });
     expect(res.stdout).toContain('codes read from the "sports[0].leagues[0].teams" array');
-    expect(res.stdout).toContain('divergences from teams.abbreviation: 2 — NY→NYK, SA→SAS');
+    // The capture carries ONLY `abbreviation` on a team object, so a code that
+    // arrived from `displayAbbreviation` or `shortName` means the reader started
+    // trusting a field this route never printed.
+    expect(res.stdout).toContain('field(s) that supplied them: abbreviation');
+    expect(res.stdout).toContain('divergences from teams.abbreviation: 6 — GS→GSW, NO→NOP, NY→NYK, SA→SAS, UTAH→UTA, WSH→WAS');
     expect(res.stdout).toContain('ZERO network');
     expect(res.status).toBe(0);
   });
 
-  it('the espn probe names a $ref pointer list as one rather than a table of malformed rows', () => {
-    // The core-API route measured on 2026-10-04 answers `{ count, items: [ {
-    // $ref } ] }`. Reading it as rows is what produced the six identical
-    // "entry null has no code" problems in that run's output; the honest verdict
-    // is "this is a pointer list", and the exit stays 2 either way — a leg that
-    // cannot verify 30 franchises never prints a table.
-    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-team-list-refs.json'], {
+  it('the espn probe names the captured core route as a $ref pointer list, not a table', () => {
+    // The core-API route answers `{ count, items: [ { $ref } ] }` — measured on
+    // 2026-10-04 and captured. Reading it as rows is what produced six identical
+    // "entry null has no code" problems in the first run's output; the honest
+    // verdict is "this is a pointer list", and the exit stays 2 either way — a leg
+    // that cannot verify 30 franchises never prints a table.
+    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--fixture-teamlist=tests/pipeline/fixtures/espn-teams-core-20261004.json'], {
       encoding: 'utf8',
       cwd: fileURLToPath(new URL('../..', import.meta.url)),
     });

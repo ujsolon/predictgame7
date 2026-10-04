@@ -133,16 +133,30 @@ context:
 
 **Probe design calls worth knowing when it is run:** the adapter refuses a date parameter, so leg A supplies the *cron-shaped instant* (target date + 1 day at 07:30 UTC) and asserts the shipped `deriveRequestDate` round-trips it — the flag exercises the derivation instead of bypassing it. The team-list endpoint was never measured, so leg B is a deliberately tolerant reader bounded to one-level-deep arrays, followed by verification rather than trust: 30 distinct codes → 30 distinct `teams.id`, with `NY`→Knicks and `SA`→Spurs confirmed by franchise name. Any divergence beyond those two is a **hard failure**, which forces a `payload-contract.md` row before seeding rather than letting a new divergence flow silently into `00018`. Legs are independent and all failures collect into one exit-2 message, so a single paste carries the whole measurement.
 
-**Not landed — blocked on the owner's probe output (`run-sheet.md` steps 1–3):**
+**Not landed at the time of that first draft — all three legs below it have since landed; see the
+two sections that follow the mutation evidence:**
 
 - `supabase/migrations/00018_teams_espn_code.sql` and `docs/CURRENT_DATA_MODEL.md` (same commit) — the 30 seed `UPDATE`s are transcribed from leg B verbatim; nothing was invented, so neither file is authored ahead of the table.
 - `scripts/rehearse-migration-00014.mjs` — `COVERED_THROUGH` → 18 and the duplicate-`espn_code` negative proof through `applyRejected`.
-- Run-sheet Part 2's four transferred dispatch proofs (A–D) and the owner's `npx supabase db push`.
+- Run-sheet Part 2's four transferred dispatch proofs (A–D) and the owner's `npx supabase db push`. Steps A, B and C are recorded as OBTAINED in the run sheet; **D** and the `db push` remain the owner's.
 
 ## Spec Change Log
 
 - CAP-6 was written as "only finished games" and the plan-level games 1–6 cross-check as a straight inheritance. The owner's mid-build call narrowed admission to **Final AND game 7**; `SPEC.md` CAP-2/CAP-6/Success signal, a new Constraints bullet ("the scheduled feed completes; it does not seed") and `payload-contract.md`'s parse rules now carry it, with `00015:286-308` cited so the 3–3 certification's survival is on the record rather than implied.
 - `SPEC.md`'s Non-goals forbade "touching the `keepalive.yml` schedule" while its Constraints recorded the owner's own 2026-10-04 move of that very cron. Contradiction resolved in favour of the decision: the non-goal now names `keepalive.yml`'s cron as the one line that does move, and the exception's parenthetical says the pair moves together.
+- **CAP-8's evidence route changed by owner call, 2026-10-04 (derive-pending, recorded here so the
+  contract and the build do not silently diverge).** CAP-8's `success` says the 30-franchise table is
+  printed by `scripts/probe-espn-adapter.mjs`, that "its output is pasted verbatim into the story
+  record, and every `espn_code` value in `00018` traces to a line of it". The probe's leg B never
+  completed on a non-filtering network; the owner instead released the no-agent-fetch rule for four
+  read-only GETs and the payloads became **committed fixtures**. The tracing obligation is met by a
+  stronger artifact — each seed traces to a line of `tests/pipeline/fixtures/espn-teams-site-20261004.json`,
+  which the suite re-audits on every run, whereas a terminal paste audits nothing — but the literal
+  sentence names the probe. `SPEC.md` is derived from `.memlog.md` and is not hand-patched: the
+  superseding entries are in the log (seven of them, 2026-10-04), and `payload-contract.md` "Where the
+  seed comes from" plus `run-sheet.md` step 1 carry the settled route. The next `bmad-spec` run on this
+  folder re-renders CAP-8 from the log. Until then CAP-8 reads **satisfied by capture**, with the probe
+  re-run demoted to a confirmation leg.
 
 ## Review Triage Log
 
@@ -346,9 +360,111 @@ in the E5 block of `tests/pipeline/venue-backfill.test.ts`). That harness paid f
 — at the depth I first wrote (4) the nested fixture failed exactly the way the live route did, so the
 bound was raised before asking the owner for another network switch. The fixtures are hand-authored
 from the `00005` abbreviation set; they prove the traversal and the verification, **not** ESPN's shape,
-which the next live leg B run still has to settle.
+which the next live leg B run still has to settle. 〔Superseded the same day: the two synthetic
+payloads are deleted and both cases now run over real captures — see "The circularity broke" below.〕
 
 Mutation evidence for the two new cases, each restored byte-identically: `depth > 6` → `depth > 1`
 reddens the nested-table case; deleting the `$ref` branch reddens the pointer-list case; and
 `nameMustContain: 'knick'` → `'knickerbocker'` reddens the nested case — the last one showing the
 divergence guard is load-bearing rather than decorative.
+
+### The circularity broke: real ESPN bytes in the suite, and `00018` seeded from them
+
+The story's last agent-runnable gap was that every Game-7 claim rested on a fixture *written from
+the assumption being tested*. The owner released the no-agent-fetch constraint for this once, read-only
+GETs only, and four verbatim ESPN payloads are now committed under `tests/pipeline/fixtures/` (191 KB,
+owner call "Commit them all"): `espn-teams-site-20261004.json` (134,851 B — the whole 30-franchise list),
+`espn-teams-core-20261004.json` (3,535 B), `espn-scoreboard-20250503-game7.json` (19,768 B) and
+`espn-scoreboard-20250504-mixed.json` (33,677 B). The two synthetic team-lists the reader was proven on
+are deleted; nothing in the suite any longer restates an assumption about ESPN's shape. No test reaches
+the network — the captures are read from disk and fed through the shipped `buildFeed` over the injected
+`deps.fetch`.
+
+What the bytes said, all of it against the assumption `payload-contract.md` carried:
+
+- **The 30-franchise code table exists as measurement**, and `00018`'s seeds trace to it line by line.
+- **24 of 30 codes equal `teams.abbreviation`; 6 do not.** `NY`→NYK and `SA`→SAS were already known from
+  Story 2.4; `GS`→GSW, `NO`→NOP, `UTAH`→UTA and `WSH`→WAS are new. The "assumed to agree" row for the
+  other 23 franchises is falsified — four of the twenty-six disagreed.
+- **ESPN's `team.id` is unusable**: it differs from `teams.id` on 27 of 30 rows (Knicks are ESPN 18, ours 20).
+- **Names are unusable**: `displayName` is `LA Clippers` where `00005` stores `Los Angeles Clippers`. The one
+  field both sides spell identically on 30/30 is the nickname (`team.name` ⟷ `teams.nickname`), and that is
+  what the offline audit joins on — the only field it may join on, since `espn.ts` resolves through
+  `espn_code` and contains no substring/city/nickname matching at all.
+- The two committed scoreboard payloads carry **six** codes between them (`DEN LAC` / `CLE GS HOU IND`), each
+  byte-identical to the same franchise's string in the site list — including `GS`. That is a sample, not
+  thirty, and the migration's header says so; the reason `abbreviation` is the join key rather than a second
+  opinion is that the competitor team object carries no other code-shaped field on either route.
+- **`notes[0].headline` is a playoff-only field.** A regular-season day returns events with no `notes`, so
+  those games are excluded as `unreadable headline` (measured: `espn: 15 series in feed (dates=20260410),
+  0 Game-7 candidate(s) — excluded: 0 not final, 0 final but not game 7, 15 unreadable headline`). Feed count
+  is non-zero, so `--require-feed` does not false-alarm on a normal October.
+
+Two of the four captures drive the paths that had never run on real JSON (`espn-adapter.test.ts`, 68 tests
+green): 20250503 admits exactly one Game 7 — Denver/LA Clippers, `team_a_id 8`, `winner_team_id 8`, one score
+row `home 8(120) / away 13(101)`, `feedSeriesCount 1`, histogram `{1:1}` — and 20250504 admits the Game 7 whose
+**away** side won (`team_a 11, team_b 10, winner 10`, review P1's slot case, replayed on ESPN's bytes rather
+than on a hand-built pair) while naming the Game 1 it drops:
+`espn: excluded 2025-05-04 CLE/IND — post/Final, headline "East Semifinals - Game 1" — game 1 of 7.`
+
+A third test closes the loop the seed depends on: it reads `00018`'s 30 `UPDATE` statements and `00005`'s
+seed rows off disk, joins them to the capture by nickname, and reddens if a code ever lands on the wrong
+franchise. The migration cannot drift from its source silently, and the 24/6 split is re-measured, not quoted.
+
+### `00018` is certified by the rehearsal, in the same commit as the file
+
+E1's pairing rule (emit and ceiling share a commit or neither is certified) meant the ceiling could not be
+left at 17 while an `00018` sat on disk. `scripts/rehearse-migration-00014.mjs` now runs `COVERED_THROUGH = 18`
+and a section 7 that rehearses the shipped text: the additive nullable column over the replayed seed, the six
+divergences read back out of the database, the shape CHECK, the partial unique index with run-sheet step 2's
+negative proof, and **all four post-condition guards observed firing** — each against a deliberately wrong
+population built inside one transaction that dies on the guard, then read back to prove the tamper left nothing
+behind. Docker 28.1.1 on the owner's machine, throwaway container, no port published, no Supabase command and
+no production endpoint touched. Exit code read from the command itself.
+
+Verbatim, the section and the verdict line (`node scripts/rehearse-migration-00014.mjs` → **exit 0**, "18
+migrations replayed" from `applied 00001…00018` in filename order):
+
+```
+-- 7) Story 2.13: 00018_teams_espn_code.sql — the feed identity column, its index, its shape, its guards --
+ok   7a 00018 is additive: 59 teams rows after the replay (read 59), the column is nullable YES|text, 30 modern franchises carry a code and 29 historical ones stay NULL, with 30 distinct values
+ok   7a the six measured divergences are in the database on the franchises the capture names them for — and they are the ONLY differences between ESPN's code space and teams.abbreviation, which is why abbreviation could not be the join key
+ok   7b the shape CHECK refuses a display name in espn_code (teams_espn_code_shape, not a silent truncation)
+ok   7b the shape CHECK refuses a lowercase code (ESPN prints capitals on all 30 captured rows)
+ok   7b the shape CHECK refuses a 5-letter code (the measured space is 2-4, so UTAH is the ceiling by measurement)
+ok   7b a legal 3-letter capital code is accepted on a historical row — the CHECK is the measured 2-4 shape space, not a whitelist of the 30 seeded values
+ok   7b that transaction rolled back: id 31 (Baltimore Bullets) carries no code again
+ok   7c Atlanta's code onto Boston is rejected with unique-violation by idx_teams_espn_code itself (the DO block only completes if that index names the rejection)
+ok   7c a duplicate non-null espn_code could not be written — 'ATL' still sits on exactly one franchise
+ok   7c the rejected write left Boston on its own code, and the index really is partial — the 29 NULL historical rows coexist inside it
+ok   7d the committed file carries exactly the 4 guards this section fires
+ok   7d guard 1 fires on a short seed — a partially applied 30-row list is stale, not good enough
+ok   7d guard 2 fires in the one state the index cannot reach: with idx_teams_espn_code dropped, a shared code is caught by the migration
+ok   7d guard 3 fires when a divergence lands on the wrong franchise — Utah moved to its own abbreviation leaves 5 of the 6
+ok   7d guard 4 fires on a code outside the modern 30 even while the seed count, distinctness and divergences all still read right
+ok   7d every tamper died inside its own transaction: the certified state is 30 seeded / 30 distinct / 6 divergences / 0 outside the 30, the dropped index and the CHECK are both still in place, and the four tampered rows read their shipped values (state 30|30|6|0)
+```
+
+Every line above is an `assert` verdict, so the two the reviewer would otherwise have to take on faith —
+the duplicate-code rejection and the accepted legal-shaped code — are printed, not merely un-failed.
+
+**Mutations on this leg, each restored byte-identically after it reddened:**
+
+| Pin | Mutation | Result |
+|---|---|---|
+| The E1 ceiling | `COVERED_THROUGH = 18` → `17` | **exit 1**, before any container starts: `FAIL 00018_teams_espn_code.sql exists in supabase/migrations/ while COVERED_THROUGH = 17 — the emitting commit must bump the ceiling in the SAME commit`. The head pin in `insights-refresh.test.ts` was re-pointed the same way: it now names `00018_teams_espn_code.sql` as the only file above 00017 (a list, not a `> 17 → []` comparison, so a stray 00019 still reddens it). |
+| `00018`'s transcription (one mutation, two instruments) | the Knicks' `NY` and the Spurs' `SA` swapped between ids 20 and 27 — the plausible slip this seed is most exposed to | **both red.** `npx vitest run tests/pipeline/espn-adapter.test.ts` exits **1** naming exactly the two misplaced rows (`NY: 27 is San Antonio Spurs, not ESPN's "New York Knicks"`); the rehearsal exits **1** because the shipped guard fires in the **ordered replay itself** — `psql:<stdin>:129: ERROR: 00018 found only 4 of the six measured code divergences on their franchises`, so the migration refuses to apply rather than seeding a guess. Restored, both green again (68 tests; rehearsal exit 0). |
+
+What the same swap did **not** redden is recorded rather than glossed: the two Game-7 replay tests stayed green,
+because neither capture contains a Knicks or Spurs game. The replay pins cover Denver/Clippers/Rockets/Warriors/
+Cavaliers/Pacers; the transcription audit covers all thirty.
+
+**Still unproven after this leg**, and none of it claimable from a green suite: `status.type.state` `in`/`pre`
+and any `description` other than `Final` (no in-progress NBA game exists to fetch in October 2026); any
+measurement taken from the *scheduled* environment — these captures came off the owner's browser path with DNS
+through a public DoH resolver, which is a property of the capture environment and not of `00018` or the adapter,
+but also not evidence that GitHub's runners resolve `site.api.espn.com`; and the regular-season event bodies,
+measured and quoted above but not committed (the 15-row shape adds nothing the exclude-by-rule tests do not
+already pin). Run-sheet step 1's probe re-run stays the owner's confirmation leg, steps 3 (
+`npx supabase db push`) and Part 2's proof D stay the owner's, and the `espn` dispatch's write half belongs to
+Story 2.7's drill.

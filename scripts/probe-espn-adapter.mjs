@@ -51,15 +51,28 @@ const exit2 = (reason) => {
 };
 
 /**
- * `payload-contract.md` "Team codes": the two MEASURED divergences between what
- * ESPN prints and what `00005` seeds in `teams.abbreviation`. This table is the
- * stand-in for `teams.espn_code` — migration `00018` does not exist yet, so the
- * probe resolves provider codes the way the column will once it is applied, and
- * leg B exists to prove the stand-in covers all 30 franchises instead of three.
+ * `payload-contract.md` "Team codes": the SIX measured divergences between what
+ * ESPN prints and what `00005` seeds in `teams.abbreviation`. All six come from
+ * the committed capture `tests/pipeline/fixtures/espn-teams-site-20261004.json`,
+ * and `espn-adapter.test.ts` cross-checks them against migration `00018`'s seed
+ * text, so a transcription slip in either place goes red rather than shipping.
+ *
+ * The first two were measured by Story 2.4 against the archive; the other four
+ * are the rows `payload-contract.md` recorded as "assumed to agree" until CAP-8's
+ * cross-check measured them. It did, on 2026-10-04, and four of the assumed
+ * twenty-six do not agree. The other 24 franchises agree string-for-string.
+ *
+ * The probe still carries this table instead of reading `teams.espn_code`: leg B's
+ * whole point is to run with ZERO Supabase, so it stands in for the column rather
+ * than depending on it being applied.
  */
 const MEASURED_DIVERGENCES = new Map([
   ['NY', { abbreviation: 'NYK', teamsId: 20, nameMustContain: 'knick' }],
   ['SA', { abbreviation: 'SAS', teamsId: 27, nameMustContain: 'spur' }],
+  ['GS', { abbreviation: 'GSW', teamsId: 10, nameMustContain: 'warrior' }],
+  ['NO', { abbreviation: 'NOP', teamsId: 19, nameMustContain: 'pelican' }],
+  ['UTAH', { abbreviation: 'UTA', teamsId: 29, nameMustContain: 'jazz' }],
+  ['WSH', { abbreviation: 'WAS', teamsId: 30, nameMustContain: 'wizard' }],
 ]);
 
 /** The measured range form (`payload-contract.md` "Request"), re-checked verbatim. */
@@ -99,8 +112,12 @@ if (dateArgs.length > 1) {
 
 /**
  * leg B's reader, offline: the file is parsed as if it were a team-list response
- * and the same verification decides the exit code. Prints `FIXTURE MODE` because
- * a passing traversal proves the READER, never the feed's shape.
+ * and the same verification decides the exit code. It prints FIXTURE MODE and
+ * never counts as CAP-8 evidence, because a pass here proves the READER resolves
+ * the shape on disk — not that ESPN still answers that way today. The committed
+ * payloads it runs on are captured responses, so a green pass here is the reader
+ * agreeing with reality as of the capture date, and the live leg is what
+ * re-measures the present tense.
  */
 async function runFixtureTeamList(file) {
   const { readFileSync } = await import('node:fs');
@@ -115,7 +132,7 @@ async function runFixtureTeamList(file) {
     return;
   }
   printTeamTable(rows);
-  console.log(`reader result: 30 verified rows from a hand-authored payload — the reader works; ESPN's real shape still needs the live leg B run (exit 0)`);
+  console.log('reader result: 30 verified rows read off the payload at that path — the reader resolves it; the live leg B run is what re-measures the feed today (exit 0)');
 }
 
 async function runProbe(datesArg) {
@@ -491,6 +508,7 @@ function analyzeTeamList(url, body, seed) {
     }
     const rows = [];
     const problems = [];
+    const fieldsUsed = new Set();
     for (const entry of entries) {
       // Some routes wrap the team in a `team` member; others print it inline.
       const found = entryCode(entry) ?? entryCode(entry.team);
@@ -499,7 +517,8 @@ function analyzeTeamList(url, body, seed) {
         problems.push(`entry ${JSON.stringify(entry.id ?? entry.team?.id ?? null)} has no 2-4 capital-letter code (keys: ${[...Object.keys(entry), ...wrapped].join(', ')})`);
         continue;
       }
-      const { code, name } = found;
+      const { code, field, name } = found;
+      fieldsUsed.add(field);
       const divergence = MEASURED_DIVERGENCES.get(code);
       const abbreviation = seed.has(code) ? code : divergence?.abbreviation;
       if (abbreviation === undefined) {
@@ -522,7 +541,10 @@ function analyzeTeamList(url, body, seed) {
       );
       continue;
     }
-    notes.push(`source: ${url} — codes read from the "${path}" array (depth-searched, longest match), key path .abbreviation/.displayAbbreviation/.shortName`);
+    notes.push(
+      `source: ${url} — codes read from the "${path}" array (depth-searched, longest match), ` +
+        `field(s) that supplied them: ${[...fieldsUsed].sort().join(', ')}`,
+    );
     return { rows, notes };
   }
   return { rows: null, notes };
@@ -564,12 +586,21 @@ function findObjectArrays(node, path = '', out = [], depth = 0) {
   return out;
 }
 
-/** The code fields the measured routes use, or undefined when this object is not a team row. */
+/**
+ * The code fields the measured routes use, or undefined when this object is not a
+ * team row. The chain is tolerance — the 2026-10-04 capture of the site route
+ * carries ONLY `abbreviation`, so the field that supplied each code is returned
+ * and printed, rather than the note claiming a chain that never fired.
+ */
 function entryCode(obj) {
   if (obj === null || typeof obj !== 'object') return undefined;
-  const code = obj.abbreviation ?? obj.displayAbbreviation ?? obj.shortName;
-  if (typeof code !== 'string' || !/^[A-Z]{2,4}$/.test(code)) return undefined;
-  return { code, name: String(obj.displayName ?? obj.name ?? obj.location ?? '') };
+  for (const field of ['abbreviation', 'displayAbbreviation', 'shortName']) {
+    const code = obj[field];
+    if (typeof code === 'string' && /^[A-Z]{2,4}$/.test(code)) {
+      return { code, field, name: String(obj.displayName ?? obj.name ?? obj.location ?? '') };
+    }
+  }
+  return undefined;
 }
 
 function pad(value) {

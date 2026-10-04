@@ -32,10 +32,16 @@ function membersFromSql(key: string): string[] {
 }
 
 describe('migration 00017 — shape of the three-row write', () => {
-  it('is the newest migration and takes the free number 00017 (00016 stayed the ceiling)', () => {
-    const files = readdirSync(join(repoRoot, 'supabase', 'migrations')).filter((f) => f.endsWith('.sql'));
+  it('sits one step below the head: 00018 is the only migration above it, and nothing else', () => {
+    const files = readdirSync(join(repoRoot, 'supabase', 'migrations'))
+      .filter((f) => f.endsWith('.sql'))
+      .sort();
     expect(files).toContain('00017_pipeline_insights_refresh.sql');
-    expect(files.filter((f) => Number(f.slice(0, 5)) > 17)).toEqual([]);
+    // Pinned by NAME, not by a ceiling comparison: Story 2.13's 00018 is a lawful
+    // head, so a bare `> 17 → []` would have gone red for the right migration.
+    // Listing the accepted set keeps a stray 00019 red — the reader has to come
+    // name the new head instead of watching a number drift.
+    expect(files.filter((f) => Number(f.slice(0, 5)) > 17)).toEqual(['00018_teams_espn_code.sql']);
   });
 
   it('writes one row per key and three exactly, through a single INSERT', () => {

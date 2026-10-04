@@ -87,6 +87,16 @@
 // which is what makes U11's numbers reproducible from inside the gate (see the
 // `the scripts/** coverage gap (E5)` suite in tests/pipeline/venue-backfill.test.ts).
 //
+// Since Story 2.13 section 7 rehearses 00018's teams.espn_code: the additive
+// nullable column and the 59-row population, the six measured code divergences
+// read back out of the database, the shape CHECK refusing a display name and a
+// lowercase/over-long code while a legal one is accepted, the partial unique
+// index refusing a DUPLICATE non-null code by name (run-sheet step 2's negative
+// proof) while the 29 historical NULLs stay free, and 00018's four post-condition
+// guards each observed firing over a deliberately wrong population built from the
+// seeded state — the 6e convention again, and each tamper then proven to have
+// left nothing behind.
+//
 // Usage: node scripts/rehearse-migration-00014.mjs [--fixture-report] — no other
 // argument is accepted: a typo (`--fixture-repor`) refuses the run rather than
 // silently starting the full Docker rehearsal.
@@ -129,7 +139,12 @@ const dbName = 'rehearse';
 // Story 2.5 raises it to 17 in the same commit that emits
 // 00017_pipeline_insights_refresh.sql — the hand-written-migration sharing
 // rule, the same pairing 00014's own bump established.
-const COVERED_THROUGH = 17;
+// Story 2.13 raises it to 18 in the same commit that emits
+// 00018_teams_espn_code.sql, and section 7 is that coverage: the additive
+// column, its shape CHECK, the partial unique index with its duplicate-code
+// negative proof, the four post-condition guards each observed firing, and
+// EXPECTED_TEAM_COUNT=59 still holding because 00018 inserts no row.
+const COVERED_THROUGH = 18;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
@@ -1502,7 +1517,172 @@ ROLLBACK;
       );
     }
 
-    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', and Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind.');
+    // 7) Migration 00018 — teams.espn_code (Story 2.13). run-sheet step 2's
+    //    contract in order: the additive nullable column applies over the
+    //    replayed seed, the partial unique index refuses a DUPLICATE non-null
+    //    code, the shape CHECK refuses a name where an identity belongs, the
+    //    four post-condition guards are each observed firing, and
+    //    EXPECTED_TEAM_COUNT = 59 still holds because 00018 inserts no row.
+    const migration018File = files.find((f) => f.startsWith('00018'));
+    if (migration018File === undefined) {
+      throw new RehearsalFailure(`7: COVERED_THROUGH = ${COVERED_THROUGH} claims 00018's replay, but no 00018* file is on disk`);
+    }
+    const migration018Text = readFileSync(join(migrationsDir, migration018File), 'utf8');
+    console.log(`\n-- 7) Story 2.13: ${migration018File} — the feed identity column, its index, its shape, its guards --`);
+
+    // 7a — additive, and the population untouched.
+    const teamsCount = psqlValue('SELECT count(*) FROM public.teams');
+    const espnNonNull = psqlValue('SELECT count(*) FROM public.teams WHERE espn_code IS NOT NULL');
+    const espnDistinct = psqlValue('SELECT count(DISTINCT espn_code) FROM public.teams WHERE espn_code IS NOT NULL');
+    const espnNull = psqlValue('SELECT count(*) FROM public.teams WHERE espn_code IS NULL');
+    const colShape = psqlValue(`
+      SELECT is_nullable || '|' || data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'teams' AND column_name = 'espn_code'
+    `);
+    assert(
+      `7a 00018 is additive: ${venueBackfill.EXPECTED_TEAM_COUNT} teams rows after the replay (read ${teamsCount}), the column is nullable ${colShape}, ${espnNonNull} modern franchises carry a code and ${espnNull} historical ones stay NULL, with ${espnDistinct} distinct values`,
+      teamsCount === String(venueBackfill.EXPECTED_TEAM_COUNT) && colShape === 'YES|text' &&
+        espnNonNull === '30' && espnDistinct === '30' &&
+        espnNull === String(venueBackfill.EXPECTED_TEAM_COUNT - 30),
+    );
+    const diverged = psqlValue(`
+      SELECT string_agg(full_name || ':' || abbreviation || '/' || espn_code, ',' ORDER BY id)
+      FROM public.teams
+      WHERE espn_code IS NOT NULL AND espn_code <> abbreviation
+    `);
+    assert(
+      "7a the six measured divergences are in the database on the franchises the capture names them for — and they are the ONLY differences between ESPN's code space and teams.abbreviation, which is why abbreviation could not be the join key",
+      diverged ===
+        'Golden State Warriors:GSW/GS,New Orleans Pelicans:NOP/NO,New York Knicks:NYK/NY,San Antonio Spurs:SAS/SA,Utah Jazz:UTA/UTAH,Washington Wizards:WAS/WSH',
+      `read: ${diverged}`,
+    );
+
+    // 7b — the shape CHECK. The drift it exists to stop is a display name in an
+    //      identity column: the capture prints `LA Clippers` where 00005 stores
+    //      `Los Angeles Clippers`, so a name-shaped backfill is exactly the
+    //      failure Story 2.13 refused, and it has to be refused by the schema.
+    expectRejected(
+      '7b the shape CHECK refuses a display name in espn_code (teams_espn_code_shape, not a silent truncation)',
+      /teams_espn_code_shape/,
+      "UPDATE public.teams SET espn_code = 'Los Angeles Clippers' WHERE id = 13;",
+    );
+    expectRejected(
+      '7b the shape CHECK refuses a lowercase code (ESPN prints capitals on all 30 captured rows)',
+      /teams_espn_code_shape/,
+      "UPDATE public.teams SET espn_code = 'atl' WHERE id = 1;",
+    );
+    expectRejected(
+      '7b the shape CHECK refuses a 5-letter code (the measured space is 2-4, so UTAH is the ceiling by measurement)',
+      /teams_espn_code_shape/,
+      "UPDATE public.teams SET espn_code = 'PHOEN' WHERE id = 24;",
+    );
+    const legalCode = psql({ file: "BEGIN;\nUPDATE public.teams SET espn_code = 'CHH' WHERE id = 31;\nROLLBACK;\n" });
+    assert(
+      '7b a legal 3-letter capital code is accepted on a historical row — the CHECK is the measured 2-4 shape space, not a whitelist of the 30 seeded values',
+      legalCode.status === 0,
+      `exit ${legalCode.status}: ${legalCode.stdout ?? ''}${legalCode.stderr ?? ''}`,
+    );
+    assert(
+      '7b that transaction rolled back: id 31 (Baltimore Bullets) carries no code again',
+      psqlValue('SELECT espn_code::text FROM public.teams WHERE id = 31') === '',
+    );
+
+    // 7c — the partial unique index, and its negative proof (run-sheet step 2).
+    const dupIndex = psql({
+      sql: `
+        DO $$
+        DECLARE
+          v_index text;
+        BEGIN
+          UPDATE public.teams SET espn_code = 'ATL' WHERE id = 2;
+          RAISE EXCEPTION 'a duplicate non-null espn_code was ACCEPTED — idx_teams_espn_code is not enforcing';
+        EXCEPTION WHEN unique_violation THEN
+          GET STACKED DIAGNOSTICS v_index = CONSTRAINT_NAME;
+          IF v_index <> 'idx_teams_espn_code' THEN
+            RAISE EXCEPTION 'rejected by % instead of the partial unique index idx_teams_espn_code', v_index;
+          END IF;
+        END $$;
+      `,
+    });
+    assert(
+      "7c Atlanta's code onto Boston is rejected with unique-violation by idx_teams_espn_code itself (the DO block only completes if that index names the rejection)",
+      dupIndex.status === 0,
+      `exit ${dupIndex.status}: ${dupIndex.stdout ?? ''}${dupIndex.stderr ?? ''}`,
+    );
+    assert(
+      "7c a duplicate non-null espn_code could not be written — 'ATL' still sits on exactly one franchise",
+      psqlValue("SELECT count(*) FROM public.teams WHERE espn_code = 'ATL'") === '1',
+    );
+    assert(
+      '7c the rejected write left Boston on its own code, and the index really is partial — the 29 NULL historical rows coexist inside it',
+      psqlValue('SELECT espn_code FROM public.teams WHERE id = 2') === 'BOS' &&
+        /WHERE \(espn_code IS NOT NULL\)/.test(psqlValue("SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_teams_espn_code'")),
+    );
+
+    // 7d — the four post-condition guards, each observed FIRING. Extracted from
+    //      the committed file rather than copied, so this rehearses the shipped
+    //      text; each tamper builds a wrong population from the seeded state
+    //      inside one transaction that dies on the guard, so nothing can leak —
+    //      and the state is read back afterwards to prove that.
+    const guardBlock = /DO \$\$\s*\nDECLARE[\s\S]*?00018 seeded espn_code[\s\S]*?END \$\$;/.exec(migration018Text)?.[0];
+    if (guardBlock === undefined) {
+      throw new RehearsalFailure(`7d: could not locate ${migration018File}'s post-condition DO block — the guard text moved, so this rehearsal would be certifying a copy rather than the shipped guards`);
+    }
+    const guardCount = (migration018Text.match(/RAISE EXCEPTION/g) ?? []).length;
+    assert(`7d the committed file carries exactly the ${guardCount} guards this section fires`, guardCount === 4);
+
+    const guardFires = (label, pattern, tamper) => {
+      const res = psql({ file: `BEGIN;\n${tamper}\n${guardBlock}\nROLLBACK;\n` });
+      const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+      if (res.status === 0) {
+        throw new RehearsalFailure(`${label}: the guard block COMPLETED over a tampered population — it did not fire:\n${out}`);
+      }
+      if (!pattern.test(out)) {
+        throw new RehearsalFailure(`${label}: aborted for an unexpected reason:\n${out}`);
+      }
+      assert(label, true);
+    };
+
+    guardFires(
+      '7d guard 1 fires on a short seed — a partially applied 30-row list is stale, not good enough',
+      /seeded espn_code on 29 teams rows, expected exactly 30/,
+      'UPDATE public.teams SET espn_code = NULL WHERE id = 1;',
+    );
+    guardFires(
+      '7d guard 2 fires in the one state the index cannot reach: with idx_teams_espn_code dropped, a shared code is caught by the migration',
+      /left 29 distinct espn_code values across 30 seeded rows/,
+      "DROP INDEX public.idx_teams_espn_code;\nUPDATE public.teams SET espn_code = 'ATL' WHERE id = 2;",
+    );
+    guardFires(
+      '7d guard 3 fires when a divergence lands on the wrong franchise — Utah moved to its own abbreviation leaves 5 of the 6',
+      /found only 5 of the six measured code divergences/,
+      "UPDATE public.teams SET espn_code = 'UTA' WHERE id = 29;",
+    );
+    guardFires(
+      '7d guard 4 fires on a code outside the modern 30 even while the seed count, distinctness and divergences all still read right',
+      /rows outside the seeded 30: Baltimore Bullets/,
+      "UPDATE public.teams SET espn_code = NULL WHERE id = 1;\nUPDATE public.teams SET espn_code = 'ATL' WHERE id = 31;",
+    );
+
+    const postState = psqlValue(`
+      SELECT (count(*) FILTER (WHERE espn_code IS NOT NULL)) || '|' ||
+             (count(DISTINCT espn_code) FILTER (WHERE espn_code IS NOT NULL)) || '|' ||
+             (count(*) FILTER (WHERE espn_code IS NOT NULL AND espn_code <> abbreviation)) || '|' ||
+             (count(*) FILTER (WHERE espn_code IS NOT NULL AND id NOT BETWEEN 1 AND 30))
+      FROM public.teams
+    `);
+    assert(
+      `7d every tamper died inside its own transaction: the certified state is 30 seeded / 30 distinct / 6 divergences / 0 outside the 30, the dropped index and the CHECK are both still in place, and the four tampered rows read their shipped values (state ${postState})`,
+      postState === '30|30|6|0' &&
+        psqlValue("SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_teams_espn_code'") === '1' &&
+        psqlValue("SELECT count(*) FROM pg_constraint WHERE conname = 'teams_espn_code_shape'") === '1' &&
+        psqlValue('SELECT espn_code FROM public.teams WHERE id IN (1, 2) ORDER BY id') === 'ATL\nBOS' &&
+        psqlValue('SELECT espn_code FROM public.teams WHERE id = 29') === 'UTAH' &&
+        psqlValue('SELECT espn_code::text FROM public.teams WHERE id = 31') === '',
+    );
+
+    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind.');
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });

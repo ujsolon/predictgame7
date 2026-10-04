@@ -1,8 +1,11 @@
-// Story 2.13 — the `espn` feed adapter, exercised against fixtures built
-// INLINE in this file (the `tests/pipeline/nba-com.test.ts` house pattern, which
-// `surface-inventory.md`'s `tests/pipeline/fixtures/espn-*.json` line is
-// superseded by): no test and no agent reaches the network, so the suite stays
-// green on a runner that has no reason to visit Disney.
+// Story 2.13 — the `espn` feed adapter. Most fixtures here are built INLINE (the
+// `tests/pipeline/nba-com.test.ts` house pattern), because a hand-shaped payload
+// is what lets a case carry exactly one decoy field. The block at the bottom
+// instead reads the VERBATIM captures committed under `tests/pipeline/fixtures/`:
+// the shape of a real Game 7 and the population of `teams.espn_code` are facts
+// about ESPN's bytes, and an inline fixture can only restate an assumption about
+// them. Neither kind of fixture reaches the network, so the suite stays green on
+// a runner that has no reason to visit Disney.
 //
 // Fixture discipline follows `payload-contract.md`: every field the adapter
 // reads appears in the shape it is MEASURED in (`state: 'post'`,
@@ -10,9 +13,12 @@
 // `team.abbreviation`), and every field the adapter must NOT read is present
 // with a decoy value (`team.id`, `displayName`, `venue.fullName`,
 // `type.shortName: '3'`) so a test reddens the moment a parse reaches for it.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   BACKOFF_MS,
+  buildFeed,
   createEspnAdapter,
   deriveRequestDate,
   describeFetchThrow,
@@ -29,11 +35,11 @@ import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
 /**
- * The `00005` seed ids for the franchises `payload-contract.md` measures, keyed
- * by the ESPN code: `NY`→Knicks 20 and `SA`→Spurs 27 are the two DIVERGENCES
- * from `teams.abbreviation` that make the abbreviation join unsafe, and
- * `CLE`/`TOR`/`DEN` are the measured agreements. The other 26 franchises are
- * CAP-8's probe to measure, so no fixture here invents a code for one.
+ * The five codes the inline fixtures need, with their `00005` seed ids: `NY`→
+ * Knicks 20 and `SA`→Spurs 27 are DIVERGENCES from `teams.abbreviation` — the
+ * reason the abbreviation join is unsafe — and `CLE`/`TOR`/`DEN` are measured
+ * agreements. The full 30-row table lives in migration `00018` and the bottom of
+ * this file reads it from there, so nothing here has to guess the other 25.
  */
 const ESPN_CODES: Record<string, number> = { NY: 20, SA: 27, CLE: 6, TOR: 28, DEN: 8 };
 
@@ -1019,5 +1025,166 @@ describe('espn through runPipeline', () => {
     expect(await harness.promise).toBe(0);
     expect(sink.completions).toHaveLength(2);
     expect(sink.births).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The committed captures. Everything above is a hand-shaped payload; this block
+// reads ESPN's own bytes and migration `00018`'s own SQL, so the story's two
+// load-bearing claims — what an admitted Game 7 looks like, and which code sits
+// on which `teams` row — are proven against the measurement they came from
+// instead of against an assumption that happens to agree with itself.
+// ---------------------------------------------------------------------------
+
+function readRepoFile(relative: string): string {
+  return readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+}
+
+/** One captured response body, verbatim. */
+function readCapture(file: string): unknown {
+  return JSON.parse(readRepoFile(`./fixtures/${file}`));
+}
+
+/** The franchise object as the teams capture prints it — `name` is the nickname. */
+interface CapturedTeam {
+  id: string;
+  abbreviation: string;
+  displayName: string;
+  name: string;
+}
+
+function capturedTeams(): CapturedTeam[] {
+  const body = readCapture('espn-teams-site-20261004.json') as {
+    sports: { leagues: { teams: { team: CapturedTeam }[] }[] }[];
+  };
+  return body.sports[0].leagues[0].teams.map((entry) => entry.team);
+}
+
+/** `00018` as written on disk: every `UPDATE teams SET espn_code = 'X' WHERE id = N;`. */
+function migrationSeed(): { byCode: Map<string, number>; statements: number } {
+  const sql = readRepoFile('../../supabase/migrations/00018_teams_espn_code.sql');
+  const byCode = new Map<string, number>();
+  let statements = 0;
+  for (const row of sql.matchAll(/UPDATE teams SET espn_code = '([A-Z]{2,4})'\s+WHERE id = (\d+);/g)) {
+    statements += 1;
+    byCode.set(row[1], Number(row[2]));
+  }
+  return { byCode, statements };
+}
+
+/** The `00005` seed's 30 modern rows, read out of the migration that wrote them. */
+function modernTeamRows(): { id: number; full_name: string; abbreviation: string; nickname: string }[] {
+  const sql = readRepoFile('../../supabase/migrations/00005_release_1_data_model.sql');
+  const start = sql.indexOf('INSERT INTO teams (id, full_name, abbreviation, city, nickname)');
+  const block = sql.slice(start, sql.indexOf('ON CONFLICT (id)', start));
+  const rows: { id: number; full_name: string; abbreviation: string; nickname: string }[] = [];
+  for (const row of block.matchAll(/^\s*\((\d+), '([^']+)', '([^']+)', '([^']+)', '([^']+)'\),?$/gm)) {
+    rows.push({ id: Number(row[1]), full_name: row[2], abbreviation: row[3], nickname: row[5] });
+  }
+  return rows;
+}
+
+/**
+ * The table a scheduled run resolves against: `00005`'s rows carrying `00018`'s
+ * codes. Built from the migrations rather than restated here, so the replay
+ * below exercises the production mapping — a code keyed on the wrong id reddens
+ * both this table's users and the transcription audit.
+ */
+const SEEDED_TEAMS: TeamRow[] = (() => {
+  const codeById = new Map<number, string>();
+  for (const [code, id] of migrationSeed().byCode) codeById.set(id, code);
+  return modernTeamRows().map((row) => ({
+    id: row.id,
+    abbreviation: row.abbreviation,
+    espn_code: codeById.get(row.id) ?? null,
+  }));
+})();
+
+async function replayCapture(file: string, dates: string) {
+  const stub = stubFeed([{ status: 200, body: readCapture(file) }]);
+  const result = await buildFeed(scoreboardUrl(dates), dates, depsFor(stub, { teams: SEEDED_TEAMS }));
+  return { stub, ...result };
+}
+
+describe('espn — the committed captures replay offline against the 00018 seed', () => {
+  it('00018 puts every captured code on the franchise the capture names it for', () => {
+    const { byCode, statements } = migrationSeed();
+    const teams = capturedTeams();
+    expect(teams).toHaveLength(30);
+    expect(statements).toBe(30);
+    expect(byCode.size).toBe(30);
+    const stored = new Map(modernTeamRows().map((row) => [row.id, row]));
+
+    // The franchise is checked by its NICKNAME, the one name field both sides
+    // spell identically: ESPN's `displayName` is `LA Clippers` where `00005`
+    // stores `Los Angeles Clippers`, which is exactly why this column exists and
+    // why the adapter contains no name, city or substring path at all.
+    const misplaced: string[] = [];
+    for (const team of teams) {
+      const row = stored.get(byCode.get(team.abbreviation) ?? -1);
+      misplaced.push(
+        row
+          ? row.nickname === team.name
+            ? ''
+            : `${team.abbreviation}: ${row.id} is ${row.full_name}, not ESPN's "${team.displayName}"`
+          : `${team.abbreviation} ("${team.displayName}"): 00018 seeds no teams row`,
+      );
+    }
+    expect(misplaced.filter((line) => line !== '')).toEqual([]);
+
+    // The 24/6 split, re-measured from the capture rather than carried as a
+    // comment: `payload-contract.md` had four of these as "assumed to agree",
+    // and the assumption is what made three probe rounds fail.
+    const divergences = teams
+      .map((team) => ({ espn: team.abbreviation, stored: stored.get(byCode.get(team.abbreviation) ?? -1)?.abbreviation }))
+      .filter((pair) => pair.stored !== pair.espn)
+      .map((pair) => `${pair.espn}→${pair.stored}`)
+      .sort();
+    expect(divergences).toEqual(['GS→GSW', 'NO→NOP', 'NY→NYK', 'SA→SAS', 'UTAH→UTA', 'WSH→WAS']);
+  });
+
+  it('the seed covers ids 1-30 and nothing else, which is what 00018\'s guards assume', () => {
+    const ids = [...migrationSeed().byCode.values()].sort((left, right) => left - right);
+    expect(ids).toEqual(Array.from({ length: 30 }, (_unused, index) => index + 1));
+    expect(SEEDED_TEAMS.filter((team) => team.espn_code !== null)).toHaveLength(30);
+  });
+
+  it('the captured 2025-05-03 Game 7 replays into exactly one status and one score', async () => {
+    const { stub, statuses, scores, report } = await replayCapture('espn-scoreboard-20250503-game7.json', '20250503');
+    expect(stub.urls).toEqual(['https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20250503']);
+    // DEN 120 / LAC 101: the two codes resolve through espn_code to `00005`'s
+    // Nuggets 8 and Clippers 13, and the home side both slots and wins.
+    expect(statuses).toEqual([{ year: 2025, round: 'First Round', team_a_id: 8, team_b_id: 13, winner_team_id: 8 }]);
+    expect(scores).toEqual([
+      { year: 2025, team_a_id: 8, team_b_id: 13, game_number: 7, home_team_id: 8, away_team_id: 13, home_score: 120, away_score: 101 },
+    ]);
+    expect(report.feedSeriesCount).toBe(1);
+    expect(report.countsLine).toBe(
+      'espn: 1 series in feed (dates=20250503), 1 Game-7 candidate(s) — excluded: 0 not final, 0 final but not game 7, 0 unreadable headline',
+    );
+    expect(report.histogramLine).toBe('espn depth histogram {1:1}');
+    expect(report.notes).toEqual([]);
+  });
+
+  it('the captured 2025-05-04 feed admits the Game 7 whose away side won and names the Game 1 it drops', async () => {
+    const { statuses, scores, report } = await replayCapture('espn-scoreboard-20250504-mixed.json', '20250504');
+    // HOU 89 / GS 103 — `team_a` is game 7's HOME side and the HOME side LOST, so
+    // `winner_team_id` is `team_b_id`: review P1's slot-order case, in ESPN's own
+    // bytes rather than a fixture built to match the code.
+    expect(statuses).toEqual([{ year: 2025, round: 'First Round', team_a_id: 11, team_b_id: 10, winner_team_id: 10 }]);
+    expect(scores).toEqual([
+      { year: 2025, team_a_id: 11, team_b_id: 10, game_number: 7, home_team_id: 11, away_team_id: 10, home_score: 89, away_score: 103 },
+    ]);
+    // Both events count toward the feed BEFORE either exclusion — the property
+    // `--require-feed` rests on. The Game 1 is dropped, and said out loud.
+    expect(report.feedSeriesCount).toBe(2);
+    expect(report.countsLine).toBe(
+      'espn: 2 series in feed (dates=20250504), 1 Game-7 candidate(s) — excluded: 0 not final, 1 final but not game 7, 0 unreadable headline',
+    );
+    expect(report.histogramLine).toBe('espn depth histogram {1:1, 2:1}');
+    expect(report.notes).toHaveLength(1);
+    expect(report.notes[0]).toContain(
+      'espn: excluded 2025-05-04 CLE/IND — post/Final, headline "East Semifinals - Game 1" — game 1 of 7.',
+    );
   });
 });

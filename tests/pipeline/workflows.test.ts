@@ -266,7 +266,7 @@ describe('migration-rehearsal.yml — the replay certification (CAP-5)', () => {
   it('triggers on exactly the paths that can expire the verdict (D-2 = B, widened by the owner 2026-10-03)', () => {
     const triggers = triggersOf(REHEARSAL);
     // The trigger set equals the rehearsal's input set: the two data files are
-    // read by `scripts/rehearse-migration-00014.mjs` (`:510`, `:558`, `:332`),
+    // read by `scripts/rehearse-migration-00014.mjs` (`:347`, `:525`, `:573`),
     // so an edit to either can expire the verdict just as a migration can.
     const expected = [
       'docs/NBASeriesResults.xlsx',
