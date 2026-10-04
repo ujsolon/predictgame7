@@ -206,3 +206,30 @@ P2 pin existed, `espn-adapter.test.ts` at 61 tests; M9 and M11 ran against the f
 **Verification of the final tree:** `npm run gate` → exit 0 (lint, typecheck, 533 tests across 24
 files, build), with the exit read from the command itself and the output redirected to a log rather
 than a pipe; `node --check scripts/probe-espn-adapter.mjs` → exit 0.
+
+### Post-commit: the pre-push hook blocked the push, and it was this story's test that broke
+
+`git push` ran `npm run gate` and got 1 red / 532 green: `no adapter can satisfy --require-feed
+vacuously` died with `Test timed out in 5000ms` at 6520 ms, while every sibling in
+`tests/pipeline/run.test.ts` stayed under 100 ms. **The exit-0 line above is true of the agent's
+runs; it is not true of the owner's push, and the record says so.**
+
+Diagnosis, measured rather than assumed: that case is the file's only multi-`await` loop, and
+Story 2.13 lengthened it from two adapters to three by registering `espn`. Its own work is
+53–77 ms (a full uncontended suite run passes it at 53 ms; the file alone runs 116 ms of tests in
+1.45 s), so 6520 ms is a ~120× stretch of the wall clock by a contended fork pool, not a hang —
+no adapter sleeps on a real timer here because `sleep: noWait` is injected (`run.test.ts:820`).
+
+Fix: a 30 s per-test budget on that one case, and a 30 s suite-level budget on
+`the scripts/** coverage gap (E5)` in `tests/pipeline/venue-backfill.test.ts` — the five
+`spawnSync` cases deferred-work had named, measured at 59–152 ms idle. Both recorded in
+`deferred-work.md`, whose Story 2.12 item is now closed with the correction that the casualty was
+a different test than predicted. Rejected instead: raising the global `testTimeout` (it would stop
+a real hang from being news in all 24 files to fix a measurement artifact in two), and
+`--no-file-parallelism` (turns a 13 s signal into minutes).
+
+Mechanism verified, because a budget that is not honored is decoration: `--testTimeout=1` on
+`run.test.ts` kills 8 tests and leaves the budgeted one green; the same probe on
+`venue-backfill.test.ts` went 13 failures → 10 with the suite budget, **none of the 10 inside that
+describe** — which also falsified the assumption that a synchronous `spawnSync` body is out of
+reach of the timeout (vitest reports the overrun after the child returns).

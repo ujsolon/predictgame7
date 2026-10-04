@@ -569,7 +569,16 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
   });
 });
 
-describe('the scripts/** coverage gap (E5)', () => {
+describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
+  // The suite-level budget is for the `spawnSync` cases below, and it is a
+  // WALL-CLOCK allowance, not a loosened assertion: each spawns a real Node
+  // child (62-152ms measured uncontended), and vitest kills a sync body after
+  // it returns, so a contended machine can overrun the 5s default with the
+  // child behaving perfectly. Verified by mechanism, not belief: with
+  // `--testTimeout=1` this file fails 13 tests, 5 of them here; the same run
+  // with this budget fails 10 and none of them is in this describe. A global
+  // `testTimeout` raise was rejected — it would hide a real hang in every
+  // other file to fix a measurement artifact in one.
   // No gate step type-checks or lints scripts/** (AGENTS.md), so at minimum
   // the harnesses added by Stories 2.8, 2.12 and 2.13 must parse under Node's
   // own syntax check. Beyond parsing, the Docker rehearsal's job stays outside

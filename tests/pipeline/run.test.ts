@@ -954,6 +954,15 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     expect(sink.calls).toEqual([]);
   });
 
+  // A per-test budget, not a global `testTimeout`: this case awaits three full
+  // `runPipeline` runs in sequence, and its own work is milliseconds (measured
+  // 53-77ms), but the default 5s is a WALL-CLOCK budget that a contended machine
+  // can blow without the test doing anything — a `npm run gate` under a loaded
+  // pool starved it to 6520ms and killed the push, while every sibling in the
+  // file stayed under 100ms. Raising the global ceiling would hide a real hang
+  // everywhere to fix a measurement artifact here; running the suite with
+  // `--no-file-parallelism` removes the contention at the cost of turning a
+  // 13-second signal into minutes. Neither is worth it while one test is affected.
   it('no adapter can satisfy --require-feed vacuously', async () => {
     // The failure this pins is silent: if `hasRunReport` ever said true for an
     // adapter whose source declares no `describeRun`, the report block would
@@ -977,7 +986,7 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
       expect(sink.calls).not.toContain('birth');
       expect(sink.calls).not.toContain('complete');
     }
-  });
+  }, 30_000);
 
   it('the registry declaration agrees with each adapter own members', async () => {
     for (const [name, entry] of Object.entries(ADAPTER_REGISTRY)) {
