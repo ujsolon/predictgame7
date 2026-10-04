@@ -7,10 +7,23 @@ Each step states the command, what it proves, and what must be pasted back. Noth
 sheet may be marked done from inference — a step is green when its run id or its printed
 verdict exists.
 
-Order matters at one point only: steps 1–3 before the migration is applied, and steps A–D
-only after the re-pointed workflows are on `master` (they dispatch the defaults CAP-1 moves,
-so a dispatch fired before the push proves `nba_com`). Pushing is the owner's act; the agent
-hands over the command.
+Order matters at two points, not one:
+
+- Steps A–D fire only after the re-pointed workflows are on `master` (they dispatch the defaults
+  CAP-1 moves, so a dispatch fired before the push proves `nba_com`). Pushing is the owner's act;
+  the agent hands over the command.
+- **Step D additionally needs step 3 done first — `00018` applied.** `writer.ts:103` selects
+  `id, abbreviation, espn_code` on every `readTeams`, so an `espn` dispatch that reaches the sink —
+  `dry_run` either way, since planning needs team ids regardless — goes red on a schema reason, not
+  a feed reason, until the column exists. This correction was found by reading the code, not by
+  running it: the sheet's original "one point only" claim missed it. Steps A and B refuse at adapter
+  selection before any client is built, and C never opens one, so those three are unaffected by the
+  column's absence and are runnable today.
+
+Nothing scheduled can pre-empt this: the inseason and offseason crons are April–June windows only
+(`pipeline-inseason.yml:40-42`, `pipeline-offseason.yml:27-28`), so between now and mid-April no
+`espn` run reaches the database on its own. `keepalive.yml:5` fires daily and touches only
+PostgREST.
 
 ## Part 1 — build legs, before `00018` is applied
 
