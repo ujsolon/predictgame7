@@ -205,6 +205,31 @@ export function deriveRequestDate(instant: Date): string {
 }
 
 /**
+ * Why a `fetch` call threw, with the reason undici hides. Every connection-class
+ * failure — DNS, refused socket, TLS refusal, a timeout fired by a proxy —
+ * reaches Node as the identical `TypeError: fetch failed`, and the distinguishing
+ * code and message live on `error.cause`. Reporting only the outer text makes the
+ * alarm log blind on precisely the class Story 2.6's egress evidence turned on, so
+ * the cause is unwrapped one level and named. The owner's first live probe run
+ * (2026-10-04) is what exposed the gap: three legs, three `fetch failed`, no reason.
+ */
+export function describeFetchThrow(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause === undefined || cause === null) {
+    return error.message;
+  }
+  if (cause instanceof Error) {
+    const code = (cause as { code?: unknown }).code;
+    const detail = [typeof code === 'string' ? code : undefined, cause.message].filter(Boolean).join(' ');
+    return `${error.message} (${detail || 'cause carries no code or message'})`;
+  }
+  return `${error.message} (${String(cause)})`;
+}
+
+/**
  * The single-date request form — the only shape this adapter can build. There is
  * deliberately no range, no lookback window and no second parameter: the range
  * form answers `400` on measurement, and a multi-day feed would inflate the
@@ -525,7 +550,7 @@ export async function buildFeed(url: string, dates: string, deps: AdapterDeps): 
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
     } catch (error) {
-      lastReason = `request threw: ${error instanceof Error ? error.message : String(error)}`;
+      lastReason = `request threw: ${describeFetchThrow(error)}`;
       continue;
     }
     if (!response.ok) {

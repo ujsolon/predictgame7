@@ -87,7 +87,7 @@ async function runProbe(datesArg) {
   // The shipped code — imported, never copied. If this import fails the probe
   // must not quietly fall back to its own parse; the catch above exits 2.
   const shipped = await import('../supabase/scripts/pipeline/adapters/espn.ts');
-  const { createEspnAdapter, deriveRequestDate, scoreboardUrl, parseHeadline, etCalendarDay, SCOREBOARD_ENDPOINT, ESPN_HEADERS } =
+  const { createEspnAdapter, deriveRequestDate, scoreboardUrl, parseHeadline, etCalendarDay, SCOREBOARD_ENDPOINT, ESPN_HEADERS, describeFetchThrow } =
     shipped;
 
   const runDate = new Date();
@@ -357,7 +357,7 @@ async function runProbe(datesArg) {
       console.log('  PASS — 400 with no events key, as measured; a backfill stays a bounded loop of single-date requests and this story builds only the single-date form.');
     }
   } catch (error) {
-    failures.push(`leg C: the range control could not run — ${error instanceof Error ? error.message : String(error)}`);
+    failures.push(`leg C: the range control could not run — ${describeFetchThrow(error)}`);
   }
 
   if (failures.length > 0) {
@@ -383,6 +383,10 @@ async function runProbe(datesArg) {
  * from a misread field.
  */
 async function harvestFranchiseCodes(headers, failures) {
+  // The same reason-namer the shipped adapter uses: a connection-class throw
+  // arrives as an undifferentiated `fetch failed`, and two blind diagnostics look
+  // like the host is down when the cause is DNS, a proxy, or a certificate.
+  const { describeFetchThrow } = await import('../supabase/scripts/pipeline/adapters/espn.ts');
   const migrationText = await readFileSafe('../supabase/migrations/00005_release_1_data_model.sql');
   const seed = new Map();
   for (const match of migrationText.matchAll(/\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g)) seed.set(match[2], Number(match[1]));
@@ -401,7 +405,7 @@ async function harvestFranchiseCodes(headers, failures) {
       status = response.status;
       body = await response.json();
     } catch (error) {
-      diagnostics.push(`${url} → could not read (${error instanceof Error ? error.message : String(error)})`);
+      diagnostics.push(`${url} → could not read (${describeFetchThrow(error)})`);
       continue;
     }
     if (!body || typeof body !== 'object') {

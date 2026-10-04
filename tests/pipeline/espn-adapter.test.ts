@@ -15,6 +15,7 @@ import {
   BACKOFF_MS,
   createEspnAdapter,
   deriveRequestDate,
+  describeFetchThrow,
   etCalendarDay,
   FETCH_TIMEOUT_MS,
   MAX_FEED_ATTEMPTS,
@@ -181,12 +182,15 @@ interface Stubbed {
  * `sleeps` array so the backoff is pinned as the VALUES [1000, 4000] rather than
  * as a call count.
  */
-function stubFeed(plans: Array<{ status: number; body?: unknown; brokenJson?: boolean }>): Stubbed {
+function stubFeed(plans: Array<{ status: number; body?: unknown; brokenJson?: boolean; throws?: unknown }>): Stubbed {
   const stub: Stubbed = { urls: [], inits: [], sleeps: [], fetch: async () => ({ ok: false, status: 500, json: async () => undefined }) };
   stub.fetch = async (url: string, init: FeedRequestInit): Promise<FeedResponseLike> => {
     stub.urls.push(url);
     stub.inits.push(init);
     const plan = plans[stub.urls.length - 1] ?? plans[plans.length - 1];
+    if (plan.throws !== undefined) {
+      throw plan.throws;
+    }
     if (plan.status !== 200) {
       return { ok: false, status: plan.status, json: async () => plan.body };
     }
@@ -323,6 +327,48 @@ describe('espn — the request date is derived from the run instant (CAP-5)', ()
     // Every retry re-issues the SAME single-date request — a retry that widened
     // the date parameter would inflate `feedSeriesCount` behind `--require-feed`.
     expect(failing.urls).toEqual([`${SCOREBOARD_ENDPOINT}?dates=${DATES}`, `${SCOREBOARD_ENDPOINT}?dates=${DATES}`, `${SCOREBOARD_ENDPOINT}?dates=${DATES}`]);
+  });
+
+  it('a connection-class throw names its cause, because "fetch failed" alone is not a diagnosis', async () => {
+    // Node collapses DNS failure, a refused socket and a TLS refusal into one
+    // `TypeError: fetch failed`, with the distinguishing code and message on
+    // `error.cause`. This pin exists because the owner's first live probe run
+    // (2026-10-04) printed exactly that bare text three times and nothing else:
+    // an alarm log that cannot name the failure class is no use for the class
+    // Story 2.6's whole egress investigation turned on. The retry posture is
+    // asserted in the same run — unwrapping must not change when a run gives up.
+    const dnsCause = Object.assign(new Error('getaddrinfo ENOTFOUND site.api.espn.com'), {
+      code: 'ENOTFOUND',
+      syscall: 'getaddrinfo',
+    });
+    const failing = stubFeed([
+      { status: 200, throws: new TypeError('fetch failed', { cause: dnsCause }) },
+      { status: 200, throws: new TypeError('fetch failed', { cause: dnsCause }) },
+      { status: 200, throws: new TypeError('fetch failed', { cause: dnsCause }) },
+    ]);
+    await expect(createEspnAdapter(depsFor(failing)).fetch_series_statuses()).rejects.toThrow(
+      /request threw: fetch failed \(ENOTFOUND getaddrinfo ENOTFOUND site\.api\.espn\.com\)/,
+    );
+    expect(failing.sleeps).toEqual([1000, 4000]);
+    expect(failing.urls).toHaveLength(3);
+  });
+
+  it('describeFetchThrow keeps the outer message for every cause shape, including none', () => {
+    // A bare `throw error.message` is the bug this guards; a bare `cause` dump
+    // would be the opposite one — losing the fact that the request never got a
+    // response. Both are pinned so neither side can be "simplified" away later.
+    expect(describeFetchThrow(new TypeError('fetch failed'))).toBe('fetch failed');
+    expect(describeFetchThrow(new TypeError('fetch failed', { cause: new Error('socket hang up') }))).toBe(
+      'fetch failed (socket hang up)',
+    );
+    expect(describeFetchThrow(new TypeError('fetch failed', { cause: 'proxy refused' }))).toBe('fetch failed (proxy refused)');
+    expect(describeFetchThrow(new Error('aborted'))).toBe('aborted');
+    expect(describeFetchThrow('not an error object')).toBe('not an error object');
+    // An Error cause carrying neither a code nor a message is named as empty
+    // rather than rendering as `fetch failed ()`.
+    expect(describeFetchThrow(new TypeError('fetch failed', { cause: new Error('') }))).toBe(
+      'fetch failed (cause carries no code or message)',
+    );
   });
 
   it('a non-retryable status fails at once, naming the URL and refusing a silent fallback', async () => {

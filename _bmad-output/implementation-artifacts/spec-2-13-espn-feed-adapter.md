@@ -262,3 +262,46 @@ executed on a runner. It reached `REHEARSAL PASSED` and removed its container:
 That certifies the replay order **through `00017`**: `COVERED_THROUGH` is still 17, so run-sheet step
 2 — extending the harness through `00018`, including the negative proof that a duplicate non-null
 `espn_code` fails the partial unique index — remains its own leg, and **D remains owed** until then.
+
+### Run-sheet step 1 went red on all three legs, and the red was undiagnosable — both facts recorded
+
+The owner ran `node scripts/probe-espn-adapter.mjs --date=20260420`, `--date=20260605`, and the
+range control on 2026-10-04. Each exited **2**. No payload was fetched, so the 30-franchise ESPN
+code table is **still unobtained and `00018` still has no seed source** — the migration skeleton
+stays unfilled, exactly as the constraint requires.
+
+Two of the probe's assertions did pass *inside* that red run, which is worth separating from the
+network failure: leg A printed the date round-trip on the real clock path (`2026-04-21T07:30Z →
+20260420`, `2026-06-06T07:30Z → 20260605` — CAP-5's derivation), and leg C's builder refused the
+range form (`shipped scoreboardUrl("20260601-20260608") threw as designed`, CAP-2). So the run
+proves the calendar and the single-date-only builder on the shipped code path while proving nothing
+about field coverage. The rest is an egress fact about the owner's machine, not a feed finding —
+GitHub's runner reached the same endpoint in 78 ms and Supabase's in 226 ms (Story 2.6).
+
+**The diagnosability gap the run exposed, and its fix.** Every connection-class failure — DNS
+refusal, blocked socket, TLS interception, a proxy killing the request — reaches Node as the
+*identical* `TypeError: fetch failed`, with the distinguishing `code` and message on `error.cause`.
+The shipped retry reason used only `error.message`, so the alarm log printed three bare `fetch
+failed` lines and no reason, which is precisely the blind spot Story 2.6's egress evidence turned
+into a requirement. `describeFetchThrow` (`supabase/scripts/pipeline/adapters/espn.ts:216`) now
+unwraps one level, and the retry message at `:553`, the probe's leg B route diagnostics and its leg
+C range control all route through it. A re-run therefore prints e.g. `fetch failed (ENOTFOUND
+getaddrinfo ENOTFOUND site.api.espn.com)` and names the failure class instead of its symptom.
+
+Pins: `tests/pipeline/espn-adapter.test.ts:332` (retry path given an undici-shaped cause, asserting
+the code appears and the 3-attempt/2-sleep backoff is unchanged) and `:356` (cause-shape table:
+Error cause, string cause, no cause, non-Error throw, and an Error cause with neither code nor
+message renders as `cause carries no code or message` rather than `()`). Mutation evidence for both,
+each restored byte-identically afterwards:
+
+- reverting the call site to `error instanceof Error ? error.message : String(error)` → the `:332`
+  pin red;
+- dropping `code` from the detail line → the `:332` pin red (message lost the `ENOTFOUND` token);
+- returning only the cause, i.e. dropping the outer `error.message` → **both** pins red, which is
+  the point of pinning the table: the fact that no response arrived must survive alongside the reason.
+
+`nbaCom.ts:286` has the identical cause-dropping line and is deliberately **not** patched here —
+it is outside this story's surface inventory. It is filed in `deferred-work.md` with a named landing
+place rather than left as a remark. The probe's own legs B and C are not unit-tested beyond the
+`node --check` smoke in `venue-backfill.test.ts`; their diagnosis quality is proven by the owner's
+re-run, not by a pin.

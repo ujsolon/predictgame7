@@ -29,12 +29,35 @@ PostgREST.
 
 | # | Command | Proves | Recorded as |
 |---|---|---|---|
-| 1 | `node scripts/probe-espn-adapter.mjs --date=20260420` then `--date=20260605`, then the range control | CAP-8: the field coverage the adapter depends on is present on real payloads, and the **30-franchise ESPN code table** exists as measurement. This table — not a guess list — is what `00018` seeds. The two known divergences (`NY`→Knicks, `SA`→Spurs) must reappear; any *other* code that differs from `teams.abbreviation` is a new finding and gets its own row in `payload-contract.md`. | Output pasted **verbatim** into the story record; each `espn_code` value in `00018` traces to a line of it. Exit code from the command itself. |
+| 1 | `node scripts/probe-espn-adapter.mjs --date=20260420` then `--date=20260605`, then the range control | CAP-8: the field coverage the adapter depends on is present on real payloads, and the **30-franchise ESPN code table** exists as measurement. This table — not a guess list — is what `00018` seeds. The two known divergences (`NY`→Knicks, `SA`→Spurs) must reappear; any *other* code that differs from `teams.abbreviation` is a new finding and gets its own row in `payload-contract.md`. | **NOT OBTAINED — first attempt 2026-10-04 was red on all three legs, no payload measured** (see the note below). When it does run: output pasted **verbatim** into the story record; each `espn_code` value in `00018` traces to a line of it. Exit code from the command itself. |
 | 2 | `node scripts/rehearse-migration-00014.mjs` with `COVERED_THROUGH` extended through `00018` | The additive column and the partial unique index behave on a throwaway database, including the negative proof that a **duplicate non-null `espn_code` fails the index**, and `EXPECTED_TEAM_COUNT = 59` still holds because no row is inserted. Needs Docker; it is the same harness Stories 2.8/2.12 ran. | The run's verdict block, verbatim. |
 | 3 | `npx supabase db push` — **owner only** | `00018` reaches production. The agent never runs `db push`, `db reset`, `db start`, and never points `psql` at `supabase/.temp/project-ref` — that *is* production. | The applied-migration name and date, plus `docs/CURRENT_DATA_MODEL.md` updated in the same commit as the migration file. |
 
 Step 1 gates step 3: seeding `00018` before the cross-check runs would be guessing at codes
 the assumption in `SPEC.md` explicitly refuses to keep.
+
+**Step 1, first attempt (2026-10-04, owner's machine): red, and it taught one thing.** All three
+legs exited 2 on `fetch failed` — no payload, so the code table is still unobtained and `00018`
+still has no seed source. Two non-network assertions *did* pass inside that red: leg A's date
+round-trip on both dates (`2026-04-21T07:30Z → 20260420`, `2026-06-06T07:30Z → 20260605`, CAP-5 on
+the real clock path) and leg C's builder refusing the range form (CAP-2). What the run actually
+bought is the fix now shipped: connection-class failures all reach Node as the identical
+`TypeError: fetch failed` with the real reason on `error.cause`, and the retry message dropped the
+cause — three legs, three bare `fetch failed`, no diagnosis. `describeFetchThrow` (`espn.ts:216`)
+unwraps it, so the re-run names the class instead of the symptom. Re-run:
+
+```
+node scripts/probe-espn-adapter.mjs --date=20260420
+```
+
+Read the code in the parentheses. `ENOTFOUND` / `ENODATA` / `ESERVFAIL` means this machine's
+resolver refuses the name (blocklist, sinkhole, DoH policy) — a different resolver or another
+network suffices, since the same endpoint answered a GitHub runner in 78 ms and Supabase in 226 ms.
+`ECONNREFUSED` / `ETIMEDOUT` / a TLS-named code means something in the path (proxy, firewall) is
+cutting the connection. There is **no local substitute if this machine genuinely cannot reach
+ESPN**: the table must come from somewhere that can, and the only shape available is a one-off
+dispatch on a hosted runner — no such workflow exists today, so that is new surface and needs the
+owner's explicit yes. It must not be replaced by inference about what ESPN "probably" prints.
 
 ## Part 2 — the four proofs Story 2.6 transferred (owner call C3)
 
