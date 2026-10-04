@@ -54,7 +54,19 @@ Read the code in the parentheses. `ENOTFOUND` / `ENODATA` / `ESERVFAIL` means th
 resolver refuses the name (blocklist, sinkhole, DoH policy) — a different resolver or another
 network suffices, since the same endpoint answered a GitHub runner in 78 ms and Supabase in 226 ms.
 `ECONNREFUSED` / `ETIMEDOUT` / a TLS-named code means something in the path (proxy, firewall) is
-cutting the connection. There is **no local substitute if this machine genuinely cannot reach
+cutting the connection.
+
+**Re-run verdict, same day: the class was named and it is the local resolver, not the feed.** Leg A
+printed `request threw: fetch failed (ENOTFOUND getaddrinfo ENOTFOUND site.api.espn.com)`, and the
+owner's three `Resolve-DnsName` probes located it: `www.google.com` resolves, `site.api.espn.com`
+returns **`DNS operation refused` (`RCODE_REFUSED`) from the default server** while the same query
+against `-Server 1.1.1.1` answers normally through the Akamai CNAME chain, and the `hosts` file has
+no `espn` entry. So a filtering resolver (ISP, router, or a DNS blocker on the path) is refusing
+the name — the adapter, the URL and ESPN itself are all exonerated by measurement rather than
+assumption. `00018`'s seeds still need one leg-B run to completion on a machine whose resolver is
+not filtering: point the adapter at a public resolver or use another network, then re-run. A
+`hosts` entry pinned to a measured IP is the last resort and is fragile — Akamai returns a 20-second
+TTL and location-varying addresses. There is **no local substitute if this machine genuinely cannot reach
 ESPN**: the table must come from somewhere that can, and the only shape available is a one-off
 dispatch on a hosted runner — no such workflow exists today, so that is new surface and needs the
 owner's explicit yes. It must not be replaced by inference about what ESPN "probably" prints.

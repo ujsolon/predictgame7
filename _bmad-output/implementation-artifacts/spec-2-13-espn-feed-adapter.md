@@ -305,3 +305,9 @@ it is outside this story's surface inventory. It is filed in `deferred-work.md` 
 place rather than left as a remark. The probe's own legs B and C are not unit-tested beyond the
 `node --check` smoke in `venue-backfill.test.ts`; their diagnosis quality is proven by the owner's
 re-run, not by a pin.
+
+**Re-run of the same leg, one hour later, printed the class** — `request threw: fetch failed
+(ENOTFOUND getaddrinfo ENOTFOUND site.api.espn.com)` — and the owner's `Resolve-DnsName` probes
+showed the refusal is the machine's default resolver (`RCODE_REFUSED` for that name, google fine,
+`-Server 1.1.1.1` answering normally, `hosts` clean). The fix earned its keep within one cycle:
+the second run was actionable and the first was not. Full record in the run sheet's step-1 note.
