@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - `/historical`'s team field matches a team **code** as well as a name, against the row's stored `teams.abbreviation` — typing `SLB`, `WSB` or `NY` now finds the series the database labels that way (Story 2.11, owner decisions U1/U15).
 - The pipeline runs itself: `pipeline-inseason.yml` (daily across the mid-April–June bracket) and `pipeline-offseason.yml` (the two bracket edges), each reporting through the new `notify-failure` composite action, so a dead run sends a signal instead of quietly leaving the data stale (Story 2.6, FR-20/21, SM-4). The bracket is the season window, so nothing fires before April 2027 unless dispatched by hand.
 - `run.ts --require-feed`, the empty-feed alarm: inside the bracket, a fetch that succeeds and returns nothing is a red run. The two offseason edges deliberately omit the flag — an empty feed in mid-April or late June is legitimate, and making those red would train the owner to ignore the alarm that matters (Story 2.6, owner decisions D-3/D-5).
-- `migration-rehearsal.yml` runs `scripts/rehearse-migration-00014.mjs` whenever a migration is edited — the first CI coverage that verdict ever had, on either side of the guard (Story 2.6, CAP-5, D-2).
+- `migration-rehearsal.yml` runs `scripts/rehearse-migration-00014.mjs` on any push that edits a migration — the first CI job ever to run it, so the "migrations replay cleanly and every guard can fail" verdict now renews itself instead of being believed from a single manual pass (Story 2.6, CAP-5, D-2).
 
 ### Changed
 
