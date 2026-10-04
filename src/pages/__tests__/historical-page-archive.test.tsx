@@ -5,11 +5,15 @@
 // `.eq('status', …)` kept every gate green while blanking the archive in
 // production post-00014. These tests observe the query the page actually
 // builds, which the mocked supabase otherwise ignores.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { getTeamAbbreviation } from '@/lib/nba-utils';
 import HistoricalPage from '@/pages/HistoricalPage';
-import type { Series } from '@/types/types';
+import type { Series, Team } from '@/types/types';
+import { parseTeamsSeed } from '../../../supabase/scripts/pipeline/venueBackfill.ts';
 
 const db = vi.hoisted(() => ({
   list: { data: [] as unknown, error: null as unknown },
@@ -40,8 +44,8 @@ vi.mock('sonner', () => ({ toast: db.toast }));
 const scrollIntoView = vi.fn(() => {});
 Element.prototype.scrollIntoView = scrollIntoView;
 
-const lakers: Series['team_a'] = { id: 33, full_name: 'Los Angeles Lakers', abbreviation: 'LAL', created_at: 'e' };
-const warriors: Series['team_b'] = { id: 44, full_name: 'Golden State Warriors', abbreviation: 'GSW', created_at: 'f' };
+const lakers: Team = { id: 33, full_name: 'Los Angeles Lakers', abbreviation: 'LAL', created_at: 'e' };
+const warriors: Team = { id: 44, full_name: 'Golden State Warriors', abbreviation: 'GSW', created_at: 'f' };
 
 const archivedRow: Series = {
   id: 's-archive',
@@ -134,8 +138,8 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
 // accessible name*: chips, the gloss and the live region are read through
 // `textContent` or literal attributes, because jsdom's accname implementation
 // inserts separators Chrome does not (qa-matrix-1-5.md §5 note 4, finding F16).
-const nets: Series['team_a'] = { id: 66, full_name: 'New York Nets', abbreviation: 'NYN', created_at: 'h' };
-const colonels: Series['team_b'] = { id: 77, full_name: 'Kentucky Colonels', abbreviation: 'KEN', created_at: 'i' };
+const nets: Team = { id: 66, full_name: 'New York Nets', abbreviation: 'NYN', created_at: 'h' };
+const colonels: Team = { id: 77, full_name: 'Kentucky Colonels', abbreviation: 'KEN', created_at: 'i' };
 
 /** The 1948 BAA finals row — the archive's single `BAA` series. */
 const baaRow: Series = { ...archivedRow, id: 's-baa', year: 1948, round: 'BAA Finals', league: 'BAA' };
@@ -365,7 +369,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     await screen.findByText('1948');
 
     await chooseYear('1976');
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
     fireEvent.click(rowByYear(1976));
 
     // The whole capture log for the surface, including the row expansion: two
@@ -397,13 +401,13 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     await screen.findByText('1948');
 
     await chooseYear('1976');
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
     expect(renderedRows()).toBe(1);
     expect(visibleYears()).toEqual(['1976']);
 
     // Now the team predicate excludes the row the year kept: FR-10's combined
     // rule, with the copy that already existed and no new empty state.
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Lakers' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Lakers' } });
     expect(await screen.findByText('No series found matching your filters.')).toBeInTheDocument();
     expect(liveRegion()?.textContent).toBe('Showing 0 of 0 series.');
   });
@@ -438,7 +442,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     render(<HistoricalPage />);
     await screen.findByText('1948');
 
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
     expect(renderedRows()).toBe(1);
 
     const reset = resetButton();
@@ -446,7 +450,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     fireEvent.click(reset as HTMLButtonElement);
 
     await waitFor(() => expect(renderedRows()).toBe(3));
-    expect((screen.getByPlaceholderText('Search by team name...') as HTMLInputElement).value).toBe('');
+    expect((screen.getByPlaceholderText('Search by team name or code...') as HTMLInputElement).value).toBe('');
     expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
   });
 
@@ -492,7 +496,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     fireEvent.click(screen.getByText('Load More History'));
     await waitFor(() => expect(renderedRows()).toBe(20));
 
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Lakers' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Lakers' } });
     await waitFor(() => expect(liveRegion()?.textContent).toBe('Showing 10 of 15 series.'));
     expect(renderedRows()).toBe(10);
     expect(screen.getByText('Load More History')).toBeInTheDocument();
@@ -615,7 +619,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
     await screen.findByText('1948');
 
     await chooseYear('1976');
-    fireEvent.change(screen.getByPlaceholderText('Search by team name...'), { target: { value: 'Nets' } });
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
     fireEvent.click(resetButton() as HTMLButtonElement);
     fireEvent.click(rowByYear(1998));
 
@@ -640,5 +644,297 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
     const section = region.parentElement as HTMLElement;
     expect(section.firstElementChild).not.toBe(region);
     expect(section.firstElementChild?.className).toContain('overflow-x-auto');
+  });
+});
+
+// Story 2.11 — one team code everywhere on `/historical`.
+//
+// The 20 franchise pairs below are the divergences measured 2026-10-04 over the
+// committed `00005` + `00007` seeds and the archive CSV (recorded at
+// `spec-2-11:20`; the throwaway script that read them is deliberately not
+// committed, which is why the case below re-derives the third column from the
+// live `getTeamAbbreviation` instead of trusting this table): the code a row
+// printed came from the `TEAM_ABBREVIATIONS` map or `getTeamAbbreviation`, and on
+// these 20 identities it differed from the stored `teams.abbreviation` — 39 of the
+// 178 series, 47 team cells, years 1948→1997, every one a `00007` historical
+// identity. `initialism` is what the surviving name path still derives from the
+// name, so the third column is what this surface used to print; the pairs are
+// pinned against it rather than against the deleted map, because a pin that only
+// restates the implementation would stay green if the name path itself changed.
+const DIVERGENT_FRANCHISES: Array<{ name: string; stored: string; initialism: string }> = [
+  { name: 'Philadelphia Warriors', stored: 'PHW', initialism: 'PW' },
+  { name: 'Rochester Royals', stored: 'ROR', initialism: 'RR' },
+  { name: 'Minneapolis Lakers', stored: 'MPL', initialism: 'ML' },
+  { name: 'Syracuse Nationals', stored: 'SYR', initialism: 'SN' },
+  { name: 'Cincinnati Royals', stored: 'CNR', initialism: 'CR' },
+  { name: 'Kentucky Colonels', stored: 'KEN', initialism: 'KC' },
+  { name: 'Miami Floridians', stored: 'MFL', initialism: 'MF' },
+  { name: 'Minnesota Pipers', stored: 'MNP', initialism: 'MP' },
+  { name: 'Dallas Chaparrals', stored: 'DCH', initialism: 'DC' },
+  { name: 'Oakland Oaks', stored: 'OAK', initialism: 'OO' },
+  { name: 'Denver Rockets', stored: 'DNR', initialism: 'DR' },
+  { name: 'Washington Capitols', stored: 'WSC', initialism: 'WC' },
+  { name: 'Baltimore Bullets', stored: 'BLB', initialism: 'BB' },
+  { name: 'Utah Stars', stored: 'UTS', initialism: 'US' },
+  { name: 'Virginia Squires', stored: 'VAS', initialism: 'VS' },
+  { name: 'Carolina Cougars', stored: 'CAC', initialism: 'CC' },
+  { name: 'Capital Bullets', stored: 'CPB', initialism: 'CB' },
+  { name: 'Washington Bullets', stored: 'WSB', initialism: 'WB' },
+  { name: 'Buffalo Braves', stored: 'BUF', initialism: 'BB' },
+  { name: 'Seattle SuperSonics', stored: 'SEA', initialism: 'SS' },
+];
+
+// One unique year per franchise so `rowByYear` stays a locator; the archive sorts
+// year-descending, so these 20 rows render newest-first.
+const DIVERGENT_START_YEAR = 1948;
+const divergentYearAt = (index: number) => DIVERGENT_START_YEAR + index;
+
+// Codes the spec's matrix measures live: `SLB` 1, `KCK` 1, `WSB` 5, `SAS` 14,
+// `OKC` 7 and `NY` 19 (NYK 16 + NYN 3), with 0 of the 59 seeded full names
+// containing the substring "ny". jsdom cannot reproduce those counts, so the
+// fixtures below carry deliberate small counts and pin the *arm* that answers; the
+// live numbers are recorded here and in the spec, and the owner verifies them in
+// preview by row count.
+const bombers: Team = { id: 81, full_name: 'St. Louis Bombers', abbreviation: 'SLB', created_at: 'j' };
+const kcKings: Team = { id: 82, full_name: 'Kansas City Kings', abbreviation: 'KCK', created_at: 'k' };
+const bullets: Team = { id: 83, full_name: 'Washington Bullets', abbreviation: 'WSB', created_at: 'l' };
+const superSonics: Team = { id: 85, full_name: 'Seattle SuperSonics', abbreviation: 'SEA', created_at: 'n' };
+const spurs: Team = { id: 86, full_name: 'San Antonio Spurs', abbreviation: 'SAS', created_at: 'o' };
+const knicks: Team = { id: 87, full_name: 'New York Knicks', abbreviation: 'NYK', created_at: 'p' };
+
+function teamRow(id: number, full_name: string, abbreviation: string): Team {
+  return { id, full_name, abbreviation, created_at: `row-${id}` };
+}
+
+/** A finished series between two exact rows; `teamA` won, so the row opens. */
+function seriesBetween(year: number, teamA: Team, teamB: Team): Series {
+  return {
+    ...archivedRow,
+    id: `s-${year}-${teamA.abbreviation}`,
+    year,
+    team_a: teamA,
+    team_b: teamB,
+    team_a_id: teamA.id,
+    team_b_id: teamB.id,
+    winner_team: teamA,
+    winner_team_id: teamA.id,
+  };
+}
+
+function divergentRows(): Series[] {
+  return DIVERGENT_FRANCHISES.map((entry, index) =>
+    seriesBetween(
+      divergentYearAt(index),
+      teamRow(200 + index, entry.name, entry.stored),
+      warriors
+    )
+  );
+}
+
+function search(value: string) {
+  fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value } });
+}
+
+describe('HistoricalPage stored team codes and code search (Story 2.11)', () => {
+  it('prints the stored abbreviation on all 20 divergent franchise rows, not the initialism', async () => {
+    db.list = { data: divergentRows(), error: null };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(10));
+    fireEvent.click(screen.getByText('Load More History'));
+    await waitFor(() => expect(renderedRows()).toBe(20));
+
+    for (const [index, entry] of DIVERGENT_FRANCHISES.entries()) {
+      const row = rowByYear(divergentYearAt(index));
+      // Verbatim, and the only place the letters can come from is the row: the
+      // opponent is a modern franchise whose code differs from both columns.
+      expect(within(row).getByText(entry.stored).textContent).toBe(entry.stored);
+      expect(within(row).queryByText(entry.initialism)).toBeNull();
+      // Rot-guards on the third column itself: if the name path changes, or the
+      // two columns are transposed, this table stops describing a divergence and
+      // the case says so instead of passing vacuously.
+      expect(getTeamAbbreviation(entry.name)).toBe(entry.initialism);
+      expect(entry.initialism).not.toBe(entry.stored);
+    }
+  });
+
+  it('checks the hand-typed divergent-census table against the teams seed', () => {
+    // The 20 pairs above are literals, and the frozen Intent's census rests on
+    // them. Only the `initialism` column had an oracle (re-derived from the live
+    // name path); `stored` was checked against nothing, so editing a seed
+    // abbreviation would leave every case here green while the story's central
+    // measurement went false. `parseTeamsSeed` is the shared reader
+    // (`deferred-work.md`: one regex serves `00016`'s generator, the venue probe and
+    // this assertion), the same one `team-logos.test.ts` re-keyed its oracle onto.
+    // `team-logos.test.ts` resolves the seeds through `import.meta.url`; this file
+    // runs in jsdom, where that URL is http-schemed, so the repo-root-relative
+    // path is used instead. It fails loudly (ENOENT) rather than silently empty if
+    // the suite is ever run from a different working directory.
+    const readSeed = (name: string) => readFileSync(join(process.cwd(), 'supabase/migrations', name), 'utf8');
+    const teamsSeedText =
+      readSeed('00005_release_1_data_model.sql') + readSeed('00007_backfill_missing_historical_series.sql');
+    const seededAbbreviations = new Set(parseTeamsSeed(teamsSeedText, '00005 + 00007 teams seed').keys());
+
+    // Non-vacuity: the table is the census's franchise half, and a reader that
+    // parsed nothing would make the loop below pass by checking nothing.
+    expect(DIVERGENT_FRANCHISES).toHaveLength(20);
+    expect(seededAbbreviations.size).toBeGreaterThan(DIVERGENT_FRANCHISES.length);
+    for (const entry of DIVERGENT_FRANCHISES) {
+      expect(seededAbbreviations.has(entry.stored)).toBe(true);
+    }
+    // What this does NOT settle: the seed reader returns abbreviation → id, so the
+    // name↔code pairing is not observable here (widening it needs a `supabase/`
+    // change, which this story's boundaries forbid). The 39-series / 47-cell half
+    // of the census is a measurement over the live 178-row archive and stays with
+    // the owner's preview look — recorded in Verification.
+  });
+
+  it('finds a series by the stored abbreviation on either FK, case-insensitively', async () => {
+    db.list = {
+      data: [
+        seriesBetween(1948, bombers, lakers),
+        seriesBetween(1970, knicks, bombers),
+        seriesBetween(1976, kcKings, warriors),
+        seriesBetween(1978, superSonics, bullets),
+      ],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(4));
+
+    // `slb` is not a substring of any fixture name — only the code arm can answer
+    // it — and it sits on team_a in one row and on team_b in the other.
+    search('slb');
+    expect(visibleYears()).toEqual(['1970', '1948']);
+    search('SLB');
+    expect(visibleYears()).toEqual(['1970', '1948']);
+    search('KcK');
+    expect(visibleYears()).toEqual(['1976']);
+    search('wsb');
+    expect(visibleYears()).toEqual(['1978']);
+    expect(liveRegion()?.textContent).toBe('Showing 1 of 1 series.');
+
+    // The event keeps its name and its `filter_type` — a code query is still a
+    // team search; Story 3.1 moves the call site, not this fact.
+    expect(db.capture).toHaveBeenCalledWith('historical_filter_applied', { filter_type: 'team_search' });
+
+    // Neither a name nor a code: the existing empty state, unchanged.
+    search('zzz');
+    expect(await screen.findByText('No series found matching your filters.')).toBeInTheDocument();
+  });
+
+  it('answers a two-letter code that no team name contains', async () => {
+    db.list = {
+      data: [seriesBetween(1970, knicks, bombers), seriesBetween(1974, nets, bullets)],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(2));
+
+    // Self-check on the fixture set: the measured live fact is that 0 seeded full
+    // names contain "ny", so if that stopped being true here the query would no
+    // longer prove the code arm, and this line would say so.
+    const names = [knicks.full_name, bombers.full_name, nets.full_name, bullets.full_name];
+    expect(names.filter((name) => name.toLowerCase().includes('ny'))).toEqual([]);
+
+    // Live: `NY` is 19 series (NYK 16 + NYN 3). Here: both rows, because `ny` is a
+    // prefix of both stored codes — the whole-row embed carries them, so U1 needed
+    // no query change.
+    search('ny');
+    expect(visibleYears()).toEqual(['1974', '1970']);
+  });
+
+  it('keeps the name path a substring search, including the SAS-to-Kansas-City noise U3 accepted', async () => {
+    const capitols = teamRow(84, 'Washington Capitols', 'WSC');
+    db.list = {
+      data: [
+        seriesBetween(1979, superSonics, warriors),
+        seriesBetween(1980, kcKings, lakers),
+        seriesBetween(1978, bullets, capitols),
+        seriesBetween(1949, capitols, warriors),
+        seriesBetween(1985, spurs, warriors),
+      ],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(5));
+
+    // A fragment of a name that is neither a code nor a whole name: the unchanged
+    // behavior that is the "never narrowed" half of U1/U3.
+    search('Sonics');
+    expect(visibleYears()).toEqual(['1979']);
+    // A city shared by two era identities, on two different rows.
+    search('Washington');
+    expect(visibleYears()).toEqual(['1978', '1949']);
+    // `sas` is a substring of "Kan-sas City" and the stored code of the Spurs, so
+    // both arms answer and the year-descending sort puts the noise row first
+    // (1985 > 1980): the consequence the owner accepted rather than fixed (U3).
+    search('sas');
+    expect(visibleYears()).toEqual(['1985', '1980']);
+  });
+
+  it('prints the placeholder literal on a FK join miss, never the bare initialism', async () => {
+    db.list = {
+      data: [{ ...archivedRow, id: 's-join-miss', year: 1962, team_a: undefined, team_b: undefined }],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(1));
+
+    const row = rowByYear(1962);
+    // U8: `Team A`/`Team B` are one named client literal, and step 2 of the
+    // resolution order is what answers them — falling to the name path would print
+    // `TA`/`TB`, which is what a mutation deleting step 2 shows.
+    expect(within(row).getByText('TMA').textContent).toBe('TMA');
+    expect(within(row).getByText('TMB').textContent).toBe('TMB');
+    expect(within(row).queryByText('TA')).toBeNull();
+  });
+
+  it('falls through visibly when a joined row stores an empty abbreviation', async () => {
+    const noCode: Team = { ...bullets, abbreviation: '' };
+    db.list = { data: [seriesBetween(1978, noCode, warriors)], error: null };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(1));
+
+    // Fail visible: the cell never renders blank, the name path prints `WB`.
+    expect(within(rowByYear(1978)).getByText('WB').textContent).toBe('WB');
+    // And the code arm reads the stored value, so a row storing nothing is
+    // invisible to the query its own displayed code would suggest — `wsb` is not a
+    // substring of "Washington Bullets", so only a stored code could answer it.
+    search('wsb');
+    expect(await screen.findByText('No series found matching your filters.')).toBeInTheDocument();
+    // The name path still finds it: the predicate gained an arm, it did not swap.
+    search('Bullets');
+    expect(visibleYears()).toEqual(['1978']);
+  });
+
+  it('clears a code search with the reset button', async () => {
+    db.list = {
+      data: [seriesBetween(1948, bombers, lakers), seriesBetween(1970, knicks, bombers), archivedRow],
+      error: null,
+    };
+    render(<HistoricalPage />);
+    await waitFor(() => expect(renderedRows()).toBe(3));
+
+    search('slb');
+    expect(renderedRows()).toBe(2);
+    const reset = resetButton();
+    expect(reset).toBeInstanceOf(HTMLButtonElement);
+    fireEvent.click(reset as HTMLButtonElement);
+
+    await waitFor(() => expect(renderedRows()).toBe(3));
+    expect((screen.getByPlaceholderText('Search by team name or code...') as HTMLInputElement).value).toBe('');
+    expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
+  });
+
+  it('reads the team rows through the whole-row embeds the code arm depends on', async () => {
+    render(<HistoricalPage />);
+    await screen.findByText('1998');
+
+    // U1: no query change. `abbreviation` reaches the predicate through these
+    // embedded wildcards, so an enumerated rewrite that dropped the column would
+    // blank every code search while these fixtures stayed green — the failure
+    // shape this file's header comment records for Story 2.2.
+    expect(db.projection).toContain('team_a:team_a_id(*)');
+    expect(db.projection).toContain('team_b:team_b_id(*)');
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
-import { getTeamAbbreviation } from '@/lib/nba-utils';
+import { getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
@@ -14,7 +14,7 @@ import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
 import { deriveSeriesPhase, isSeriesPending, seriesSourceForPhase } from '@/lib/series-phase';
 import { cn } from '@/lib/utils';
-import type { Series } from '@/types/types';
+import type { Series, Team } from '@/types/types';
 import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -417,17 +417,47 @@ export default function PredictPage() {
     }
   };
 
+  // Story 2.11 (owner decision U15): the custom-matchup form has no series FK,
+  // but the app holds every team row anyway — `fetchAllGames` (:148-180) loads
+  // the whole archive through `SERIES_SELECT` (:31-45), which embeds
+  // `abbreviation` on both sides, so a typed name that the database spells
+  // exactly this way prints that row's stored code instead of a bare initialism
+  // (`Boston Celtics` → `BOS`, not `BC`). Lower-cased `full_name` → row, first
+  // hit wins, and only rows with a non-empty `abbreviation` are indexed.
+  // `full_name` only and exact-after-normalize: no nickname, city or fuzzy arm
+  // beside `HistoricalPage`'s substring search, so a non-match keeps today's
+  // name-path behavior (`Celtics` → `CEL`, mid-typing `Utah J` → `UJ`) rather
+  // than inventing a second matching rule.
+  const teamRowByName = useMemo(() => {
+    const index = new Map<string, Team>();
+    for (const game of games) {
+      for (const row of [game.team_a, game.team_b]) {
+        if (row?.full_name && row.abbreviation) {
+          const key = row.full_name.toLowerCase();
+          if (!index.has(key)) index.set(key, row);
+        }
+      }
+    }
+    return index;
+  }, [games]);
+
+  const rowFor = (name: string) => teamRowByName.get((name ?? '').trim().toLowerCase());
+
   const getSeriesLabel = () => {
     if (!selectedSeries) return 'Not selected';
     if (selectedSeries.source === 'custom') {
-      const teamA = getTeamAbbreviation(customInput.team_a) || 'TBD';
-      const teamB = getTeamAbbreviation(customInput.team_b) || 'TBD';
+      // U15: the typed name consults the rows the page already holds, then the
+      // placeholder literal, then the name path — the same order every other
+      // converted site uses. Blank input still falls through to the caller's
+      // `|| 'TBD'` unchanged.
+      const teamA = getTeamCode(customInput.team_a, rowFor(customInput.team_a)) || 'TBD';
+      const teamB = getTeamCode(customInput.team_b, rowFor(customInput.team_b)) || 'TBD';
       return `${teamA} vs ${teamB}`;
     }
     if (selectedSeries.data) {
       const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
       const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
-      return `${getTeamAbbreviation(teamAName)} vs ${getTeamAbbreviation(teamBName)}`;
+      return `${getTeamCode(teamAName, selectedSeries.data.team_a)} vs ${getTeamCode(teamBName, selectedSeries.data.team_b)}`;
     }
     return 'Not selected';
   };
@@ -489,7 +519,7 @@ export default function PredictPage() {
             )}
           </div>
           <span className="text-xs font-bold truncate">
-            {getTeamAbbreviation(teamAName)} vs {getTeamAbbreviation(teamBName)}
+            {getTeamCode(teamAName, game.team_a)} vs {getTeamCode(teamBName, game.team_b)}
           </span>
         </div>
         <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">
@@ -1161,6 +1191,20 @@ export default function PredictPage() {
                 const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
                 const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
                 const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
+                // Story 2.11 (U6/U7): the card prints the embedded rows' stored
+                // codes. `predicted_winner` resolves client-side through the two
+                // candidate rows — the contract carries names only
+                // (`_shared/contract.ts:51-56`) and the function echoes the exact
+                // row names back, so equality matching is safe and no Edge
+                // Function deploy is needed (U7). A custom matchup has no series FK,
+                // so its rows come from U15's index by the same name the trigger
+                // label resolved — otherwise the card would print a name initialism
+                // beside a picker reading the stored code.
+                const rowA = selectedSeries?.data?.team_a ?? rowFor(teamAName);
+                const rowB = selectedSeries?.data?.team_b ?? rowFor(teamBName);
+                const codeA = getTeamCode(teamAName, rowA);
+                const codeB = getTeamCode(teamBName, rowB);
+                const winnerCode = getTeamCode(prediction.predicted_winner, rowA, rowB);
                 const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
                 const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
                 return (
@@ -1188,7 +1232,7 @@ export default function PredictPage() {
                           {(prediction.predicted_winner === teamBName && teamBLogo) && (
                             <img src={teamBLogo} alt={teamBName} className="h-8 w-8 object-contain" />
                           )}
-                          <p className="text-3xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                          <p className="text-3xl font-medium">{winnerCode}</p>
                           {(prediction.predicted_winner === teamAName && teamALogo) && (
                             <img src={teamALogo} alt={teamAName} className="h-8 w-8 object-contain" />
                           )}
@@ -1208,8 +1252,8 @@ export default function PredictPage() {
                       <p className="text-xs text-muted-foreground mb-1">Losing Team</p>
                       <p className="text-sm text-muted-foreground">
                         {prediction.predicted_winner === teamAName
-                          ? getTeamAbbreviation(teamBName)
-                          : getTeamAbbreviation(teamAName)}
+                          ? codeB
+                          : codeA}
                         {' · '}
                         {prediction.predicted_winner === teamAName
                           ? prediction.win_probability_b
@@ -1244,6 +1288,14 @@ export default function PredictPage() {
         const fallbackTeamB = selectedSeries?.source === 'custom' ? customInput.team_b : selectedSeries?.data?.team_b?.full_name;
         const teamAName = prediction.team_a || fallbackTeamA || 'Team A';
         const teamBName = prediction.team_b || fallbackTeamB || 'Team B';
+        // The detailed sheet reads the same stored codes as the result card
+        // (Story 2.11 U6) — one resolution order on both surfaces, including the
+        // custom matchup, whose row comes from U15's index rather than a series FK.
+        const rowA = selectedSeries?.data?.team_a ?? rowFor(teamAName);
+        const rowB = selectedSeries?.data?.team_b ?? rowFor(teamBName);
+        const codeA = getTeamCode(teamAName, rowA);
+        const codeB = getTeamCode(teamBName, rowB);
+        const winnerCode = getTeamCode(prediction.predicted_winner, rowA, rowB);
         const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
         const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
         const mathsAnchor = METHOD_MATHS_ANCHORS[prediction.method_used];
@@ -1272,12 +1324,12 @@ export default function PredictPage() {
                       <div className="flex items-center justify-center gap-4 mb-3">
                         <div className="flex items-center gap-2">
                           {teamALogo && <img src={teamALogo} alt={teamAName} className="h-10 w-10 object-contain" />}
-                          <span className="text-sm font-medium">{getTeamAbbreviation(teamAName)}</span>
+                          <span className="text-sm font-medium">{codeA}</span>
                         </div>
                         <span className="text-muted-foreground">vs</span>
                         <div className="flex items-center gap-2">
                           {teamBLogo && <img src={teamBLogo} alt={teamBName} className="h-10 w-10 object-contain" />}
-                          <span className="text-sm font-medium">{getTeamAbbreviation(teamBName)}</span>
+                          <span className="text-sm font-medium">{codeB}</span>
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">Predicted Winner</p>
@@ -1288,7 +1340,7 @@ export default function PredictPage() {
                         {(prediction.predicted_winner === teamBName && teamBLogo) && (
                           <img src={teamBLogo} alt={teamBName} className="h-12 w-12 object-contain" />
                         )}
-                        <p className="text-4xl md:text-5xl font-medium">{getTeamAbbreviation(prediction.predicted_winner)}</p>
+                        <p className="text-4xl md:text-5xl font-medium">{winnerCode}</p>
                         {(prediction.predicted_winner === teamAName && teamALogo) && (
                           <img src={teamALogo} alt={teamAName} className="h-12 w-12 object-contain" />
                         )}
@@ -1308,8 +1360,8 @@ export default function PredictPage() {
                     <p className="text-xs text-muted-foreground mb-2">Losing Team</p>
                     <p className="text-lg text-muted-foreground">
                       {prediction.predicted_winner === teamAName
-                        ? getTeamAbbreviation(teamBName)
-                        : getTeamAbbreviation(teamAName)}
+                        ? codeB
+                        : codeA}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
                       {prediction.predicted_winner === teamAName

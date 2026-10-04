@@ -226,6 +226,13 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     // its columns, so `league` has to be named here too or the `Series` this
     // page builds is missing a field its own type requires.
     expect(projection).toContain('league');
+    // Story 2.11 makes the stored `teams.abbreviation` this page's display and
+    // resolution source, and its embeds are enumerated — so a column-pruning pass
+    // that dropped `abbreviation` from either side would revert every code on the
+    // page to a name initialism with all the row fixtures still supplying the
+    // field. Pinned per side, not just somewhere in the string.
+    expect(projection).toMatch(/team_a:team_a_id\([^)]*\babbreviation\b/);
+    expect(projection).toMatch(/team_b:team_b_id\([^)]*\babbreviation\b/);
   });
 
   it('reports a pending series as `current` on the selection event', async () => {

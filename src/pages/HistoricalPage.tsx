@@ -8,7 +8,7 @@ import { supabase } from '@/db/supabase';
 import { Series, SeriesGameScore, Team } from '@/types/types';
 import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
-import { getTeamAbbreviation, getRoundImportance } from '@/lib/nba-utils';
+import { getRoundImportance, getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { usePostHog } from '@posthog/react';
 
@@ -102,14 +102,29 @@ export default function HistoricalPage() {
   }, [seriesList]);
 
   const filteredSeries = useMemo(() => {
+    // Story 2.11 (owner decisions U1 + U3): the query answers the FK row's
+    // **stored** `teams.abbreviation` as well as the name, so a code a fan can
+    // see is a code they can type — `SLB` finds the St. Louis Bombers and `WSB`
+    // the Washington Bullets, where neither string is a substring of the name.
+    // The row is already in the payload (`:64` embeds `team_a:team_a_id(*)`), so
+    // this costs no query change. The name path is **not** narrowed: it stays a
+    // case-insensitive `full_name` substring test with everything it returns
+    // today, including the `SAS`→Kansas City hit the owner accepted rather than
+    // fixed (U3) — the list sorts year-descending (`:72-74`), so the newest match
+    // is the first row.
+    const query = teamSearch.toLowerCase();
     return seriesList.filter((series) => {
       const teamAName = series.team_a?.full_name ?? '';
       const teamBName = series.team_b?.full_name ?? '';
+      const teamACode = series.team_a?.abbreviation ?? '';
+      const teamBCode = series.team_b?.abbreviation ?? '';
       const matchesYear = yearFilter === 'all' || series.year.toString() === yearFilter;
       const matchesTeam =
         teamSearch === '' ||
-        teamAName.toLowerCase().includes(teamSearch.toLowerCase()) ||
-        teamBName.toLowerCase().includes(teamSearch.toLowerCase());
+        teamAName.toLowerCase().includes(query) ||
+        teamBName.toLowerCase().includes(query) ||
+        teamACode.toLowerCase().includes(query) ||
+        teamBCode.toLowerCase().includes(query);
       return matchesYear && matchesTeam;
     });
   }, [seriesList, yearFilter, teamSearch]);
@@ -174,7 +189,7 @@ export default function HistoricalPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by team name..."
+              placeholder="Search by team name or code..."
               className="pl-9 bg-background border-border/60"
               value={teamSearch}
               onChange={(e) => { setTeamSearch(e.target.value); setVisibleCount(10); if (e.target.value) posthog?.capture('historical_filter_applied', { filter_type: 'team_search' }); }}
@@ -204,8 +219,19 @@ export default function HistoricalPage() {
                   const teamAName = series.team_a?.full_name ?? 'Team A';
                   const teamBName = series.team_b?.full_name ?? 'Team B';
                   const isTeamAWinner = series.winner_team_id === series.team_a_id;
-                  const abbrevA = getTeamAbbreviation(teamAName);
-                  const abbrevB = getTeamAbbreviation(teamBName);
+                  // Story 2.11: the cell prints the **stored** `teams.abbreviation`
+                  // of the FK row, not a name-derived initialism. Measured
+                  // 2026-10-04 against the committed archive CSV, the two differ on
+                  // 39 of the 178 series (47 team cells, 20 franchises, years
+                  // 1948→1997 — every one a `00007` historical identity), so this is
+                  // the visible half of "one team code everywhere": `Seattle
+                  // SuperSonics` shows the stored `SEA` where the initialism path
+                  // showed `SS`. FR-11's era-appropriate-identity rule governs it,
+                  // and `teams` holds one row per era identity, so the stored code
+                  // is the era-appropriate one. A join miss falls to the `Team A`/
+                  // `Team B` placeholder literal (U8), never to `TA`.
+                  const abbrevA = getTeamCode(teamAName, series.team_a);
+                  const abbrevB = getTeamCode(teamBName, series.team_b);
                   const logoA = resolveTeamLogoUrl(series.team_a?.logo_url) || getTeamLogo(teamAName);
                   const logoB = resolveTeamLogoUrl(series.team_b?.logo_url) || getTeamLogo(teamBName);
                   const finalScore = formatGame7Score(series);

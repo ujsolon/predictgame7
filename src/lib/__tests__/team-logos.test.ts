@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TEAM_ABBREVIATIONS } from '@/lib/nba-utils';
+import { EXPECTED_TEAM_COUNT, parseTeamsSeed } from '../../../supabase/scripts/pipeline/venueBackfill.ts';
 import { getTeamLogo, isRecognizedTeam, resolveTeamLogoUrl } from '@/lib/team-logos';
 
 // Node environment (the vitest.config.ts default): pure logic over the alias
@@ -78,11 +78,38 @@ describe('isRecognizedTeam', () => {
     [...group[1].matchAll(/(["'])([^"']+)\1/g)].map((alias) => alias[2])
   );
 
+  // Story 2.11 re-keyed the oracle below onto the **database**. Until this
+  // change it iterated `Object.values(TEAM_ABBREVIATIONS)`, the hardcoded
+  // name→code map the story deleted — and an empty object would have kept the
+  // case green while checking nothing at all (its AC 5 names that failure). The
+  // seed migrations are the other source, which is exactly the agreement this
+  // guard exists to protect: re-keying onto `TEAM_LOGO_ENTRIES` instead would be
+  // circular, because the extractor two lines above reads its list out of that
+  // same file, so a loop over it would assert a file agrees with itself.
+  // `parseTeamsSeed` is the shared reader (deferred-work.md:343): the venue
+  // probe and `00016`'s generator call the same function this test asserts, so
+  // one regex serves all three and drift between copies cannot go unnoticed.
+  const teamsSeedText =
+    readFileSync(
+      fileURLToPath(new URL('../../../supabase/migrations/00005_release_1_data_model.sql', import.meta.url)),
+      'utf8'
+    ) +
+    readFileSync(
+      fileURLToPath(new URL('../../../supabase/migrations/00007_backfill_missing_historical_series.sql', import.meta.url)),
+      'utf8'
+    );
+  const seededAbbreviations = [...parseTeamsSeed(teamsSeedText, '00005 + 00007 teams seed').keys()];
+
   it('extracts every alias entry from the source (guards the regex harness itself)', () => {
-    // A count floor alone would let a reformat shrink this loop unnoticed, so
-    // the guard is cross-source: every abbreviation the app knows must be an
-    // alias the extractor found.
-    for (const abbreviation of Object.values(TEAM_ABBREVIATIONS)) {
+    // Non-vacuity first: a reader that parsed nothing, and an extractor that
+    // matched nothing, would both make the loop below pass by checking nothing.
+    expect(seededAbbreviations).toHaveLength(EXPECTED_TEAM_COUNT);
+    expect(aliasEntries.length).toBeGreaterThan(seededAbbreviations.length);
+
+    // Every abbreviation the `teams` table seeds must also be a resolvable logo
+    // alias — 30 current franchises (`00005`) plus 29 historical identities
+    // (`00007`). A new era code with no alias entry is the drift this catches.
+    for (const abbreviation of seededAbbreviations) {
       expect(aliasEntries).toContain(abbreviation);
     }
   });

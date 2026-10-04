@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import type { MethodSlug } from '@/types/prediction';
+import type { Series, Team } from '@/types/types';
 import {
   chooseCustomMatchup,
   chooseMethod,
@@ -101,18 +102,219 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     expect(screen.getByText('101 — 91')).toBeInTheDocument();
   });
 
-  it('derives the custom trigger label from dict hits, initials and truncation', async () => {
+  it('derives the custom trigger label from initials and truncation', async () => {
     renderPage();
     await chooseCustomMatchup();
     // Blank names fall to 'TBD', never back to the old 'Team A'/'Team B' request fallback.
     expect(screen.getByText('TBD vs TBD')).toBeInTheDocument();
 
     fillField('team_a', 'Boston Celtics');
-    expect(screen.getByText('BOS vs TBD')).toBeInTheDocument(); // dict hit
+    // Story 2.11 U15 re-keyed this pin: `BOS` no longer comes from the deleted
+    // `TEAM_ABBREVIATIONS` dictionary but from the `teams` row the picker fetch
+    // already loaded (`seriesFixture.team_a`), which spells that name and stores
+    // that code. Same letters, new source — see the case below for the fall-through.
+    expect(screen.getByText('BOS vs TBD')).toBeInTheDocument(); // row hit (U15)
     fillField('team_b', 'Los Angeles');
     expect(screen.getByText('BOS vs LA')).toBeInTheDocument(); // multi-word initials
     fillField('team_a', 'Celtics');
     expect(screen.getByText('CEL vs LA')).toBeInTheDocument(); // single-word truncation
+  });
+
+  // Story 2.11 U15 (owner, 2026-10-04): after the map is deleted the typed name
+  // resolves against the rows the page already holds in memory — `fetchAllGames`
+  // loads every series through `SERIES_SELECT`, which embeds `abbreviation` on
+  // both sides — and a hit prints that stored code. No new query, no new matching
+  // rule: `full_name` only, exact after trim + lower-case.
+  const sonicsTeam: Team = { id: 25, full_name: 'Seattle SuperSonics', abbreviation: 'SEA', created_at: 'e' };
+  const jazzTeam: Team = { id: 29, full_name: 'Utah Jazz', abbreviation: 'UTA', created_at: 'f' };
+  const historicalFixture: Series = {
+    ...seriesFixture,
+    id: 's-1979',
+    year: 1979,
+    team_a: sonicsTeam,
+    team_b: jazzTeam,
+    team_a_id: 25,
+    team_b_id: 29,
+  };
+
+  it('resolves a typed custom name through the rows the picker already loaded (U15)', async () => {
+    db.list = { data: [seriesFixture, historicalFixture], error: null };
+    renderPage();
+    await chooseCustomMatchup();
+
+    // A historical identity the deleted map never covered: today's name path
+    // prints the initialism `SS`, the row prints the stored `SEA`.
+    fillField('team_a', 'Seattle SuperSonics');
+    expect(screen.getByText('SEA vs TBD')).toBeInTheDocument();
+    fillField('team_b', 'Utah Jazz');
+    expect(screen.getByText('SEA vs UTA')).toBeInTheDocument();
+
+    // Case is not part of the match: the index is keyed on the lower-cased
+    // `full_name`, so a lowercase-typed name hits the same row rather than
+    // falling to the initialism the raw-equality arm would have returned.
+    fillField('team_a', 'seattle supersonics');
+    expect(screen.getByText('SEA vs UTA')).toBeInTheDocument();
+    expect(screen.queryByText('SS vs UTA')).toBeNull();
+    fillField('team_a', 'Seattle SuperSonics');
+
+    // Mid-typing there is no matching row, so the name path speaks — the
+    // transient goes wrong→right as the keystrokes complete (U15's accepted
+    // consequence), and it is the same truncation the surface shows today.
+    fillField('team_b', 'Utah J');
+    expect(screen.getByText('SEA vs UJ')).toBeInTheDocument();
+
+    // A nickname is not a `full_name`, so it stays a truncation rather than
+    // inventing a second matching rule beside the archive's substring search.
+    fillField('team_a', 'SuperSonics');
+    expect(screen.getByText('SUP vs UJ')).toBeInTheDocument();
+
+    // Exact after normalize, not exact in the raw string: padding still hits.
+    fillField('team_a', '  Seattle SuperSonics  ');
+    expect(screen.getByText('SEA vs UJ')).toBeInTheDocument();
+
+    // An unrecognized name falls through unchanged (`Nowhere FC` → `NF`), which
+    // is the Story 1.4 pin this case deliberately does not move.
+    fillField('team_a', 'Nowhere FC');
+    expect(screen.getByText('NF vs UJ')).toBeInTheDocument();
+  });
+
+  // Story 2.11 U6/U7: the two DB-backed answer surfaces — the result card and
+  // the detailed sheet — read the embedded rows' stored codes, and
+  // `predicted_winner` is resolved client-side against those same two candidate
+  // rows (U7: no contract change, no Edge Function deploy). The Sonics/Jazz
+  // pair is the golden divergence: the name path the surfaces used to run
+  // through printed `SS` and `UJ`.
+  it('answers a DB-backed prediction with the stored codes on the card and the details sheet', async () => {
+    db.single = { data: historicalFixture, error: null };
+    renderPage('/predict?series=s-1979');
+    expect(await screen.findByText('SEA vs UTA')).toBeInTheDocument();
+
+    await chooseMethod('Logistic Regression');
+    db.invoke.mockResolvedValue({
+      data: {
+        ...conformingResult,
+        predicted_winner: 'Seattle SuperSonics',
+        team_a: 'Seattle SuperSonics',
+        team_b: 'Utah Jazz',
+      },
+      error: null,
+    });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    // The card prints the stored `SEA` for the winner; the losing team's line
+    // is a compound `{code} · {prob}%` string, so it is matched by prefix and
+    // pinned by textContent (AGENTS.md: no computed-accessible-name assertion).
+    expect(screen.getByText('SEA')).toBeInTheDocument();
+    const cardLosingLine = Array.from(document.querySelectorAll('p')).find((node) =>
+      (node.textContent ?? '').startsWith('UTA · ')
+    );
+    expect(cardLosingLine?.textContent).toBe('UTA · 38.75%');
+
+    fireEvent.click(screen.getByText('View Detailed Analysis'));
+    await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
+    // Each code prints twice in the sheet — the matchup span and the winner /
+    // losing line (`:1324`,`:1329`,`:1340`,`:1358`) — which is the pin for all
+    // four converted lines at once.
+    expect(screen.getAllByText('SEA')).toHaveLength(2);
+    expect(screen.getAllByText('UTA')).toHaveLength(2);
+  });
+
+  // The mirror image of the case above, and the reason it exists: each surface's
+  // `Losing Team` line is a ternary (`:1252-1254`, `:1358-1361`), so with the
+  // Sonics as winner only the `codeB` arm paints and the card's `codeA` (`:1203`)
+  // would survive a mutation that dropped its row argument. Flipping the predicted
+  // winner to the other candidate row puts the *stored* `SEA` on the losing line
+  // of both surfaces — the last two converted sites no other case can redden — and
+  // the probability prints team A's (61.25), which is what makes this the
+  // opposite branch rather than a repeat.
+  it('prints the stored code for the losing side when the other row wins', async () => {
+    db.single = { data: historicalFixture, error: null };
+    renderPage('/predict?series=s-1979');
+    await chooseMethod('Logistic Regression');
+    db.invoke.mockResolvedValue({
+      data: {
+        ...conformingResult,
+        predicted_winner: 'Utah Jazz',
+        team_a: 'Seattle SuperSonics',
+        team_b: 'Utah Jazz',
+      },
+      error: null,
+    });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    expect(screen.getByText('UTA')).toBeInTheDocument();
+    const cardLosingLine = Array.from(document.querySelectorAll('p')).find((node) =>
+      (node.textContent ?? '').startsWith('SEA · ')
+    );
+    expect(cardLosingLine?.textContent).toBe('SEA · 61.25%');
+
+    fireEvent.click(screen.getByText('View Detailed Analysis'));
+    await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
+    // Two `SEA` in the sheet — the matchup span and the losing line — and two
+    // `UTA` (the span's other side and the winner line), which pins all four
+    // converted sheet lines at once; the winner prints `UTA`.
+    expect(screen.getAllByText('SEA')).toHaveLength(2);
+    expect(screen.getAllByText('UTA')).toHaveLength(2);
+  });
+
+  // Story 2.11 U15 on the answer surfaces (review pass): a custom matchup carries
+  // no series FK, so its rows come from the same typed-name index the trigger
+  // label used. Without that fallback the card and sheet would print the name
+  // initialism `SS`/`UJ` beside a picker reading the stored `SEA`/`UTA` — one fan,
+  // one name, two codes on one page.
+  it('answers a custom matchup with the stored codes the trigger label used (U15)', async () => {
+    db.list = { data: [seriesFixture, historicalFixture], error: null };
+    renderPage();
+    await chooseCustomMatchup();
+    fillField('team_a', 'Seattle SuperSonics');
+    fillField('team_b', 'Utah Jazz');
+    for (let game = 1; game <= 6; game++) {
+      fillField(`game_${game}_score_a`, `${100 + game}`);
+      fillField(`game_${game}_score_b`, `${90 + game}`);
+    }
+    await chooseMethod('Logistic Regression');
+    // The trigger half of the agreement, before anything is submitted.
+    expect(screen.getByText('SEA vs UTA')).toBeInTheDocument();
+
+    db.invoke.mockResolvedValue({
+      data: {
+        ...conformingResult,
+        predicted_winner: 'Seattle SuperSonics',
+        team_a: 'Seattle SuperSonics',
+        team_b: 'Utah Jazz',
+      },
+      error: null,
+    });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    expect(screen.getByText('SEA')).toBeInTheDocument();
+    const cardLosingLine = Array.from(document.querySelectorAll('p')).find((node) =>
+      (node.textContent ?? '').startsWith('UTA · ')
+    );
+    expect(cardLosingLine?.textContent).toBe('UTA · 38.75%');
+    // The name path would have printed these instead, and nothing else does.
+    expect(screen.queryByText('SS')).toBeNull();
+    expect(screen.queryByText('UJ')).toBeNull();
+
+    fireEvent.click(screen.getByText('View Detailed Analysis'));
+    await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
+    expect(screen.getAllByText('SEA')).toHaveLength(2);
+    expect(screen.getAllByText('UTA')).toHaveLength(2);
+  });
+
+  // Story 2.11 U8: `Team A` / `Team B` are one named client literal, never rows
+  // in `teams`. A join miss on the preload hands the helper the literal with no
+  // row beside it, so step 2 of the resolution order answers it.
+  it('prints the placeholder literal for a preloaded series whose FK row is missing (U8)', async () => {
+    db.single = { data: { ...seriesFixture, team_a: undefined, team_a_id: null }, error: null };
+    renderPage('/predict?series=s-1');
+
+    // `TMA`, not the bare initialism `TA` the name path would derive from
+    // 'Team A' — and the row-backed side is untouched.
+    expect(await screen.findByText('TMA vs MIA')).toBeInTheDocument();
   });
 
   it('warns once per unrecognized custom name without blocking the request', async () => {

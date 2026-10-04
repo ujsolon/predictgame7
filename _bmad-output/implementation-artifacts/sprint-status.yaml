@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-04-2026 07:40
+last_updated: 10-04-2026 11:40
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -120,12 +120,42 @@ development_status:
   # Found while building 2-10, on the owner's observation that typing SAS on /historical finds
   # Kansas City, not the Spurs. Measured bigger than it looks: the row displays
   # getTeamAbbreviation(full_name), which disagrees with the stored teams.abbreviation on 39 of 178
-  # rows (20 franchises, all pre-1976), and the helper has 16 more call sites on PredictPage (14
+  # rows (20 franchises, spanning 1948→1997 — "all pre-1976" was the 2026-10-02 reading and
+  # Story 2.11's re-measurement falsified it; all 20 are 00007 historical identities), and the
+  # helper has 16 more call sites on PredictPage (14
   # lines, 2 inside a commented-out block). SETTLED 2026-10-02 over two owner rounds (walkthrough
   # U1/U3, then U6-U9): search matches the FK's stored abbreviation, the name path stays, the
   # SAS→Kansas hit is accepted (the list is year-descending, so recent rows lead), and all 14 live
   # code sites read the row while the hardcoded TEAM_ABBREVIATIONS map is deleted. Spec-2-10 D5'.
-  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: backlog
+  # TWO MORE OWNER DECISIONS 2026-10-04 while the spec was open, numbered past U10-U13 (Stories
+  # 2.5/2.6 consumed those): U14 — the search field's placeholder becomes "Search by team name or
+  # code..." ("Search for a team" rejected as redundant with the Search Team label above it), and
+  # U15 — the custom-matchup typed name resolves against the games rows fetchAllGames already put
+  # in memory, so a name the database spells that way prints its stored code and the story title
+  # holds on all three surfaces. U15 renegotiates epics.md's ":423,424 stay on the name path by
+  # construction" and records "removing the map changes nothing for any modern team" as falsified
+  # (24 of the 30 modern franchises fall to BC-class initialisms on the bare name path).
+  # BUILT 2026-10-04: gate exit 0 (452 tests), the 20 divergent franchises pinned row-by-row. The
+  # build session's "seven mutation runs" claim was unverifiable and its harness was broken twice
+  # (--reporter=basic does not exist, so every spawn died at startup and looked RED; \e is not ESC
+  # in a JS regex, so real failures never parsed). Re-run in the review pass with green baselines:
+  # 13/13 mutations reddened a named test — table in the spec's Verification section, which also
+  # records the gap that audit found (the card's codeA was mutation-immune until the flipped-winner
+  # case was added).
+  # REVIEW PASS 1 2026-10-04: 23 findings (B1-B14 / E1-E7 / V1-V2) triaged in the spec's Review
+  # Triage Log — 18 accepted into 5 patch groups + 8 record corrections, 5 refuted, 2 deferred; no
+  # intent_gap/bad_spec so no loopback. Patches: the helper's row arm is case-insensitive after trim
+  # (E1/E4, it contradicted the caller's lower-cased index), both answer surfaces fall back to U15's
+  # index so a custom matchup reads the same on label, card and sheet (E2/E5/V2), the Predict
+  # projection is pinned for `abbreviation` in both enumerated embeds (V1 — the reviewer showed 40/40
+  # green with the column pruned), and the 20 hand-typed pairs are cross-checked against the 00005 +
+  # 00007 seeds (B10/E6). Three tests added; gate re-run green at 455 (pass-2 mutations 5/5, table in
+  # Verification). One frozen-text error is the owner's to renegotiate, not the build's to edit: the
+  # spec's I/O matrix `:63` says `Nowhere FC` → `NOW` while code and tests print `NF` (E7; epics.md's
+  # bracket corrected, the frozen cell left as written).
+  # AT REVIEW — the owner's preview look is the acceptance (U15
+  # was accepted sight-unseen: "I have to see it to completely verify").
+  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: review
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   # 2026-10-03: spec approved at CHECKPOINT 1 (owner decisions U10-U13; history split out to
