@@ -1,11 +1,12 @@
-# `SeriesDataSource` port contract — Story 2.3, extended by Story 2.4
+# `SeriesDataSource` port contract — Story 2.3, extended by Story 2.4 and Story 2.13
 
 Status: shipped in `supabase/scripts/pipeline/` (Story 2.3; the `nba_com`
-adapter landed beside it in Story 2.4). This is the port documentation
-`epics.md` Story 2.3 AC (:353) asks for, with `manual_csv` as the reference
-implementation. Source of truth for the boundary is `ARCHITECTURE-SPINE.md`
-AD-5; the two fetch method names below are verbatim from AD-5 and must not
-drift.
+adapter landed beside it in Story 2.4; the `espn` adapter landed in Story 2.13
+and became the SCHEDULED source there — `nba_com` stays registered and
+hand-runnable). This is the port documentation `epics.md` Story 2.3 AC (:353)
+asks for, with `manual_csv` as the reference implementation. Source of truth for
+the boundary is `ARCHITECTURE-SPINE.md` AD-5; the two fetch method names below
+are verbatim from AD-5 and must not drift.
 
 ## What the port is
 
@@ -79,11 +80,17 @@ exact pair; the runner groups, plans, and asserts before any write.
 - `SERIES_SOURCE` (env) selects the adapter; `--source=` (flag) overrides it.
   Default: `manual_csv`.
 - Registry: `ADAPTER_REGISTRY` in `port.ts`, keyed by the AD-5 adapter list —
-  `manual_csv | fantrax | nba_com`.
-- Implemented since Story 2.4: `manual_csv` and `nba_com`. A flag the selected
-  adapter cannot use (`--csv=` with `nba_com`, `--season=` with `manual_csv`)
-  refuses the run — a silently discarded flag would let the operator believe
-  they steered it.
+  `manual_csv | fantrax | nba_com | espn`. `espn` is the SCHEDULED source from
+  Story 2.13 on (Story 2.6's egress evidence: `stats.nba.com` refuses every
+  cloud while `site.api.espn.com` answers from both — 78 ms hosted, 226 ms from
+  Supabase). `nba_com` stays registered and hand-runnable, because it remains
+  the source a residential address can still reach and dropping a recognised
+  name would only invite a future session to re-propose the endpoint
+  unexamined (owner call C1).
+- Implemented: `manual_csv` and `nba_com` (Story 2.4), `espn` (Story 2.13). A
+  flag the selected adapter cannot use (`--csv=` with `nba_com`, `--season=`
+  with `manual_csv`, anything at all with `espn`) refuses the run — a silently
+  discarded flag would let the operator believe they steered it.
 - `fantrax` stays recognised-but-unimplemented, and its refusal message now
   carries the Story 2.1 spike's actual rejection (Fantrax endpoints are
   fantasy-scoped and never return a real NBA game score with home/away sides,
@@ -123,8 +130,13 @@ spike's six headers copied verbatim.
   final buzzer before the run, so non-null PTS on both sides means a finished
   game. An ad-hoc run at, say, 03:30 UTC can consume an in-progress game —
   `finalScore` rejects only null, negative and non-finite PTS — so scheduled
-  runs are the supported mode. Neither limit changes which series enter the
-  plan; both change how the report's counts read.
+  runs are the supported mode. [Amended by Story 2.13: this source now carries
+  NO cadence — `espn` is the scheduled adapter, at 07:30 UTC — so `nba_com` runs
+  only by hand, where the operator picks the instant and applies this same
+  margin reasoning to that instant. `espn` needs no such proxy: it admits a game
+  only when the feed itself labels it `state=post` and `description=Final`.]
+  Neither limit changes which series enter the plan; both change how the
+  report's counts read.
 - **Round vocabulary: four canonical labels by chain depth.** No working unkeyed
   endpoint returns a round name, so `adapters/rounds.ts` walks the
   postseason in date order (`depth = 1 + max(deeper side's previous depth)`,
@@ -178,6 +190,70 @@ first exited 2 on a defect in **this script's** own series selection (a
 franchise that advanced contributed its later rounds — fixed in `4002893`),
 the second passed every leg end to end against `Season=2025-26`.
 
+## Automated adapter: `espn` (Story 2.13)
+
+`supabase/scripts/pipeline/adapters/espn.ts` — the unkeyed
+`site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard` route, the
+source Story 2.6's egress evidence forced: `stats.nba.com` refuses every cloud
+(0/15 across two providers and three client stacks) while this host answers from
+both (78 ms hosted, 226 ms from Supabase). It is the SCHEDULED source; `nba_com`
+stays registered and hand-runnable (owner call C1).
+
+- **One request, one date.** `dates=YYYYMMDD` with exactly one value. The range
+  form answers `400` with a body carrying no `events` (measured, and re-checked
+  by the probe's range control), so a backfill is a bounded loop of single-date
+  runs and this adapter builds only the single-date form — `scoreboardUrl()`
+  throws on anything that is not eight digits.
+- **The date is derived, never passed.** The PREVIOUS `America/New_York`
+  calendar day of the run instant (`deriveRequestDate`), because ESPN filters
+  `dates` by US local date (measured: `dates=20260605` returned the game stamped
+  `2026-06-06T00:30Z`) and the 07:30 UTC slot fires at 02:30–03:30 ET, before
+  that day's tips. A UTC-derived date reads an empty feed and trips
+  `--require-feed` on a day that had games. `ADAPTER_FLAGS` gives `espn` no
+  flags at all: a `--date=` would be the calendar logic AD-4 refuses.
+- **Identity resolves through `teams.espn_code`, not `abbreviation`.** Measured
+  divergences: ESPN prints `NY` for `NYK` (id 20) and `SA` for `SAS` (id 27),
+  while `CLE`/`TOR`/`DEN` agree. A code that resolves to nothing aborts the run
+  naming the code, and substring, city and nickname matching are refused by the
+  adapter's own text — a silent mismatch drops games. `team.displayName` is
+  never read as an identity. The column is migration `00018` (additive,
+  nullable, partial unique index) and its seeds come only from the owner's probe
+  output.
+- **Round and game number come from the headline.**
+  `competitions[0].notes[0].headline` ("East 1st Round - Game 2") is the only
+  naming source on the measured payload — `competitions[0].type.shortName` is
+  ABSENT there. The round phrase maps onto `rounds.ts`' frozen canonical
+  vocabulary through `labelForDepth`, so no new `round` spelling can reach the
+  table and the archive's 17 era spellings stay untouched. An absent headline or
+  an out-of-vocabulary phrase excludes the game and NAMES it in
+  `describeRun().notes`.
+- **Selection rule: Final AND game 7.** The feed is date-granular while the plan
+  model is series-granular, so this adapter's live job is Game 7 of a series the
+  curated path already stored as pending. `plan.ts` admits that one shape and
+  refuses to birth a series from a partial source; games 1–6 still arrive only
+  through `manual_csv`. Admission requires `status.type.state === 'post'` with
+  `description === 'Final'` — `in`, `pre` and any unrecognised string are
+  excluded and named, never defaulted to "finished", because the host is
+  undocumented Disney-side infrastructure with no SLA.
+- **Failure posture:** 25 s `AbortSignal.timeout`, three attempts,
+  `[1000, 4000]` ms backoff on 429/5xx or a body that is not the scoreboard
+  shape; non-retryable statuses fail at once, and every terminal message names
+  the URL and states that no `manual_csv` fallback was taken.
+
+`scripts/probe-espn-adapter.mjs` is the committed live leg (owner-run, in the
+Story 2.4 precedent): one leg drives the SHIPPED adapter over a named date and
+prints the field coverage the parse depends on, one measures the 30-franchise
+code table `00018` seeds from, and one re-checks the range refusal. Any
+disagreement exits 2 with every leg's reason listed, so a "PROBE PASSED" line
+can never sit under a printed failure.
+
+**Fallback of last resort: `basketball-reference.com`** — measured reachable
+from both clouds (`200 text/html`, 215,254 bytes in 220 ms) and deliberately
+UNIMPLEMENTED (owner call C4). The scrape cost — HTML coupling, no published
+schema, a Cloudflare guard — makes it a conditional story authored only if the
+ESPN route actually fails, not a standby in this repo. `manual_csv` stays the
+floor beneath both.
+
 ## What the runner asserts before it writes (plan.ts)
 
 1. **Either-slot-order identity** (AD-5): the `(year, pair)` must be absent
@@ -193,13 +269,19 @@ the second passed every leg end to end against `Season=2025-26`.
 2. **Game-1-home convention** (AD-5): `team_a_id` must equal game 1's
    `home_team_id`. The adapter derives the slots from the game-1 row, so this
    is the check that a hand-edited or future automated row keeps the first
-   slot honest; a mismatch names the row and aborts.
+   slot honest; a mismatch names the row and aborts. Story 2.13's game-7-only
+   shape cannot be checked this way and is not: `espn` sets `team_a` to game
+   7's HOME side because it never sees game 1, so there is no game-1 row to
+   compare against (`plan.ts:215-221` fires only when one exists). What holds
+   that shape's slots honest instead is item 1 — the either-slot-order identity
+   assertion against the STORED pair, which aborts on the mirror image.
 3. **AD-4 derivation invariant**: a winner implies exactly the seven decided
    score rows `{1..7}` whose game-7 winner matches `winner_team_id` **and** a
    games-1-6 split of 3–3 (a 4–2 through six is an impossible shape, not a
    completion); a null winner implies exactly `{1..6}`, all decided (no
    ties), split 3–3. The game-number-set half reuses `deriveSeriesPhase`
-   (`src/lib/series-phase.ts`) rather than restating it.
+   (`src/lib/series-phase.ts`) rather than restating it. Story 2.13 adds ONE
+   exception to that shape set — item 6 below — and it is the only one.
 4. **Source self-consistency**: no duplicate identities in either slot
    order, no duplicate game numbers, every game between the two slots.
 5. **Never-rewrite rules**: an existing row is only ever *completed* (append
@@ -207,6 +289,26 @@ the second passed every leg end to end against `Season=2025-26`.
    are never overwritten; a source that disagrees with the table aborts. Two
    table rows that mirror each other in both slot orders also abort: the
    runner refuses to pick one and write against half the truth.
+6. **Story 2.13's one new source shape** — a winner plus exactly ONE score row,
+   game 7 (`gameSevenOnly`). It exists because the feed is date-granular while
+   this model is series-granular: one run can see a Game 7 and nothing else.
+   What it changes is the *source side* of the equality checks, never the write:
+   - the 3–3 certification is NOT dropped. `pipeline_complete_series` re-reads
+     the STORED games 1..6 and raises unless they are six decided games split
+     3–3 (`00015:286-308`), and the plan mirrors that on the stored row with
+     `storedPendingCertification` (`plan.ts:314-333`) so the run keeps its
+     promise that nothing reaches a write the database would reject.
+   - it never births. A game 7 with no stored pending row aborts naming the
+     path that does supply games 1–6 (`--source=manual_csv`), rather than
+     inserting a series that starts at one game (`plan.ts:411-424`).
+   - the pending completion compares against the stored row instead of the
+     source's games 1–6, which the shape does not carry (`plan.ts:453-481`).
+   - an archived replay of the same game 7 SKIPS rather than aborting, so
+     dispatching one date twice stays green (`plan.ts:493-502`), and the
+     non-reconciling repair branch is excluded for this shape — agreeing with
+     one row out of seven would prove nothing about the 3–3 (`plan.ts:515`).
+   Births and whole-series archive rows therefore stay on the curated path; the
+   scheduled feed's job is Game 7 admissions only.
 
 Violations are `PlanAssertionError`s naming the offending row; the entry
 point maps any failure to exit code 2 with zero writes issued (the plan is
@@ -367,6 +469,7 @@ column reach the database through migration `00016` instead, emitted by
 
 ```
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
+node --env-file=.env supabase/scripts/pipeline/run.ts --source=espn --dry-run
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
 node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --season=2016-17 --dry-run
 node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights
@@ -387,8 +490,11 @@ no `engines` field, so on an older Node the first command fails at parse time
 rather than with a readable message. `--csv=<path>` points `manual_csv` at a
 different file; `--season=<YYYY-YY>` points `nba_com` at one postseason
 (the archive is frozen — a drill onto an archived year reaches the archive
-guard, never a rewrite). Each flag refuses the run when handed to the other
-adapter.
+guard, never a rewrite). `espn` takes **no flag at all**: its single date is
+derived from the run instant, so a hand run of it asks the feed for yesterday in
+`America/New_York` and nothing else — a `--date=` would put calendar logic in the
+operator's hands, which AD-4 refuses. Each flag refuses the run when handed to
+an adapter that cannot use it.
 
 `.env` supplies `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (owner-only;
 never committed). Drop `--dry-run` to apply. Exit 0 = plan applied (or
@@ -435,11 +541,25 @@ April.
 Two things a reader must not get wrong from that file:
 
 - **The three inseason cron lines are one bracket.** A cron day-of-month range
-  cannot express mid-April through June in a single line, so `30 9 16-30 4 *` /
-  `30 9 * 5 *` / `30 9 1-30 6 *` together *are* the design's only date
+  cannot express mid-April through June in a single line, so `30 7 16-30 4 *` /
+  `30 7 * 5 *` / `30 7 1-30 6 *` together *are* the design's only date
   expression — the runner still derives nothing from a date. When the bracket
   moves (lockout, shifted Play-In, Finals past June 30) the edit happens in that
-  file and nowhere else.
+  file and nowhere else. [The minute is `30 7`, moved from `30 9` by owner call
+  2026-10-04 (Story 2.13) and argued in `spec-2-13-espn-feed-adapter/schedule-amendment.md`;
+  `keepalive.yml` moved with it to `0 7 * * *`, because the ordering — warm the
+  PostgREST instance, then run — is the reason the minute exists. What the move
+  trades away is the margin: at 07:30 UTC it is 02:30–03:30 ET, so a game still
+  in overtime when the run fires is excluded as non-Final, named in the report,
+  and never re-fetched.]
+- **The scheduled source is `espn` since Story 2.13, and that changed what the
+  offseason edges can do.** Both workflows dispatch `--source=espn` by default,
+  and a date-granular feed carries a Game 7 but never a series' first six games.
+  So the April edge's "initialize the bracket" half is served by `--source=manual_csv`
+  — Story 2.7's curated drill — while the June edge's "finalize" half is exactly
+  what the feed does. The re-point is in the same commit as the adapter by
+  design: a cadence defaulting to a source that cannot be reached from a runner
+  is the failure Story 2.6's egress evidence was about.
 - **`--env-file` is absent on purpose.** Node treats a missing env-file as
   fatal and a runner has no `.env`, so credentials enter through the step's
   `env:` block from repository secrets — never on a command line, never from a

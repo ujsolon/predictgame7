@@ -32,15 +32,15 @@ The rehearsal (`scripts/rehearse-migration-00014.mjs`, `COVERED_THROUGH = 17`) n
 
 ## D-3 — How an empty feed alarms
 
-The asymmetry that must survive any choice: an empty **plan** is legitimate (a day with no completed games), while an empty **feed** from `nba_com` inside the window is the anomaly. And `manual_csv` declares no `describeRun` (`run.ts:285-292`), so it prints no counts line to key anything on.
+The asymmetry that must survive any choice: an empty **plan** is legitimate (a day with no completed games), while an empty **feed** from `nba_com` inside the window is the anomaly `[→ Story 2.13: the scheduled feed is `espn`, and `nba_com` is now the hand-run name in this sentence's place — the asymmetry it describes is unchanged]`. And `manual_csv` declares no `describeRun` (`run.ts:285-292` [→ the declaration is the registry's, `port.ts:164`, read through `adapterHasRunReport` at `port.ts:180`; the up-front refusal is `run.ts:302-308`]), so it prints no counts line to key anything on.
 
 | Option | Mechanism | Failure mode of the mechanism itself |
 |---|---|---|
 | A. Workflow greps the log for `0 series in feed` | zero code change | a copy edit to `countsLine` (`adapters/nbaCom.ts:530-534`) silently turns the check into one that never matches — the hole reopens as green |
-| **B. A runner flag the workflow declares** (e.g. `--require-feed`): exits 2 when the selected adapter's report counts zero series, and refuses up front with `--source=manual_csv` because there is no report to check (same "refuse rather than silently discard" rule as `run.ts:248-255`) | tested in `tests/pipeline/run.test.ts` without a runner; fails loudly on its own contract | a small runner change, and a flag the frozen Story 2.4/2.5 flag allowlist (`run.ts:109`) must be taught to accept |
+| **B. A runner flag the workflow declares** (e.g. `--require-feed`): exits 2 when the selected adapter's report counts zero series, and refuses up front with `--source=manual_csv` because there is no report to check (same "refuse rather than silently discard" rule as `run.ts:248-255` [→ `run.ts:288-297`]) | tested in `tests/pipeline/run.test.ts` without a runner; fails loudly on its own contract | a small runner change, and a flag the frozen Story 2.4/2.5 flag allowlist (`run.ts:109` [→ `run.ts:122-131`]) must be taught to accept |
 | C. Accept silence; the owner reads the daily log | zero | contradicts AD-5 naming silent in-window staleness as the thing to prevent |
 
-**DECIDED (owner, 2026-10-03): B — `--require-feed`.** The runner exits 2 when the selected adapter's `describeRun` report counts zero series, and refuses up front when paired with `--source=manual_csv` (no report to check). Declared by the inseason workflow rather than defaulted on — that is what keeps the runner date-blind while making zero-rows-a-failure depend on the window. Joins the `run.ts:109` flag allowlist; tested in `tests/pipeline/run.test.ts`, so it needs no runner.
+**DECIDED (owner, 2026-10-03): B — `--require-feed`.** The runner exits 2 when the selected adapter's `describeRun` report counts zero series, and refuses up front when paired with `--source=manual_csv` (no report to check). Declared by the inseason workflow rather than defaulted on — that is what keeps the runner date-blind while making zero-rows-a-failure depend on the window. Joins the `run.ts:109` [→ `run.ts:122-131`] flag allowlist; tested in `tests/pipeline/run.test.ts`, so it needs no runner.
 
 ## D-4 — Shared notify step, or a third copy
 

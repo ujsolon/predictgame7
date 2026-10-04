@@ -74,6 +74,11 @@ export class PipelineRunError extends Error {}
 const ADAPTER_FLAGS: Record<string, string[]> = {
   manual_csv: ['csv'],
   nba_com: ['season'],
+  // Story 2.13: `espn` takes NO flag. Its one date is derived from the run
+  // instant inside the adapter, so a `--date=` flag would be the calendar
+  // input the spec's Non-goals refuse, and `--season=` is an nba_com notion
+  // the scoreboard endpoint does not speak.
+  espn: [],
 };
 
 export interface RunDeps {
@@ -298,7 +303,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       throw new PipelineRunError(
         `--require-feed does not apply to adapter "${sourceName}" — the empty-feed alarm reads the adapter's run report and this ` +
           'adapter declares none: its rows are a file an operator edited, not a feed that can come back empty. Refusing instead of ' +
-          'silently passing a check that can never run; use --source=nba_com.',
+          'silently passing a check that can never run; use --source=espn.',
       );
     }
     // Decision 8: the CSV path is resolved only for the adapter that can read
@@ -309,10 +314,23 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
 
     const teams = await sink.readTeams();
     const teamIds = new Map<string, number>(teams.map((team) => [team.abbreviation, team.id]));
+    // Story 2.13: a SECOND, per-adapter resolver, keyed on `teams.espn_code`
+    // rather than `teams.abbreviation`. It is not the same map under another
+    // name and must not become one: ESPN prints `NY`/`SA` where the table holds
+    // `NYK`/`SAS` (measured), so an abbreviation-equality join would silently
+    // drop those franchises' games — the one failure mode in the evidence with
+    // no loud signal at all. Identities with no provider code (the 29 historical
+    // rows, the placeholders) are absent from this map by construction, which is
+    // what makes an unresolvable code abort naming the code instead of resolving
+    // to a wrong franchise.
+    const espnTeamIds = new Map<string, number>(
+      teams.filter((team) => team.espn_code != null).map((team) => [team.espn_code as string, team.id]),
+    );
     const adapterDeps: AdapterDeps = {
       csvPath,
       readFile,
       teamIdByAbbreviation: (abbreviation) => teamIds.get(abbreviation),
+      teamIdByEspnCode: (code) => espnTeamIds.get(code),
       fetch: deps.fetch,
       now: deps.now,
       seasonOverride: seasonArg,

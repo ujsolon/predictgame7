@@ -20,8 +20,16 @@ import type { ComparableScore, CurrentScoreRow, CurrentSeriesRow, PlannedBirth, 
 export interface TeamRow {
   id: number;
   abbreviation: string;
+  /**
+   * Story 2.13 (migration `00018`) — the provider code `site.api.espn.com`
+   * prints for this franchise, when it has one. Nullable by design: the 29
+   * historical identities and the `Team A`/`Team B` placeholders carry no
+   * modern ESPN code and stay NULL, and the `espn` adapter's join key resolves
+   * only through this column (never `abbreviation`, which differs for at least
+   * `NY`/`NYK` and `SA`/`SAS`).
+   */
+  espn_code: string | null;
 }
-
 /**
  * The census `pipeline_refresh_insights_cache()` returns (00017, Story 2.5):
  * the population the server counted and the headline numbers it wrote. The
@@ -92,7 +100,7 @@ export function createSupabaseSink(options: SinkOptions): PipelineSink {
   const client = createClient(options.supabaseUrl, options.serviceRoleKey);
   return {
     async readTeams() {
-      const { data, error } = await client.from('teams').select('id, abbreviation');
+      const { data, error } = await client.from('teams').select('id, abbreviation, espn_code');
       if (error) throw new Error(`reading teams failed: ${error.message}`);
       return (data ?? []) as TeamRow[];
     },

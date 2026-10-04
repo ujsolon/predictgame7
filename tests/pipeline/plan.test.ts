@@ -2,14 +2,14 @@
 // no database: the whole I/O matrix is a function of (source rows, current
 // table rows).
 import { describe, expect, it } from 'vitest';
+import type { Plan } from '../../supabase/scripts/pipeline/plan.ts';
 import {
-  PlanAssertionError,
-  groupSourceRows,
-  planPipeline,
   type CurrentSeriesRow,
+  groupSourceRows,
+  PlanAssertionError,
+  planPipeline,
   type SourceSeries,
 } from '../../supabase/scripts/pipeline/plan.ts';
-import type { Plan } from '../../supabase/scripts/pipeline/plan.ts';
 import type { GameScoreRow, SeriesStatusRow } from '../../supabase/scripts/pipeline/port.ts';
 
 const TEAM_A = 10; // GSW-shaped first slot (game 1 home)
@@ -246,5 +246,173 @@ describe('planPipeline — I/O matrix', () => {
 
   it('team slots holding the same team is an impossible shape', () => {
     expect(() => planFor([{ status: statusRow({ team_b_id: TEAM_A }), games: [] }], [])).toThrowError(/same team/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 2.13 — the ONE new source shape: a stored pending series plus a source
+// carrying only that pair's game 7. What narrows is the plan-level equality
+// between the source and the stored games 1-6 (this source has none to compare);
+// what does NOT narrow is the 3-3 certification, which moves to the stored side
+// and mirrors `pipeline_complete_series`' own guards (00015:286-308).
+// ---------------------------------------------------------------------------
+
+/** A source holding ONLY game 7: the shape a date-granular feed (`espn`) yields. */
+function gameSevenOnlySource(over: { winner?: number | null; game?: GameScoreRow } = {}): SourceSeries {
+  return {
+    status: statusRow({ winner_team_id: over.winner === undefined ? TEAM_B : over.winner }),
+    games: [over.game ?? GAME_SEVEN],
+  };
+}
+
+describe('planPipeline — Story 2.13 game-7-only source', () => {
+  it('pending row + game-7-only source: exactly one completion, nothing else planned', () => {
+    const plan = planFor([gameSevenOnlySource()], [currentPending('series-42')]);
+    expect(plan.births).toHaveLength(0);
+    expect(plan.skips).toHaveLength(0);
+    expect(plan.completions).toHaveLength(1);
+    const completion = plan.completions[0];
+    expect(completion.series_id).toBe('series-42');
+    expect(completion.game.game_number).toBe(7);
+    expect(completion.winner_team_id).toBe(TEAM_B);
+    expect(completion.game).toMatchObject({ home_team_id: TEAM_A, away_team_id: TEAM_B, home_score: 89, away_score: 96 });
+  });
+
+  it('game 7 with no stored pair is refused — no birth from a partial source', () => {
+    expect(() => planFor([gameSevenOnlySource()], [])).toThrowError(PlanAssertionError);
+    try {
+      planFor([gameSevenOnlySource()], []);
+      expect.unreachable('a one-game source must never birth');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/no stored pending row/);
+      expect(message).toMatch(/refusing to birth a series from a source that carries one game/);
+      // The message says which cross-check does not apply, so a reader of the
+      // red run cannot mistake this for the 3-3 guard being missing.
+      expect(message).toMatch(/games 1–6 cross-check does not apply to this path/);
+      expect(message).toContain(String(YEAR));
+      expect(message).toContain(String(TEAM_A));
+      expect(message).toContain(String(TEAM_B));
+    }
+  });
+
+  it('the certification moved to the stored row: a 4-2 pending pair is not completed', () => {
+    const skewed = [...sixGames().slice(0, 5), scoreRow(6, TEAM_B, TEAM_A, 90, 110)]; // TEAM_A takes 1/4/5/6
+    expect(() => planFor([gameSevenOnlySource()], [currentPending('series-42', skewed)])).toThrowError(
+      /stored games 1–6 split 4-2 rather than the 3–3/,
+    );
+  });
+
+  it('an undecided stored game rejects the completion the way the RPC would', () => {
+    const tied = sixGames().map((g) => (g.game_number === 3 ? scoreRow(3, TEAM_B, TEAM_A, 100, 100) : g));
+    expect(() => planFor([gameSevenOnlySource()], [currentPending('series-42', tied)])).toThrowError(
+      /stored games 1–6 include 1 tie\(s\)/,
+    );
+  });
+
+  it('a stored row missing a game 1-6 number is refused, not repaired', () => {
+    const missingThree = sixGames().filter((g) => g.game_number !== 3);
+    // The row still has no winner, so it is not `pending` by the derivation: it
+    // reconciles to neither shape and the game-7-only source cannot re-explain it.
+    // One message, not an alternation: `stored games 1–6` also appears in the
+    // CERTIFICATION refusals above, so matching either would let a row that
+    // reached the certification branch pass a test about the derivation branch.
+    expect(() => planFor([gameSevenOnlySource()], [currentPending('series-42', missingThree)])).toThrowError(
+      /does not reconcile to either derivation shape and cannot be repaired from this source/,
+    );
+  });
+
+  it('winner that does not match the single game 7 is rejected before any plan', () => {
+    expect(() => planFor([gameSevenOnlySource({ winner: TEAM_A })], [currentPending()])).toThrowError(
+      /does not match game 7's winner/,
+    );
+  });
+
+  it('a null winner with only game 7 is NOT the new shape — the {1..6} invariant still refuses it', () => {
+    const source: SourceSeries = { status: statusRow({ winner_team_id: null }), games: [GAME_SEVEN] };
+    expect(() => planFor([source], [currentPending()])).toThrowError(/impossible shape/);
+  });
+
+  it('game 7 whose sides are not the source pair is refused before the stored row is consulted', () => {
+    // Game 7's home/away name a franchise outside the pair. `validatedShape` is
+    // where that is caught — it refuses any source game outside the SOURCE's
+    // slots, and the identity lookup then ties those slots to the stored row in
+    // either order, so a stored-pair clash can never reach the certification.
+    // The database still guards it (`00015:240-243`); the plan's pin sits at the
+    // one place the shape can actually drift in.
+    const alienSeven = scoreRow(7, TEAM_A, 999, 105, 90);
+    const source: SourceSeries = { status: statusRow({ winner_team_id: TEAM_A }), games: [alienSeven] };
+    try {
+      planFor([source], [currentPending()]);
+      expect.unreachable('a game 7 outside the pair must never reach a write');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/game 7: teams \d+\/999 are not the series pair \d+\/\d+/);
+      expect(message).toContain(String(TEAM_A));
+    }
+  });
+
+  it('game 7 at the OTHER side: the reversed stored row is the match, and the completion keeps the stored slots', () => {
+    // 43 of the 160 archived NBA/BAA series played Game 7 away from `team_a`'s
+    // court (`00016`'s census), so a date-granular source that names game 7's
+    // home side will legitimately meet the stored pair in the other order.
+    // Refusing there would abort the whole run on a real Game 7.
+    const reversedRow: CurrentSeriesRow = { ...currentPending('series-42'), team_a_id: TEAM_B, team_b_id: TEAM_A };
+    const plan = planFor([gameSevenOnlySource()], [reversedRow]);
+    expect(plan.births).toHaveLength(0);
+    expect(plan.skips).toHaveLength(0);
+    expect(plan.completions).toHaveLength(1);
+    const completion = plan.completions[0];
+    expect(completion.series_id).toBe('series-42');
+    // The SERIES identity comes from the table, not from the source's slot order…
+    expect(completion.team_a_id).toBe(TEAM_B);
+    expect(completion.team_b_id).toBe(TEAM_A);
+    // …while the game row keeps game 7's real venue sides.
+    expect(completion.game).toMatchObject({ game_number: 7, home_team_id: TEAM_A, away_team_id: TEAM_B });
+  });
+
+  it('a seven-game source meeting the pair in the other order is still refused naming the series id and both ids', () => {
+    // The reversed row is only admissible for the shape that cannot know game 1.
+    const swapped: CurrentSeriesRow = { ...currentPending('series-clash'), team_a_id: TEAM_B, team_b_id: TEAM_A };
+    try {
+      planFor([archiveSource()], [swapped]);
+      expect.unreachable('the identity assertion must fire first for a source that carries game 1');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toMatch(/identity assertion failed/);
+      expect(message).toContain('series-clash');
+      expect(message).toContain(String(TEAM_A));
+      expect(message).toContain(String(TEAM_B));
+    }
+  });
+
+  it('archived row + the SAME game 7 again: a skip, so re-running a day stays green', () => {
+    const plan = planFor([gameSevenOnlySource()], [currentArchive('series-42')]);
+    expect(plan.completions).toHaveLength(0);
+    expect(plan.skips).toHaveLength(1);
+    expect(plan.skips[0].reason).toBe('already archived with identical games 1–7');
+  });
+
+  it('archived row + a DIFFERENT game 7: refuse — an archived outcome is never rewritten', () => {
+    const differentSeven = scoreRow(7, TEAM_A, TEAM_B, 120, 80); // TEAM_A wins, while the row says TEAM_B
+    expect(() => planFor([gameSevenOnlySource({ winner: TEAM_A, game: differentSeven })], [currentArchive()])).toThrowError(
+      /never rewrites an archived outcome/,
+    );
+  });
+
+  it('the seven-row source shape is untouched: its own games 1-6 must still equal the stored ones', () => {
+    // Same stored pending row, but the source carries all seven with different
+    // games 1-6 — the pre-2.13 refusal, still in force.
+    const altSix = [
+      scoreRow(1, TEAM_A, TEAM_B, 115, 104),
+      scoreRow(2, TEAM_A, TEAM_B, 118, 110),
+      scoreRow(3, TEAM_B, TEAM_A, 108, 99),
+      scoreRow(4, TEAM_B, TEAM_A, 112, 101),
+      scoreRow(5, TEAM_A, TEAM_B, 120, 110),
+      scoreRow(6, TEAM_B, TEAM_A, 98, 95),
+    ];
+    expect(() => planFor([{ status: statusRow({ winner_team_id: TEAM_B }), games: [...altSix, GAME_SEVEN] }], [currentPending()])).toThrowError(
+      /source's games 1–6 are not the stored ones/,
+    );
   });
 });

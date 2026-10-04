@@ -571,12 +571,12 @@ describe('the self-test CLI path (what the rehearsal drives)', () => {
 
 describe('the scripts/** coverage gap (E5)', () => {
   // No gate step type-checks or lints scripts/** (AGENTS.md), so at minimum
-  // the two Story 2.8 additions must parse under Node's own syntax check.
-  // Beyond parsing, the Docker rehearsal's job stays outside the gate — except
-  // for the one thing that does not need a container: U11's `--fixture-report`,
-  // run below, which executes the real-score reader, its join and the pinned
-  // literals in-process.
-  for (const script of ['probe-game7-venues.mjs', 'rehearse-migration-00014.mjs']) {
+  // the harnesses added by Stories 2.8, 2.12 and 2.13 must parse under Node's
+  // own syntax check. Beyond parsing, the Docker rehearsal's job stays outside
+  // the gate — except for the one thing that does not need a container: U11's
+  // `--fixture-report`, run below, which executes the real-score reader, its
+  // join and the pinned literals in-process.
+  for (const script of ['probe-game7-venues.mjs', 'probe-espn-adapter.mjs', 'rehearse-migration-00014.mjs']) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
         encoding: 'utf8',
@@ -585,6 +585,19 @@ describe('the scripts/** coverage gap (E5)', () => {
       expect(res.status).toBe(0);
     });
   }
+
+  it('the espn probe refuses a bad flag with exit 2 before any fetch', () => {
+    // `node --check` proves the file parses, nothing more, and the probe's live
+    // legs run only on the owner's machine by policy — so the one thing that is
+    // checkable without a network is its entry contract: an unrecognised
+    // argument must stop the run rather than fall through to a leg that fetches.
+    const res = spawnSync(process.execPath, ['scripts/probe-espn-adapter.mjs', '--date=2026'], {
+      encoding: 'utf8',
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+    });
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain('not YYYYMMDD');
+  });
 
   it('scripts/rehearse-migration-00014.mjs --fixture-report reproduces U11\'s pinned literals with no Docker and no database', () => {
     // The `node --check` above only proves the file parses. Everything U11

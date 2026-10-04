@@ -70,7 +70,11 @@ function decoyTeamId(abbr: string): number {
   return ((SEED_IDS[abbr] * 7) % 30) + 1;
 }
 
-const TEAMS: TeamRow[] = Object.entries(SEED_IDS).map(([abbreviation, id]) => ({ id, abbreviation }));
+// Story 2.13 adds `espn_code` to `TeamRow`. This suite is the `nba_com`
+// abbreviation join, so every fixture row carries NULL: no code here is
+// measured for ESPN, and inventing one would be the silent-mismatch failure
+// finding 5 warns about. The `espn` resolver is proven in its own suite.
+const TEAMS: TeamRow[] = Object.entries(SEED_IDS).map(([abbreviation, id]) => ({ id, abbreviation, espn_code: null }));
 
 const HEADERS = ['GAME_ID', 'GAME_DATE', 'TEAM_ID', 'TEAM_ABBREVIATION', 'MATCHUP', 'PTS', 'WL'];
 

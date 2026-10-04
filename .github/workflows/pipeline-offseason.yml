@@ -7,6 +7,14 @@ name: Pipeline - offseason bracket edges
 # command at the two edges of the bracket rather than adding a code path —
 # there is nothing here to get out of sync with the daily run.
 #
+# Story 2.13 narrows what the SCHEDULED source can contribute here. `espn` is
+# date-granular — one day per run, no lookback — so it carries a Game 7 and
+# never a series' first six games: this cadence finalizes. The initialize half
+# of the AC is served by `--source=manual_csv` run by hand (this file offers no
+# `source` dispatch input, and `pipeline-inseason.yml` does), and Story 2.7's
+# drill owns it; a birth from a one-game source is refused by the runner rather
+# than guessed.
+#
 # What this file deliberately lacks is `--require-feed`. These two dates sit
 # OUTSIDE the alarm window on purpose: an empty feed in mid-April before the
 # postseason really starts, and one at the end of June after it has, are both
@@ -16,8 +24,8 @@ name: Pipeline - offseason bracket edges
 
 on:
   schedule:
-    - cron: '30 9 12 4 *'
-    - cron: '30 9 25 6 *'
+    - cron: '30 7 12 4 *'
+    - cron: '30 7 25 6 *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -74,8 +82,8 @@ jobs:
         run: |
           flags=()
           if [ "$WANT_DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
-          echo "adapter=nba_com flags=${flags[*]} (no empty-feed alarm on this schedule, by design)"
-          node supabase/scripts/pipeline/run.ts --source=nba_com "${flags[@]}"
+          echo "adapter=espn flags=${flags[*]} (no empty-feed alarm on this schedule, by design)"
+          node supabase/scripts/pipeline/run.ts --source=espn "${flags[@]}"
 
       - name: File a loud failure
         if: failure()

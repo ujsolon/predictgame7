@@ -8,9 +8,19 @@ name: Pipeline - inseason daily
 # Three cron lines are ONE bracket written three ways — a cron day-of-month
 # range cannot express "mid-April through June" in a single line (owner decision
 # D-5, which chose the generous bracket over a date the owner re-declares every
-# spring). 09:30 UTC deliberately follows the 09:00 keepalive instead of sharing
+# spring). 07:30 UTC deliberately follows the 07:00 keepalive instead of sharing
 # its minute, so warming a sleeping Supabase instance is not made this
-# cadence's failure mode.
+# cadence's failure mode. Both minutes moved from 09:00/09:30 by the owner's
+# 2026-10-04 call: the ESPN scoreboard filters by US local date, so the run
+# reads yesterday in America/New_York, and 07:30 UTC is 02:30-03:30 there —
+# after the last ordinary tip-off but NOT safely after every game. A 10 pm ET
+# game that reaches extra overtime can still be non-Final when the run asks;
+# `espn` excludes it and names the exclusion, the next morning asks a LATER
+# date, and the residue is a missing row rather than a red run — detected by
+# Story 2.7's row-count-vs-bracket read, not by this cadence (the traded margin:
+# spec-2-13 schedule-amendment.md). The pair moves together because the
+# keepalive pings the same PostgREST endpoint this cadence reads and writes —
+# pipeline alone would wake up cold.
 #
 # These three lines are the only date expression in the design. `--require-feed`
 # is declared here rather than defaulted in the runner, because the runner stays
@@ -27,9 +37,9 @@ name: Pipeline - inseason daily
 
 on:
   schedule:
-    - cron: '30 9 16-30 4 *'
-    - cron: '30 9 * 5 *'
-    - cron: '30 9 1-30 6 *'
+    - cron: '30 7 16-30 4 *'
+    - cron: '30 7 * 5 *'
+    - cron: '30 7 1-30 6 *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -41,13 +51,14 @@ on:
         type: boolean
         default: false
       source:
-        description: 'Adapter: nba_com is the feed, manual_csv the floor, fantrax the refusal'
+        description: 'Adapter: espn is the feed, manual_csv the floor, nba_com the hand-runnable one, fantrax the refusal'
         type: choice
         options:
-          - nba_com
+          - espn
           - manual_csv
+          - nba_com
           - fantrax
-        default: nba_com
+        default: espn
 
 # One group shared with pipeline-offseason.yml. A hand dispatch queues behind a
 # scheduled run instead of interleaving a completion write with it, and
@@ -110,7 +121,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          PIPELINE_SOURCE: ${{ inputs.source || 'nba_com' }}
+          PIPELINE_SOURCE: ${{ inputs.source || 'espn' }}
           WANT_REQUIRE_FEED: ${{ github.event_name == 'schedule' || inputs.require_feed }}
           WANT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -131,7 +142,9 @@ jobs:
             exclusions) and the runner's refusal message, so the diagnosis needs
             no local reproduction. If the message names a missing environment
             variable, the repository secret is absent or rotated. If it reads
-            `--require-feed: nba_com returned 0 series`, the endpoint answered
-            and had nothing: that is the alarm working inside the declared
-            window, and the question is whether the postseason really has no
-            games on the wire yet.
+            `--require-feed: espn returned 0 series`, the endpoint answered and
+            carried no game at all on the date it derived: that is the alarm
+            working inside the declared window, and the question is whether the
+            postseason really is on a rest day. A day with games but no Game 7
+            goes GREEN with an empty plan — that is the shape this adapter is
+            allowed to see.

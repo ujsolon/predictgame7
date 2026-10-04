@@ -18,6 +18,7 @@
  */
 import { createManualCsvAdapter } from './adapters/manualCsv.ts';
 import { createNbaComAdapter } from './adapters/nbaCom.ts';
+import { createEspnAdapter } from './adapters/espn.ts';
 
 /** One series as the source sees it: identity, display round, and whether game 7 has landed. */
 export interface SeriesStatusRow {
@@ -104,6 +105,16 @@ export interface AdapterDeps {
   readFile: (path: string) => string;
   /** Resolves `teams.abbreviation` (UNIQUE) to `teams.id`; undefined for a team the table does not hold. */
   teamIdByAbbreviation: (abbreviation: string) => number | undefined;
+  /**
+   * Resolves `teams.espn_code` to `teams.id` — the Story 2.13 join key for the
+   * `espn` adapter. Per-adapter by construction: which column an adapter
+   * resolves through is its own fact, and the shared abbreviation map above must
+   * never silently apply to a provider whose codes diverge from it (measured:
+   * ESPN prints `NY`/`SA` where the table holds `NYK`/`SAS`). Optional the way
+   * the other HTTP seams are — the runner always supplies it, and an adapter
+   * constructed without it refuses rather than falling back.
+   */
+  teamIdByEspnCode?: (code: string) => number | undefined;
   /** HTTP-adapter seam (Decision 8): injectable fetch; defaults to the global. Tests must inject one. */
   fetch?: FeedFetch;
   /** HTTP-adapter seam: the run's UTC clock, the season-derivation input. Defaults to wall time. */
@@ -138,15 +149,21 @@ function unimplementedEntry(rejection?: string): AdapterEntry {
 /**
  * The adapter registry keyed by `SERIES_SOURCE`. `manual_csv` is the
  * guaranteed floor and stays the default; Story 2.4 added `nba_com` beside it
- * (never replacing it). `fantrax` stays recognised-but-unimplemented with the
- * Story 2.1 rejection recorded — a silent drop would let a future session
- * re-propose it as unexamined. The runner never falls back to `manual_csv`
- * silently, because a silent fallback during the playoff window would leave
- * Active Series stale while looking healthy.
+ * (never replacing it), and Story 2.13 adds `espn` — the SCHEDULED source,
+ * because Story 2.6's egress evidence proved `stats.nba.com` refuses every
+ * cloud while `site.api.espn.com` answers from both. `nba_com` stays registered
+ * and hand-runnable: dropping a recognised name would invite a future session
+ * to re-propose the endpoint unexamined (owner call C1), and it remains the
+ * source a residential address can still run. `fantrax` stays
+ * recognised-but-unimplemented with the Story 2.1 rejection recorded — a silent
+ * drop would let a future session re-propose it as unexamined. The runner never
+ * falls back to `manual_csv` silently, because a silent fallback during the
+ * playoff window would leave Active Series stale while looking healthy.
  */
 export const ADAPTER_REGISTRY: Record<string, AdapterEntry> = {
   manual_csv: { implemented: true, hasRunReport: false, create: createManualCsvAdapter },
   nba_com: { implemented: true, hasRunReport: true, create: createNbaComAdapter },
+  espn: { implemented: true, hasRunReport: true, create: createEspnAdapter },
   fantrax: unimplementedEntry(
     'it was rejected by the Story 2.1 spike: Fantrax endpoints are fantasy-scoped and return fantasy point totals and playoff ' +
       'configuration, never a real NBA game score with home/away sides (see _bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md)',

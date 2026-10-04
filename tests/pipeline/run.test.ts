@@ -10,11 +10,21 @@ import { ADAPTER_REGISTRY, adapterHasRunReport, createAdapterSource } from '../.
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
+/**
+ * Story 2.13 grows `TeamRow.espn_code`. Only `CLE` and `DEN` are filled, because
+ * those two agreements are MEASURED (`payload-contract.md` "Team codes"). `GSW`
+ * and `OKC` stay NULL rather than carrying an invented code — the other 26
+ * franchises are CAP-8's probe to measure, not this suite's to guess, and a
+ * fixture code nobody read is the silent-mismatch failure finding 5 warns about.
+ * Nothing here runs the `espn` resolver: this table serves the `manual_csv` and
+ * `nba_com` cases, and the adapter's own suite injects a table that does hold
+ * codes.
+ */
 const TEAMS: TeamRow[] = [
-  { id: 10, abbreviation: 'GSW' },
-  { id: 6, abbreviation: 'CLE' },
-  { id: 21, abbreviation: 'OKC' },
-  { id: 8, abbreviation: 'DEN' },
+  { id: 10, abbreviation: 'GSW', espn_code: null },
+  { id: 6, abbreviation: 'CLE', espn_code: 'CLE' },
+  { id: 21, abbreviation: 'OKC', espn_code: null },
+  { id: 8, abbreviation: 'DEN', espn_code: 'DEN' },
 ];
 
 const VALID_ENV = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'never-print-this' };
@@ -800,6 +810,14 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
   const FEED_COLUMNS = ['GAME_ID', 'GAME_DATE', 'TEAM_ID', 'TEAM_ABBREVIATION', 'MATCHUP', 'PTS', 'WL'];
   const feedBody = (rowSet: unknown[][]) => ({ resultSets: [{ headers: FEED_COLUMNS, rowSet }] });
   const stubFeed = (body: unknown) => async () => ({ ok: true, status: 200, json: async () => body });
+  /**
+   * Story 2.13: the retry backoff wait is injected as a no-op. A body one
+   * adapter cannot read is retried by design (three attempts, `[1000, 4000]`
+   * ms), and a suite that waits on the real timers both costs five seconds per
+   * such case and can pass by accident on a slow assertion. No test here
+   * depends on how long a run waits — only on what it finally exits with.
+   */
+  const noWait = async () => {};
   /** June 2027, so `deriveSeason` asks for the postseason being played. */
   const runNow = () => new Date(Date.UTC(2027, 5, 20));
   /** One game between two abbreviations `FakeSink.teams` really holds. */
@@ -822,6 +840,7 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
       argv,
       createSink: () => sink,
       fetch: stubFeed(opts.body ?? feedBody([])),
+      sleep: noWait,
       now: runNow,
       readFile: opts.readFile ?? headerOnlyCsv,
       log: out.log,
@@ -942,10 +961,18 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     // So the behavioural guard runs against every implemented adapter with its
     // own zero-row source.
     const implemented = Object.entries(ADAPTER_REGISTRY).filter(([, entry]) => entry.implemented);
-    expect(implemented.map(([name]) => name).sort()).toEqual(['manual_csv', 'nba_com']);
+    expect(implemented.map(([name]) => name).sort()).toEqual(['espn', 'manual_csv', 'nba_com']);
+    // Each adapter's OWN empty feed, so the red this pins is the empty-feed
+    // alarm rather than an accidental shape error: `manual_csv` reads a header
+    // only (`opts.readFile` above), `nba_com` a `resultSets` with no rows, and
+    // `espn` an `events` array with no games.
+    const emptyBodyByAdapter: Record<string, unknown> = {
+      nba_com: feedBody([]),
+      espn: { events: [] },
+    };
     for (const [name] of implemented) {
       const sink = new FakeSink();
-      const run = await runOver(sink, [`--source=${name}`, '--require-feed']);
+      const run = await runOver(sink, [`--source=${name}`, '--require-feed'], { body: emptyBodyByAdapter[name] });
       expect(run.code, `--require-feed must never pass vacuously for ${name}`).toBe(2);
       expect(sink.calls).not.toContain('birth');
       expect(sink.calls).not.toContain('complete');

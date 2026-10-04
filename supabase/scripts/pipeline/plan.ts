@@ -18,11 +18,21 @@
  *    The game-number-set reconciliation half is `deriveSeriesPhase`
  *    (src/lib/series-phase.ts, Story 2.2) reused rather than restated.
  *
+ * Story 2.13 admits exactly ONE new source shape into this machinery: a status
+ * row carrying a winner plus a single score row, game 7 (`gameSevenOnly`) —
+ * what a date-granular feed like `espn` produces for a series whose games 1–6
+ * it never saw. The invariant is not relaxed for it: the source half is
+ * certified by the same winner-vs-game-7 check, the games 1–6 half is read off
+ * the STORED pending row (`storedPendingCertification`, mirroring
+ * `pipeline_complete_series`' own guards), and a game 7 with no stored pair is
+ * refused rather than birthed. Nothing else about the plan changes.
+ *
  * A violation throws `PlanAssertionError` naming the offending row; the
  * entry point turns that into a non-zero exit with nothing written.
  */
-import { deriveSeriesPhase } from '../../../src/lib/series-phase.ts';
+
 import type { SeriesPhaseInput } from '../../../src/lib/series-phase.ts';
+import { deriveSeriesPhase } from '../../../src/lib/series-phase.ts';
 import type { GameScoreRow, SeriesStatusRow } from './port.ts';
 
 /**
@@ -143,8 +153,20 @@ function sameScores(left: readonly ComparableScore[], right: readonly Comparable
   return left.length === right.length && left.every((row) => right.some((other) => scoreKey(row) === scoreKey(other)));
 }
 
-/** Validate one source series against the AD-4 invariant; throw naming the row on any violation. */
-function validatedShape(source: SourceSeries): { scores: PlannedScore[]; winner: number | null } {
+/**
+ * Validate one source series against the AD-4 invariant; throw naming the row
+ * on any violation.
+ *
+ * `gameSevenOnly` marks the ONE new source shape Story 2.13 admits: a status
+ * row carrying a winner plus exactly one score row, game 7. It is what a
+ * date-granular feed (ESPN's scoreboard, one day per run) can produce for a
+ * series whose games 1-6 it never saw — the owner's 2026-10-04 planning call,
+ * which narrows only the plan-level equality between the source and the stored
+ * games 1-6. The AD-4 3-3 certification is NOT dropped: `planPipeline` re-reads
+ * it from the stored row, and `pipeline_complete_series` re-asserts it server-side
+ * (`00015:286-308`) exactly as it does for the seven-row shape.
+ */
+function validatedShape(source: SourceSeries): { scores: PlannedScore[]; winner: number | null; gameSevenOnly: boolean } {
   const label = labelOf(source);
   const { status, games } = source;
   if (status.team_a_id === status.team_b_id) {
@@ -199,6 +221,23 @@ function validatedShape(source: SourceSeries): { scores: PlannedScore[]; winner:
     );
   }
 
+  // Story 2.13's one new source shape, detected BEFORE the derivation gate
+  // below: a winner plus exactly one score row, game 7. That row cannot pass
+  // `deriveSeriesPhase`, which admits only {1..6} and {1..7}, and it is not
+  // meant to — the games this source omits are already on the table, and
+  // `planPipeline` reconciles them against the STORED row instead. Only the
+  // winner half of the invariant is checkable from a one-game source, so it is
+  // the half checked here; anything else in this shape is a different shape and
+  // falls through to the existing refusals below.
+  if (status.winner_team_id != null && scores.length === 1 && scores[0].game_number === 7) {
+    if (scores[0].winner_team_id !== status.winner_team_id) {
+      throw new PlanAssertionError(
+        `${label}: winner_team_id ${status.winner_team_id} does not match game 7's winner ${scores[0].winner_team_id}`,
+      );
+    }
+    return { scores, winner: status.winner_team_id, gameSevenOnly: true };
+  }
+
   // The reconciliation half of the invariant is the shipped derivation —
   // reuse it rather than restating it (spec · Boundaries "Always").
   const derived = deriveSeriesPhase(phaseInputFrom(status.winner_team_id, scores.map((score) => score.game_number)));
@@ -229,7 +268,7 @@ function validatedShape(source: SourceSeries): { scores: PlannedScore[]; winner:
           'games before game 7 decided it; a birth requires games 1-6 split 3-3',
       );
     }
-    return { scores, winner: status.winner_team_id };
+    return { scores, winner: status.winner_team_id, gameSevenOnly: false };
   }
 
   if (derived !== 'pending') {
@@ -245,7 +284,7 @@ function validatedShape(source: SourceSeries): { scores: PlannedScore[]; winner:
       `${label}: not a certified 3–3 — games 1–6 split ${teamAWins}-${scores.length - teamAWins}; birth requires six final games with three wins each`,
     );
   }
-  return { scores, winner: null };
+  return { scores, winner: null, gameSevenOnly: false };
 }
 
 function currentPhase(current: CurrentSeriesRow) {
@@ -254,6 +293,48 @@ function currentPhase(current: CurrentSeriesRow) {
 
 function gamesThroughSix(scores: PlannedScore[]): PlannedScore[] {
   return scores.filter((score) => score.game_number <= 6);
+}
+
+/** The decided winner of one stored score row — the same CASE the RPC computes. */
+function winnerOf(score: CurrentScoreRow): number {
+  return score.home_score > score.away_score ? score.home_team_id : score.away_team_id;
+}
+
+/**
+ * Story 2.13 — the stored-side half of the games 1–6 cross-check, for the one
+ * source shape that carries no games 1–6 to compare with them
+ * (`gameSevenOnly`). The plan-level equality between source and stored games
+ * is impossible for that shape by construction; what must NOT narrow is the
+ * 3–3 certification, so the stored row is checked directly, mirroring the
+ * guards `pipeline_complete_series` asserts server-side
+ * (`supabase/migrations/00015_pipeline_series_functions.sql:286-308`): six
+ * games 1–6, none tied, split 3–3. Returns `null` when the row certifies, or
+ * the reason it does not so the caller's message names it.
+ *
+ * The RPC's fourth guard — game 7 played between the stored pair — is
+ * deliberately NOT mirrored here. It cannot fire: `validatedShape` already
+ * refuses any source game whose sides leave the SOURCE's pair
+ * (`:185-190`), and the identity lookup above only ever reaches this function
+ * when the stored row holds that same pair in either slot order, so stored
+ * pair ≡ source pair ≡ game 7's sides by the time the question is asked. The
+ * database still enforces it; a client-side copy of an unreachable branch
+ * would be a guard nothing can prove.
+ */
+function storedPendingCertification(exact: CurrentSeriesRow): string | null {
+  const throughSix = exact.scores.filter((score) => score.game_number >= 1 && score.game_number <= 6);
+  const numbers = new Set(throughSix.map((score) => score.game_number));
+  if (numbers.size !== 6) {
+    return `its stored games 1–6 are {${[...numbers].sort().join(',')}} rather than exactly {1,2,3,4,5,6}`;
+  }
+  const ties = throughSix.filter((score) => score.home_score === score.away_score).length;
+  if (ties !== 0) {
+    return `its stored games 1–6 include ${ties} tie(s) — a pending row is six DECIDED games`;
+  }
+  const teamAWins = throughSix.filter((score) => winnerOf(score) === exact.team_a_id).length;
+  if (teamAWins !== 3) {
+    return `its stored games 1–6 split ${teamAWins}-${6 - teamAWins} rather than the 3–3 AD-4 requires a completion to extend`;
+  }
+  return null;
 }
 
 /** Join status rows and score rows on the exact ordered identity pair into source series. */
@@ -310,29 +391,51 @@ export function planPipeline(sources: SourceSeries[], current: CurrentSeriesRow[
     const label = labelOf(source);
     const { year, team_a_id: a, team_b_id: b } = source.status;
 
-    // Identity assertion (AD-5): the pair must be absent in either slot
-    // order before any insert. The swapped row is a bug in the source or a
-    // corrupted table — never write the mirror image.
-    const exact = current.find((row) => row.year === year && row.team_a_id === a && row.team_b_id === b);
-    const swapped = current.find((row) => row.year === year && row.team_a_id === b && row.team_b_id === a);
-    if (exact && swapped) {
-      throw new PlanAssertionError(
-        `${label}: the table holds mirror rows ${exact.id} and ${swapped.id} for (${year}, ${a}/${b}) in both slot ` +
-          'orders — refusing to pick one and write against half the truth',
-      );
-    }
-    if (!exact && swapped) {
-      throw new PlanAssertionError(
-        `${label}: identity assertion failed — series ${swapped.id} already holds (${swapped.year}, ${swapped.team_b_id}, ${swapped.team_a_id}) ` +
-          `with the slots swapped; refusing to write the pair in the other order`,
-      );
-    }
-
-    const { scores, winner } = validatedShape(source);
+    const { scores, winner, gameSevenOnly } = validatedShape(source);
     const throughSix = gamesThroughSix(scores);
     const gameSeven = scores.find((score) => score.game_number === 7) ?? null;
 
+    // Identity assertion (AD-5): the pair must be absent in either slot
+    // order before any insert. The swapped row is a bug in the source or a
+    // corrupted table — never write the mirror image.
+    const ordered = current.find((row) => row.year === year && row.team_a_id === a && row.team_b_id === b);
+    const reversed = current.find((row) => row.year === year && row.team_a_id === b && row.team_b_id === a);
+    if (ordered && reversed) {
+      throw new PlanAssertionError(
+        `${label}: the table holds mirror rows ${ordered.id} and ${reversed.id} for (${year}, ${a}/${b}) in both slot ` +
+          'orders — refusing to pick one and write against half the truth',
+      );
+    }
+    // Story 2.13: a game-7-only source fills its slots with game 7's HOME and
+    // AWAY, and game 7 is not played at game 1's home court — `00016`'s own
+    // census has 43 of the 160 archived NBA/BAA series playing game 7 at the
+    // other side. So for this shape a reversed stored row IS the series this
+    // game completes, not a mirror-image bug; the plan adopts the STORED slots
+    // as the identity below. For a source that carries game 1 the order still
+    // means something, and a reversed row stays a refusal.
+    const reversedIsMatch = gameSevenOnly && reversed !== undefined;
+    if (!ordered && reversed && !reversedIsMatch) {
+      throw new PlanAssertionError(
+        `${label}: identity assertion failed — series ${reversed.id} already holds (${reversed.year}, ${reversed.team_b_id}, ${reversed.team_a_id}) ` +
+          `with the slots swapped; refusing to write the pair in the other order`,
+      );
+    }
+    const exact = ordered ?? (reversedIsMatch ? reversed : undefined);
+
     if (!exact) {
+      if (gameSevenOnly) {
+        // Story 2.13: no birth from a partial source. A game-7 row alone says
+        // nothing about games 1-6, and AD-4 will not accept a series born at
+        // anything other than a certified 3-3 — the database would reject the
+        // seven-row birth anyway (`pipeline_birth_series`), so refusing here
+        // keeps the run's promise that nothing reaches a write the database
+        // would reject. Births stay curated (Story 2.7's drill).
+        throw new PlanAssertionError(
+          `${label}: game 7 for (${year}, team ${a} vs ${b}) has no stored pending row — refusing to birth a series from a source that ` +
+            'carries one game. The games 1–6 cross-check does not apply to this path: it is the stored row that supplies games 1–6, and no ' +
+            'row is stored. Curate the pending 3–3 first (--source=manual_csv), and this game 7 completes on a later run.',
+        );
+      }
       // AD-4: birth is always the six rows at a certified 3–3. When the
       // source already holds a finished series nobody saw at 3–3, the
       // runner births the pending row and then completes it — one planned
@@ -358,21 +461,40 @@ export function planPipeline(sources: SourceSeries[], current: CurrentSeriesRow[
 
     if (phase === 'pending') {
       if (winner === null && sameScores(exact.scores, throughSix)) {
-        plan.skips.push({ kind: 'skip', label, year, team_a_id: a, team_b_id: b, reason: 'already pending with identical games 1–6' });
-        continue;
-      }
-      if (winner != null && gameSeven && sameScores(exact.scores, throughSix)) {
-        plan.completions.push({
-          kind: 'completion',
+        plan.skips.push({
+          kind: 'skip',
           label,
-          series_id: exact.id,
           year,
-          team_a_id: a,
-          team_b_id: b,
-          game: gameSeven,
-          winner_team_id: winner,
+          team_a_id: exact.team_a_id,
+          team_b_id: exact.team_b_id,
+          reason: 'already pending with identical games 1–6',
         });
         continue;
+      }
+      if (winner != null && gameSeven) {
+        // The cross-check that narrows for Story 2.13's shape: a seven-game
+        // source must match the stored games 1–6 row for row, while a
+        // game-7-only source has no games 1–6 to match, so the stored row is
+        // certified on its own terms instead (`storedPendingCertification`).
+        // Both paths then push the SAME single completion through the same
+        // RPC; nothing about the write widens.
+        const mismatch = gameSevenOnly ? storedPendingCertification(exact) : sameScores(exact.scores, throughSix) ? null : "the source's games 1–6 are not the stored ones";
+        if (mismatch === null) {
+          plan.completions.push({
+            kind: 'completion',
+            label,
+            series_id: exact.id,
+            year,
+            team_a_id: exact.team_a_id,
+            team_b_id: exact.team_b_id,
+            game: gameSeven,
+            winner_team_id: winner,
+          });
+          continue;
+        }
+        throw new PlanAssertionError(
+          `${label}: series ${exact.id} is pending on the table but ${mismatch} — the runner never rewrites stored games`,
+        );
       }
       throw new PlanAssertionError(
         `${label}: series ${exact.id} is pending on the table but the source's games 1–6 differ — the runner never rewrites stored games`,
@@ -380,8 +502,26 @@ export function planPipeline(sources: SourceSeries[], current: CurrentSeriesRow[
     }
 
     if (phase === 'archive') {
-      if (winner !== null && exact.winner_team_id === winner && sameScores(exact.scores, scores)) {
-        plan.skips.push({ kind: 'skip', label, year, team_a_id: a, team_b_id: b, reason: 'already archived with identical games 1–7' });
+      // Unchanged as a RULE (agreement skips, disagreement throws, an archived
+      // outcome is never rewritten); only the comparison covers the one row a
+      // game-7-only source carries, so the day after a completed Game 7 stays
+      // green when the same date is dispatched twice rather than turning an
+      // idempotent replay red.
+      const agrees =
+        winner !== null &&
+        exact.winner_team_id === winner &&
+        (gameSevenOnly
+          ? gameSeven !== null && exact.scores.some((storedRow) => scoreKey(storedRow) === scoreKey(gameSeven))
+          : sameScores(exact.scores, scores));
+      if (agrees) {
+        plan.skips.push({
+          kind: 'skip',
+          label,
+          year,
+          team_a_id: exact.team_a_id,
+          team_b_id: exact.team_b_id,
+          reason: 'already archived with identical games 1–7',
+        });
         continue;
       }
       throw new PlanAssertionError(
@@ -392,8 +532,11 @@ export function planPipeline(sources: SourceSeries[], current: CurrentSeriesRow[
     // The exact row reconciles to neither shape (AD-4's defensive case). A
     // winner-less row is repairable by the completion RPC when the source is
     // a complete archive shape that agrees with whatever is already stored;
-    // anything else exits rather than guessing.
-    if (exact.winner_team_id == null && winner !== null && gameSeven) {
+    // anything else exits rather than guessing. A game-7-only source is
+    // deliberately excluded: the repair half of this branch compares the
+    // stored games against a source that carries one of seven, so agreeing
+    // here would prove nothing about the 3–3 the RPC requires.
+    if (exact.winner_team_id == null && winner !== null && gameSeven && !gameSevenOnly) {
       const stored = exact.scores.every((storedRow) =>
         scores.some((sourceRow) => scoreKey(storedRow) === scoreKey(sourceRow)),
       );

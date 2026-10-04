@@ -95,12 +95,15 @@ describe('the .github surface exists and parses', () => {
 });
 
 describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP-6)', () => {
-  it('carries the playoff bracket as three cron lines, in D-5 order, at 09:30 UTC', () => {
+  it('carries the playoff bracket as three cron lines, in D-5 order, at 07:30 UTC', () => {
     // A cron day-of-month range cannot express mid-April through June in one
     // line; these three ARE the single date expression of the whole design.
     // Pin the exact list: a fourth line, or a minute that moves onto the
-    // 09:00 keepalive, is a decision and not a typo to be fixed silently.
-    expect(cronsOf(INSEASON)).toEqual(['30 9 16-30 4 *', '30 9 * 5 *', '30 9 1-30 6 *']);
+    // 07:00 keepalive, is a decision and not a typo to be fixed silently.
+    // The pair sat at 09:00/09:30 until the owner's 2026-10-04 call moved it:
+    // ESPN filters its scoreboard by US local date, so the run has to land
+    // after the latest tip-off has become yesterday in America/New_York.
+    expect(cronsOf(INSEASON)).toEqual(['30 7 16-30 4 *', '30 7 * 5 *', '30 7 1-30 6 *']);
   });
 
   it('declares the empty-feed alarm itself, so the runner stays date-blind', () => {
@@ -117,6 +120,22 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     expect(run?.run).toContain('"$WANT_REQUIRE_FEED"');
   });
 
+  it("the SCHEDULED run has a source too — the `|| 'espn'` fallback is the cron's only one", () => {
+    // `inputs.source` exists only for `workflow_dispatch`. On a schedule it is
+    // empty, so the effective adapter is whatever the fallback names. Every
+    // other pin in this file reads the choice list or the `default:` key, and
+    // both stay green while the fallback drifts to `nba_com` — the host Story
+    // 2.6 measured as refusing every cloud. That drift is what this pins shut.
+    const run = stepsOf(INSEASON).find((step) => step.name === 'Run the pipeline');
+    expect(run?.env?.PIPELINE_SOURCE).toBe("${{ inputs.source || 'espn' }}");
+    // …and the bash has to USE it, as the one and only source on the command
+    // line: a hardcoded literal alongside the variable would win or lose by
+    // accident depending on which step the operator edited.
+    const bash = (run?.run ?? '').replace(/"/g, '');
+    expect(bash).toContain('--source=$PIPELINE_SOURCE');
+    expect(bash.match(/--source=\S+/g)).toEqual(['--source=$PIPELINE_SOURCE']);
+  });
+
   it('offers the dispatch inputs that make the alarm provable before April', () => {
     const inputs = triggersOf(INSEASON).workflow_dispatch?.inputs ?? {};
     expect(Object.keys(inputs).sort()).toEqual(['dry_run', 'require_feed', 'source']);
@@ -124,7 +143,13 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     expect(inputs.require_feed).toMatchObject({ type: 'boolean', default: false });
     // `fantrax` is a deliberate option: it is the recognised-but-unimplemented
     // name whose refusal is the zero-write failure the alarm is tested with.
-    expect(inputs.source).toMatchObject({ type: 'choice', options: ['nba_com', 'manual_csv', 'fantrax'], default: 'nba_com' });
+    // `nba_com` stays listed after Story 2.13 demoted it from the default — it
+    // is still the source a residential address can run by hand (owner call C1).
+    expect(inputs.source).toMatchObject({
+      type: 'choice',
+      options: ['espn', 'manual_csv', 'nba_com', 'fantrax'],
+      default: 'espn',
+    });
   });
 
   it('never exposes the operator-only insights refresh', () => {
@@ -139,7 +164,7 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
 
 describe('pipeline-offseason.yml — the bracket edges (FR-20)', () => {
   it('fires at the two edges, outside the alarm window', () => {
-    expect(cronsOf(OFFSEASON)).toEqual(['30 9 12 4 *', '30 9 25 6 *']);
+    expect(cronsOf(OFFSEASON)).toEqual(['30 7 12 4 *', '30 7 25 6 *']);
   });
 
   it('passes no empty-feed alarm anywhere in its parsed shape', () => {
@@ -153,7 +178,7 @@ describe('pipeline-offseason.yml — the bracket edges (FR-20)', () => {
     const run = stepsOf(OFFSEASON).find((step) => step.name === 'Run the pipeline');
     expect(Object.keys(run?.env ?? {})).not.toContain('WANT_REQUIRE_FEED');
     expect(stepsOf(OFFSEASON).map((step) => step.run ?? '').join('\n')).not.toContain('require-feed');
-    expect(run?.run).toContain('--source=nba_com');
+    expect(run?.run).toContain('--source=espn');
   });
 
   it('runs the same idempotent command — initialization and finalization are one path', () => {
@@ -329,10 +354,16 @@ describe('the boundaries the AC and NFR-S1 set', () => {
     ACTION,
   ];
 
-  it('keepalive.yml is untouched in shape and never learns about the pipeline', () => {
-    // The AC forbids modifying it; this pins the parts that would have to
-    // change for that to have happened.
-    expect(cronsOf(KEEPALIVE)).toEqual(['0 9 * * *']);
+  it('keepalive.yml stays dumb about the pipeline; Story 2.13 moved its minute and nothing else', () => {
+    // Story 2.6's AC forbade modifying this file, and this pinned the parts that
+    // would have had to change for that to have happened. The owner's
+    // 2026-10-04 call amended exactly one line of it — the cron, so the pair
+    // keeps its order (D-5's only recorded reason for the 30-minute gap: the
+    // pipeline must not be the job that wakes a sleeping PostgREST) — and the
+    // dumbness guarantees below are the part the amendment did NOT touch. A
+    // keepalive that learned about the pipeline would fail as a pair, not as
+    // two independent alarms.
+    expect(cronsOf(KEEPALIVE)).toEqual(['0 7 * * *']);
     expect(docOf(KEEPALIVE).permissions).toBeUndefined();
     const text = textOf(KEEPALIVE);
     expect(text).not.toContain('notify-failure');
