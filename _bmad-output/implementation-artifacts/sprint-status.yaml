@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-04-2026 18:04
+last_updated: 10-05-2026 15:48
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -52,14 +52,12 @@ development_status:
   2-1-q-4-data-source-feasibility-spike: done
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
   2-3-pipeline-runner-seriesdatasource-port-manual_csv-floor: done
-  # 2-4 sits at review ON PURPOSE, and the reason is the owner's call of 2026-10-02 (U2, during
-  # Story 2.10's walkthrough): it received its in-session step-04 review pass, and it still needs an
-  # external review — `bmad-code-review` in a fresh context, on the owner's own model — before it
-  # flips to done. Its spec frontmatter says the same thing (`status: 'in-review'`, iteration 1).
-  # This is not drift and should not be "corrected" to done because later stories shipped: 2.4's
-  # adapter is live and 00016 was applied from data it helped curate, and being verified-in-use is
-  # not the independent review this tracker requires before done.
-  2-4-automated-adapter-per-the-spike-decision: review
+  # 2-4 sat at review on the owner's call of 2026-10-02 (U2, during Story 2.10's walkthrough) until
+  # an external review ran: `bmad-code-review` in a fresh context, 2026-10-05, four layers over
+  # 0f740f9..3cc24f4. It produced 11 patches, all applied (gate green, 549/549), and D1 was rejected
+  # as already settled by Story 2.13's C1. The owner flipped it to done the same day, accepting that
+  # the review ran on Opus 5.5. Record: spec-2-4 `### Review Findings`.
+  2-4-automated-adapter-per-the-spike-decision: done
   # 2-8's data gate is CLOSED: 00016 is APPLIED to production (owner ran git push + npx supabase db
   # push on 2026-10-02; 'Applying migration 00016… Finished supabase db push', no guard abort). A
   # clean push IS the measurement — all nine guards evaluated against the live 178-series table inside

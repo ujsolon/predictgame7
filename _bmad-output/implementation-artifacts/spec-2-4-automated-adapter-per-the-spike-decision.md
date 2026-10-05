@@ -2,7 +2,7 @@
 title: 'Story 2.4 — Automated adapter per the spike decision'
 type: 'feature'
 created: '2026-10-01'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 baseline_commit: '0f740f92adc485aa75d1a19e486002b4028bf235'
@@ -958,3 +958,151 @@ silent-corruption case this paragraph was written against. `### Live evidence` h
   classifier and not executed**; see `## Implementation Notes` for the resulting evidence gap. Row 22's
   print-order reorder has **no mutation to run**: `groupSourceRows` cannot throw on this adapter's output,
   so the old order is unobservable from any fixture.
+
+### Review Findings
+
+External review, 2026-10-05: `bmad-code-review` in a fresh context, run in a different session from the
+implementing one but on Opus 5.5 (whether that is a different model from the build's is not recorded
+here; the owner judges whether this meets the "different model" bar). Four layers ran: Blind Hunter, Edge
+Case Hunter, Verification Gap and Acceptance Auditor. They covered `0f740f9..3cc24f4`, restricted to
+`scripts/ supabase/ tests/ src/` (8 files, +2,087/−27). Every finding was re-checked against current
+`master`, which later stories touched only in `run.ts` flags/refresh and in fixture plumbing; all the
+surviving findings still hold there.
+Context that changes the weighting since pass 2: Story 2.13 (C1) made `nba_com` **hand-run only**. Every
+`nba_com` run is now ad hoc, and the "scheduled runs are the supported mode" argument behind
+pass-2 row 19 no longer covers this adapter.
+37 raw findings: 0 decision-needed, 11 patch, 0 defer and 16 rejected entries (16 raw findings plus D1).
+Line numbers are current `master`.
+
+**D1 resolved 2026-10-05 (owner): rejected as already decided, with one patch for what remains.** The
+finding was that same-day withholding compares the US-local `GAME_DATE` with the run's UTC date, so a run
+at about 00:00–05:00 UTC can consume a still-running US-evening game (`nbaCom.ts:325` never fires for it,
+and `finalScore` checks only that PTS is finite and ≥ 0). It was raised as a decision because pass-2 row
+19's safety argument was the 09:00 UTC schedule. Checking the later stories showed the question already
+answered. Story 2.13 moved the schedule to `espn` at 07:30 UTC. `espn` admits only `state=post` +
+`Final` and derives its date in America/New_York, so it cannot meet this case. `nba_com` became hand-run
+only (owner call C1), and `seriesdatasource-port.md:134` records the decision: the operator "picks the
+instant and applies this same margin reasoning to that instant". Re-deciding it here would contradict a
+recorded owner call. What remained was the warning's reach: it lived only in the port doc, where an
+operator typing `--source=nba_com` never sees it. That is the last patch below.
+
+- [x] [Review][Patch] No runner-level test drives a feed failure through `runPipeline`: no 403×3 and no
+  shape drift leading to exit 2, zero sink writes and no `manual_csv` selection. The AC states that
+  behaviour, and commit `cdfd11a` claims such a row, but revert `c0f7d62` dropped it and it was never
+  re-added. [tests/pipeline/nba-com.test.ts:770] (Acceptance Auditor, Edge Case Hunter)
+- [x] [Review][Patch] Retry on 429 and 5xx is never exercised. Narrowing `isRetryableStatus` to `=== 403`
+  leaves the suite green. Add `it.each([429, 500, 503])` beside the 403-then-success case.
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:261] (Verification Gap)
+- [x] [Review][Patch] The 25 s timeout is asserted as a constant, not as the signal the request carries.
+  `AbortSignal.timeout(1)` or a never-aborting signal stays green, so pass-1 row 5's mutation is still
+  uncaught. Spy on `AbortSignal.timeout` and assert it is called with `FETCH_TIMEOUT_MS`.
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:283] (Verification Gap, Acceptance Auditor)
+- [x] [Review][Patch] The probe's Game 7 cross-check compares the raw `leaguegamelog` capture with the
+  boxscore, never the adapter's emitted game-7 `GameScoreRow`. A merge that swapped home/away or
+  misnumbered games would still print `PROBE PASSED`. Compare the adapter's row as well. AC:369's
+  existing evidence then needs an owner re-run to benefit. [scripts/probe-nba-com-adapter.mjs:220]
+  (Blind Hunter)
+- [x] [Review][Patch] The archive-drill runner tests do not drill as titled. The AGREES test passes argv
+  `[]`, not `--season=`. The DISAGREES test asserts the guard's message but not the series name the AC
+  requires. [tests/pipeline/nba-com.test.ts:850] (Verification Gap, Blind Hunter, Acceptance Auditor)
+- [x] [Review][Patch] `probe-nba-com-adapter.mjs` is missing from the `node --check` smoke list that covers
+  its sibling probes, so no gate step parses it. [tests/pipeline/venue-backfill.test.ts:589] (Verification
+  Gap, Blind Hunter)
+- [x] [Review][Patch] The terminal column-drift error hard-codes `1` attempt. After an earlier 403 or bad
+  body, it reports "failed after 1 attempt(s)" on attempt 2 or 3. Pass the real attempt number.
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:316] (Blind Hunter, Acceptance Auditor)
+- [x] [Review][Patch] `validateSeasonOverride` checks format only. `--season=2025-25` or `2025-99` passes,
+  the feed returns nothing, and the run reads as an ordinary empty offseason. Since 2.13, `--season=` is
+  how `nba_com` is mostly run. Require `YY === (YYYY+1) % 100`.
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:117] (Blind Hunter, Edge Case Hunter)
+- [x] [Review][Patch] Three places promise that a drill onto an archived year "reaches the runner's archive
+  guard": the `--season=` help, the validator message and the adapter header. In fact, era abbreviations
+  absent from `teams` (00005 + 00007 hold SEA/NJN/WSB/…, but not e.g. VAN/CHH) abort the run earlier,
+  loudly and naming the abbreviation. Qualify the sentence.
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:121, supabase/scripts/pipeline/run.ts:198] (Blind Hunter)
+- [x] [Review][Patch] The probe's boxscore leg takes the first result set holding `PTS` and `TEAM_ID`,
+  which is `PlayerStats`. It is right only because it sums player rows, with a DNP's null PTS coerced to 0
+  and a string PTS able to concatenate. Select `name === 'TeamStats'`.
+  [scripts/probe-nba-com-adapter.mjs:234] (Blind Hunter, Edge Case Hunter)
+- [x] [Review][Patch] D1's remainder: the hand-run timing margin is stated only in the port doc. Add it
+  where an operator meets it: the runner's usage text, and a line `nba_com` prints on every run, telling
+  the operator to run only once the previous US night's games are final (about 09:00 UTC).
+  [supabase/scripts/pipeline/adapters/nbaCom.ts:325, supabase/scripts/pipeline/run.ts:198] (from D1)
+
+**Rejected** (one line each):
+- `decided`: D1, a same-day withholding rule for `nba_com`. Story 2.13 (C1, `seriesdatasource-port.md:134`)
+  already settled it as an operator-timing rule; see the D1 note above.
+
+**All 11 patches applied 2026-10-05 (owner: "apply all").**
+- **Adapter** (`nbaCom.ts`):
+  - `parseRows` takes the real `attempt`.
+  - `validateSeasonOverride` refuses a suffix that is not `(YYYY+1) % 100`. `1999-00` is accepted.
+  - The freeze sentence names the era-abbreviation abort.
+  - The counts line carries the hand-run timing margin.
+  - The header says the margin is the operator's since 2.13.
+- **Runner** (`run.ts`): the usage text and header comment carry the same two caveats.
+- **Probe** (`probe-nba-com-adapter.mjs`):
+  - It reads `TeamStats` by name, one numeric row per team.
+  - It cross-checks the adapter's emitted game-7 row on home, away and both scores against the
+    boxscore and the feed.
+  - Both changes are unexecuted until the owner's next live run; `node --check` covers the parse.
+- **Tests** (`nba-com.test.ts`, +8):
+  - `it.each([429, 500, 503])` retry.
+  - The `AbortSignal.timeout` spy, asserting the call with `FETCH_TIMEOUT_MS` and that its signal is
+    the one sent.
+  - Column drift after a retried 403 reports attempt 2.
+  - `2025-25`/`2025-99` are refused and `1999-00` is accepted.
+  - Two runner-level legs: 403×3 gives exit 2, URL + status named, zero writes and no fallback; shape
+    drift gives exit 2 naming `GAME_ID` with zero writes.
+  - The AGREES drill passes `--season=2026-27` and asserts it on the wire. The DISAGREES drill asserts
+    `series archived-row` is named.
+- **Smoke list** (`venue-backfill.test.ts`): the probe is added to `node --check`.
+
+**Mutation evidence.** Each mutation was made in a working copy, run, and restored with `cp`
+(byte-identical, checked by `cmp`):
+- `isRetryableStatus` narrowed to `=== 403` → exactly the 3 new `it.each` cases red.
+- `AbortSignal.timeout(1)` → the request-posture test red.
+- The attempt hard-coded back to `1` → the attempt-2 test red.
+- The suffix check disabled → the season test red.
+- `run.ts` swallowing adapter rejections (`.catch(() => [])` on both fetches) → exactly the 2 new
+  runner legs red.
+
+**Verification, read bare:** `npm run gate` → `GATE_EXIT=0`. Biome `Checked 128 files … No fixes
+applied`; `tsc -b` clean; Vitest `24 passed (24)` files / `549 passed (549)` tests; build `✓ built`
+with the `/predictgame7/` prefix check passing. `npx vitest run tests/pipeline` → 343/343 before the
+mutations. No network, Supabase, migration or deploy was touched.
+
+**Status → `done` (owner, 2026-10-05).** The owner accepted this review as the external one the
+`sprint-status.yaml` note asked for, knowing it ran on Opus 5.5. That supersedes the Implementation
+Notes' "still sits at `in-review`" line above, which is left as written for the record.
+- `false`: the probe header contradicts the "18 GAME_IDs measured live" comment. The header says the
+  *coding agent* ran nothing; the measurement was the owner's run 1. Both statements are true.
+- `false`: the `try { await … } catch { expect }` tests can pass without asserting. The feed promise is
+  memoised, so the second call re-rejects with the same cached rejection and the `catch` always runs.
+- `false`: a non-integer PTS gets written wrong. `00015` casts `(g->>'home_score')::integer` inside one
+  atomic RPC, so `110.5` aborts that write loudly; stats.nba.com PTS is integral.
+- `false`: a row shorter than its headers gives a misleading error. `readRow` yields `undefined` PTS and
+  `finalScore` rejects naming the `GAME_ID`, which is loud and diagnosable.
+- `false`: `BACKOFF_MS[attempt-2]` goes out of range if `MAX_FEED_ATTEMPTS` grows. No such configuration
+  exists, and both constants are pinned by `toEqual([1000, 4000])`.
+- `false`: `describeRun()` after a rejected feed says "before the feed resolved". `run.ts:348` calls it
+  only after both fetches resolve; a rejection exits through the catch first.
+- `low`: the probe's team resolver reads only `00005`, so historical seasons print false NOT-IN-TABLE. The
+  probe is documented for `--season=2025-26`, and the fix adds a second seed parser.
+- `low`: the duplicated flag list (`unknownFlag` regex vs `ADAPTER_FLAGS`). A missed edit fails loudly
+  as "unrecognised" on its first test; the fix is a refactor.
+- `low`: no handling for a postseason past June (2020 bubble). It is a rare era event, `nba_com` is now
+  hand-run with `--season=`, and the fix adds a date rule Decision 2 avoids.
+- `low`: the probe re-labels a repeated `--season=` as "unrecognised". Pass-2 row 36 already rejected
+  this.
+- `low`: a feed with no `TEAM_ID` prints every triple as DIFFER. The measurement it serves is complete
+  (0 agree / 16 differ); the fix is a new guard.
+- `low`: a non-JSON boxscore body gives a bare `SyntaxError`. It still exits 2; it is rare and the fix is
+  a new guard.
+- `low`: a malformed `--season=` is refused only after the env check and `readTeams()`. That is still
+  before the feed and before any write; the fix adds a second validation call site.
+- `low`: the chain walk cannot detect "one team in two series at the same depth". Depth strictly
+  increases per team, and a team reappearing after elimination needs a `SeasonType=Playoffs` feed that
+  includes play-in games, which it does not.
+- `low`: `--season=` without `--dry-run` could birth historical archive rows for a drill year with gaps.
+  `00016`'s census pins all 160 NBA/BAA Game 7s, so a drill year meets stored rows and the guard aborts.

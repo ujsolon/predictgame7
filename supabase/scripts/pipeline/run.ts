@@ -15,7 +15,8 @@
  *
  * Story 2.4 additions: `--season=<YYYY-YY>` drills the nba_com adapter into
  * one postseason (the archive is frozen — a drill onto an archived year
- * reaches Story 2.3's archive guard, never a rewrite), a flag the selected
+ * reaches Story 2.3's archive guard, never a rewrite, unless an era
+ * abbreviation the teams table lacks aborts it first), a flag the selected
  * adapter cannot use refuses the run, and an adapter that carries a run
  * report (`describeRun`) prints it before planning.
  *
@@ -195,7 +196,9 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
         `unrecognised flag "${stray}" — supported: --dry-run, --refresh-insights, --require-feed, --source=<adapter>, ` +
           '--csv=<path>, --season=<YYYY-YY> ' +
           '(--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived ' +
-          'year reaches the runner\'s archive guard, never a rewrite; --refresh-insights runs only the Story 2.5 insights-cache ' +
+          "year reaches the runner's archive guard, never a rewrite, unless an era abbreviation the teams table lacks aborts it " +
+          "first; nba_com has no schedule, so hand-run it only once the previous US night's games are final, about 09:00 UTC; " +
+          '--refresh-insights runs only the Story 2.5 insights-cache ' +
           'refresh and exits; --require-feed turns an empty feed into a failure)',
       );
     }

@@ -9,7 +9,7 @@
 // `teams` seed of `supabase/migrations/00005` (BOS=2, MIA=16, CLE=6, GSW=10,
 // …). The feed's TEAM_ID column is populated with ids the seed assigns to
 // OTHER franchises, so any test reddens the moment the adapter reads them.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getRoundImportance } from '../../src/lib/nba-utils.ts';
 import {
   BACKOFF_MS,
@@ -568,7 +568,18 @@ describe('nba_com — Decision 1/6 request posture', () => {
   it('the request carries the six spike headers verbatim, a 25 s timeout signal, and the pinned URL', async () => {
     const stub = stubFeed([{ status: 200, body: feedBody(DECIDED_GAME_7) }]);
     const adapter = createNbaComAdapter(depsFor(stub));
-    await adapter.fetch_series_statuses();
+    // The signal is built FROM the constant: asserting the type and the
+    // constant separately let `AbortSignal.timeout(1)` stay green (Story 2.4
+    // external review; pass-1 triage row 5's mutation).
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await adapter.fetch_series_statuses();
+      expect(timeoutSpy).toHaveBeenCalledTimes(1);
+      expect(timeoutSpy).toHaveBeenCalledWith(FETCH_TIMEOUT_MS);
+      expect(stub.inits[0]!.signal).toBe(timeoutSpy.mock.results[0]!.value);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
     expect(stub.urls).toHaveLength(1);
     const init = stub.inits[0]!;
     expect(Object.keys(init.headers).sort()).toEqual(
@@ -609,6 +620,15 @@ describe('nba_com — Decision 1/6 request posture', () => {
     expect(stub.urls).toHaveLength(0);
   });
 
+  it('a well-formed --season= naming no season (2025-25, 2025-99) refuses before any request', () => {
+    const stub = stubFeed([{ status: 200, body: feedBody(DECIDED_GAME_7) }]);
+    expect(() => createNbaComAdapter(depsFor(stub, { seasonOverride: '2025-25' }))).toThrow(/--season="2025-25" names no season .*\(2025-26\)/);
+    expect(() => createNbaComAdapter(depsFor(stub, { seasonOverride: '2025-99' }))).toThrow(/names no season/);
+    // The century turn: 1999-00 is a real season.
+    expect(() => createNbaComAdapter(depsFor(stub, { seasonOverride: '1999-00' }))).not.toThrow();
+    expect(stub.urls).toHaveLength(0);
+  });
+
   it('403 then success: the retry waited exactly 1000 ms', async () => {
     const stub = stubFeed([{ status: 403 }, { status: 200, body: feedBody(DECIDED_GAME_7) }]);
     const adapter = createNbaComAdapter(depsFor(stub));
@@ -616,6 +636,26 @@ describe('nba_com — Decision 1/6 request posture', () => {
     expect(statuses).toHaveLength(1);
     expect(stub.urls).toHaveLength(2);
     expect(stub.sleeps).toEqual([1000]);
+  });
+
+  // Decision 6 retries 403, 429 AND 5xx; only 403 was pinned, so narrowing
+  // `isRetryableStatus` to `=== 403` stayed green (Story 2.4 external review).
+  it.each([429, 500, 503])('%i then success: retried like a 403, after exactly 1000 ms', async (status) => {
+    const stub = stubFeed([{ status }, { status: 200, body: feedBody(DECIDED_GAME_7) }]);
+    const adapter = createNbaComAdapter(depsFor(stub));
+    const statuses = await adapter.fetch_series_statuses();
+    expect(statuses).toHaveLength(1);
+    expect(stub.urls).toHaveLength(2);
+    expect(stub.sleeps).toEqual([1000]);
+  });
+
+  it('a column-drift body after a retried 403 reports the attempt it failed on, not "1"', async () => {
+    const body = feedBody(DECIDED_GAME_7);
+    const headersNoPts = HEADERS.filter((header) => header !== 'PTS');
+    const trimmed = { resultSets: [{ headers: headersNoPts, rowSet: body.resultSets[0].rowSet.map((row) => row.filter((_, index) => index !== 5)) }] };
+    const stub = stubFeed([{ status: 403 }, { status: 200, body: trimmed }]);
+    const adapter = createNbaComAdapter(depsFor(stub));
+    await expect(adapter.fetch_series_statuses()).rejects.toThrow(/failed after 2 attempt\(s\): response headers lack required column\(s\) PTS/);
   });
 
   it('exhausted 403s: the terminal error names URL + status and states no fallback was taken', async () => {
@@ -745,10 +785,15 @@ class RecordingSink implements PipelineSink {
 
 const VALID_ENV = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'never-print-this' };
 
-function runnerHarness(body: unknown, sink: RecordingSink, argv: string[], opts: { sourceFlag?: boolean; env?: Record<string, string> } = {}) {
+function runnerHarness(
+  body: unknown,
+  sink: RecordingSink,
+  argv: string[],
+  opts: { sourceFlag?: boolean; env?: Record<string, string>; plans?: Parameters<typeof stubFeed>[0] } = {},
+) {
   const lines: string[] = [];
   const errors: string[] = [];
-  const stub = stubFeed([{ status: 200, body }]);
+  const stub = stubFeed(opts.plans ?? [{ status: 200, body }]);
   const promise = runPipeline({
     env: opts.env ?? VALID_ENV,
     argv: opts.sourceFlag === false ? [...argv] : ['--source=nba_com', ...argv],
@@ -821,6 +866,34 @@ describe('nba_com through runPipeline', () => {
     expect(text).toContain('depth histogram');
   });
 
+  // The AC's "403s three times → exits non-zero naming URL + status, writes
+  // nothing, does not select manual_csv", through the RUNNER — it was pinned
+  // only at the adapter (Story 2.4 external review; the runner row commit
+  // cdfd11a added was lost in the loopback revert c0f7d62). `readFile` throws
+  // in this harness, so a manual_csv fallback could not run silently either.
+  it('a feed that 403s three times exits 2 through the runner, naming URL + status, writing nothing, no fallback', async () => {
+    const sink = new RecordingSink();
+    const harness = runnerHarness(null, sink, [], { plans: [{ status: 403 }, { status: 403 }, { status: 403 }] });
+    expect(await harness.promise).toBe(2);
+    expect(harness.stub.urls).toHaveLength(MAX_FEED_ATTEMPTS);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+    const errors = harness.errors.join('\n');
+    expect(errors).toContain(harness.stub.urls[0]);
+    expect(errors).toMatch(/failed after 3 attempt\(s\): HTTP 403/);
+    expect(errors).toMatch(/no manual_csv fallback was taken/);
+  });
+
+  it('feed shape drift aborts the run through the runner: exit 2, the GAME_ID named, zero writes', async () => {
+    const drifted: SeriesSpec[] = [{ ...PENDING_3_3[0], homeMatchup: (home, away) => `${home} vs ${away}` }];
+    const sink = new RecordingSink();
+    const harness = runnerHarness(feedBody(drifted), sink, []);
+    expect(await harness.promise).toBe(2);
+    expect(sink.births).toHaveLength(0);
+    expect(sink.completions).toHaveLength(0);
+    expect(harness.errors.join('\n')).toMatch(/game 00427/);
+  });
+
   it('--season= onto an archived year that DISAGREES aborts with Story 2.3\'s guard — never a rewrite', async () => {
     const sink = new RecordingSink();
     // The table already archived 2027 BOS/PHI with BOS winning; the feed
@@ -844,7 +917,8 @@ describe('nba_com through runPipeline', () => {
     expect(code).toBe(2);
     expect(sink.completions).toHaveLength(0);
     expect(sink.births).toHaveLength(0);
-    expect(harness.errors.join('\n')).toMatch(/is archived on the table and the source disagrees/);
+    // The abort names the series it protected, not just the rule.
+    expect(harness.errors.join('\n')).toMatch(/series archived-row is archived on the table and the source disagrees/);
   });
 
   it('--season= onto an archived year that AGREES skips with zero writes', async () => {
@@ -861,8 +935,9 @@ describe('nba_com through runPipeline', () => {
       { game_number: 7, home_team_id: SEED_IDS.BOS, away_team_id: SEED_IDS.PHI, home_score: 100, away_score: 110 },
     ];
     sink.current.push({ id: 'archived-row', year: 2027, team_a_id: SEED_IDS.BOS, team_b_id: SEED_IDS.PHI, winner_team_id: SEED_IDS.PHI, scores });
-    const harness = runnerHarness(feedBody(DECIDED_GAME_7), sink, []);
+    const harness = runnerHarness(feedBody(DECIDED_GAME_7), sink, ['--season=2026-27']);
     expect(await harness.promise).toBe(0);
+    expect(new URL(harness.stub.urls[0]!).searchParams.get('Season')).toBe('2026-27');
     expect(sink.births).toHaveLength(0);
     expect(sink.completions).toHaveLength(0);
     expect(harness.lines.join('\n')).toMatch(/already archived with identical games/);

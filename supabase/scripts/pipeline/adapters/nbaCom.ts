@@ -25,7 +25,10 @@
  *   game. An AD-HOC run at, say, 03:30 UTC can consume an in-progress game
  *   whose partial PTS is already non-null — `finalScore` only rejects null,
  *   negative and non-finite. Nothing here can detect that from the feed, so
- *   it is stated rather than guarded; scheduled runs are the supported mode.
+ *   it is stated rather than guarded. Since Story 2.13 this source has NO
+ *   schedule (`espn` is the scheduled adapter, owner call C1), so the margin
+ *   is the operator's: every counts line says so, and so does the runner's
+ *   usage text (Story 2.4 external review, D1).
  * - A series enters the output iff its games are exactly {1..6} decided 3-3
  *   (pending) or exactly {1..7} all decided (archive). Every other shape —
  *   4-0/4-1/4-2 sweeps, in-flight 2-1, pre-2003 best-of-5 — is excluded and
@@ -113,12 +116,24 @@ export function deriveSeason(runDateUtc: Date): string {
   return runDateUtc.getUTCMonth() <= 5 ? `${year - 1}-${padYear(year)}` : `${year}-${padYear(year + 1)}`;
 }
 
-/** Validate a `--season=` override; throws before any request is built (eager rejection). */
+/**
+ * Validate a `--season=` override; throws before any request is built (eager
+ * rejection). The second half must be the year after the first (`2025-26`), so
+ * a typo such as `2025-25` is refused instead of asking the feed for a season
+ * that does not exist and reading its empty answer as an ordinary offseason.
+ */
 export function validateSeasonOverride(value: string): string {
+  const freezeRule =
+    "The archive is frozen: pointing this at an archived year reaches the runner's archive guard, never a rewrite " +
+    '(unless an era abbreviation the teams table lacks aborts the run first, naming it).';
   if (!SEASON_PATTERN.test(value)) {
+    throw new NbaComError(`--season="${value}" is not a season string — expected YYYY-YY (e.g. 2025-26). ${freezeRule}`);
+  }
+  const expectedSuffix = padYear(Number(value.slice(0, 4)) + 1);
+  if (value.slice(5) !== expectedSuffix) {
     throw new NbaComError(
-      `--season="${value}" is not a season string — expected YYYY-YY (e.g. 2025-26). ` +
-        "The archive is frozen: pointing this at an archived year reaches the runner's archive guard, never a rewrite.",
+      `--season="${value}" names no season — the second half must be the year after the first ` +
+        `(${value.slice(0, 4)}-${expectedSuffix}). ${freezeRule}`,
     );
   }
   return value;
@@ -305,15 +320,22 @@ export async function buildFeed(url: string, runDate: Date, deps: AdapterDeps): 
       lastReason = `response ${shape.reason}`;
       continue;
     }
-    return parseRows(shape.headers, shape.rows, url, runDate, deps);
+    return parseRows(shape.headers, shape.rows, url, runDate, deps, attempt);
   }
   throw terminalFetchError(url, lastReason, MAX_FEED_ATTEMPTS);
 }
 
-function parseRows(headers: string[], rows: unknown[][], url: string, runDate: Date, deps: AdapterDeps): NbaComFeedResult {
+function parseRows(
+  headers: string[],
+  rows: unknown[][],
+  url: string,
+  runDate: Date,
+  deps: AdapterDeps,
+  attempt: number,
+): NbaComFeedResult {
   const missing = REQUIRED_COLUMNS.filter((column) => !headers.includes(column));
   if (missing.length > 0) {
-    throw terminalFetchError(url, `response headers lack required column(s) ${missing.join(', ')} (got: ${headers.join(', ')})`, 1);
+    throw terminalFetchError(url, `response headers lack required column(s) ${missing.join(', ')} (got: ${headers.join(', ')})`, attempt);
   }
 
   const runDateKey = utcDateKey(runDate);
@@ -530,7 +552,8 @@ function parseRows(headers: string[], rows: unknown[][], url: string, runDate: D
   const countsLine =
     `nba_com: ${reconstructed.length} series in feed, ${statuses.length} Game-7 candidate(s) ` +
     `(${pendingCount} pending 3-3, ${decidedCount} decided through game 7) — excluded: ${excludedEnded} ended before game 7, ` +
-    `${excludedInProgress} in flight, ${excludedUnexplained} unexplainable; ${withheldGameIds.size} game(s) played on ${runDateKey} withheld`;
+    `${excludedInProgress} in flight, ${excludedUnexplained} unexplainable; ${withheldGameIds.size} game(s) played on ${runDateKey} withheld ` +
+    "(a UTC-day proxy only: hand-run nba_com once the previous US night's games are final, about 09:00 UTC)";
   const report: AdapterRunReport = {
     countsLine,
     histogramLine,

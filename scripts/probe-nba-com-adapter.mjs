@@ -231,12 +231,20 @@ async function runProbe(seasonOverrideRaw) {
   const boxResponse = await fetch(boxUrl, { headers: NBA_COM_HEADERS, signal: AbortSignal.timeout(25000) });
   if (!boxResponse.ok) throw new Error(`boxscoretraditionalv2 returned HTTP ${boxResponse.status} for game ${game7Id} — re-run: unlike the adapter this leg does not retry`);
   const box = await boxResponse.json();
-  const teamSet = (box.resultSets ?? []).find((s) => s.headers?.includes('PTS') && s.headers?.includes('TEAM_ID'));
-  if (!teamSet) throw new Error(`no PTS/TEAM_ID result set in boxscoretraditionalv2 for game ${game7Id} — shape drifted; inspect: ${(box.resultSets ?? []).map((s) => s.name).join(', ')}`);
+  // The TEAM totals, selected by name. The first set carrying PTS + TEAM_ID is
+  // PlayerStats, which only summed right because a DNP's null PTS coerces to 0
+  // (Story 2.4 external review); one row per team leaves nothing to sum.
+  const teamSet = (box.resultSets ?? []).find((s) => s.name === 'TeamStats');
+  if (!teamSet?.headers?.includes('PTS') || !teamSet.headers.includes('TEAM_ID')) {
+    throw new Error(`no TeamStats result set with PTS + TEAM_ID in boxscoretraditionalv2 for game ${game7Id} — shape drifted; inspect: ${(box.resultSets ?? []).map((s) => s.name).join(', ')}`);
+  }
   const bIdx = Object.fromEntries(teamSet.headers.map((h, n) => [h, n]));
   const ptsByTeamId = new Map();
   for (const row of teamSet.rowSet) {
-    ptsByTeamId.set(row[bIdx.TEAM_ID], (ptsByTeamId.get(row[bIdx.TEAM_ID]) ?? 0) + row[bIdx.PTS]);
+    const pts = row[bIdx.PTS];
+    if (typeof pts !== 'number') throw new Error(`boxscoretraditionalv2 TeamStats PTS for TEAM_ID ${row[bIdx.TEAM_ID]} is ${JSON.stringify(pts)}, not a number`);
+    if (ptsByTeamId.has(row[bIdx.TEAM_ID])) throw new Error(`boxscoretraditionalv2 TeamStats carries TEAM_ID ${row[bIdx.TEAM_ID]} twice`);
+    ptsByTeamId.set(row[bIdx.TEAM_ID], pts);
   }
   let checked = 0;
   const mismatched = [];
@@ -251,10 +259,30 @@ async function runProbe(seasonOverrideRaw) {
     if (boxPts !== side.pts) mismatched.push(`${side.abbr}: leaguegamelog PTS ${side.pts} vs boxscore PTS ${boxPts}`);
   }
   if (checked < 2) throw new Error('boxscoretraditionalv2 did not carry both sides of the game — the cross-check did not complete');
+
+  // The same game as the SHIPPED ADAPTER emitted it. The legs above compare the
+  // raw capture with the boxscore, which certifies the feed; this one
+  // certifies the adapter's merge (home/away, game number, both scores), so a
+  // side swap or a mis-numbered game cannot still print PROBE PASSED (Story 2.4
+  // external review).
+  const emitted = scores.filter((row) => row.team_a_id === target.team_a_id && row.team_b_id === target.team_b_id && row.game_number === 7);
+  if (emitted.length !== 1) throw new Error(`the adapter emitted ${emitted.length} game-7 row(s) for ${abbrOf(target.team_a_id)}/${abbrOf(target.team_b_id)}, expected exactly 1`);
+  const row7 = emitted[0];
+  const expectations = [
+    ['home team', abbrOf(row7.home_team_id), feedHome.abbr],
+    ['away team', abbrOf(row7.away_team_id), feedAway.abbr],
+    ['home score', row7.home_score, ptsByTeamId.get(feedHome.id)],
+    ['away score', row7.away_score, ptsByTeamId.get(feedAway.id)],
+  ];
+  for (const [field, adapterValue, truth] of expectations) {
+    const ok = adapterValue === truth;
+    console.log(`  adapter game 7 ${field}: ${adapterValue} vs boxscore/feed ${truth} — ${ok ? 'MATCH' : 'MISMATCH'}`);
+    if (!ok) mismatched.push(`adapter game-7 ${field} ${adapterValue} vs ${truth}`);
+  }
   // A printed MISMATCH that still reaches "PROBE PASSED" would put a failed
   // cross-check into the spec as its live evidence (triage row 20).
   if (mismatched.length > 0) throw new Error(`Game 7 cross-check FAILED — ${mismatched.join('; ')}`);
-  console.log('Game 7 cross-check complete: the leaguegamelog PTS values are the boxscore final scores.');
+  console.log("Game 7 cross-check complete: the leaguegamelog PTS values are the boxscore final scores, and the adapter's game-7 row agrees with both.");
   console.log('\nPROBE PASSED — paste this whole output into spec-2-4 `## Implementation Notes` (Decision 12).');
 }
 

@@ -586,7 +586,7 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // U11's `--fixture-report` (the real-score reader, its join, the pinned
   // literals) and Story 2.13's leg-B reader over `--fixture-teamlist=`, both
   // executed below as the real scripts.
-  for (const script of ['probe-game7-venues.mjs', 'probe-espn-adapter.mjs', 'rehearse-migration-00014.mjs']) {
+  for (const script of ['probe-game7-venues.mjs', 'probe-espn-adapter.mjs', 'probe-nba-com-adapter.mjs', 'rehearse-migration-00014.mjs']) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
         encoding: 'utf8',
