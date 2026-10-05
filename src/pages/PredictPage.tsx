@@ -405,9 +405,9 @@ export default function PredictPage() {
   };
 
   // Story 2.11 (owner decision U15): the custom-matchup form has no series FK,
-  // but the app holds every team row anyway — `fetchAllGames` (:148-180) loads
-  // the whole archive through `SERIES_SELECT` (:31-45), which embeds
-  // `abbreviation` on both sides, so a typed name that the database spells
+  // but the app holds every team row anyway — `fetchAllGames` (:135-167) loads
+  // the whole archive through `SERIES_SELECT` (`src/lib/series-query.ts`), which
+  // embeds `abbreviation` on both sides, so a typed name that the database spells
   // exactly this way prints that row's stored code instead of a bare initialism
   // (`Boston Celtics` → `BOS`, not `BC`). Lower-cased `full_name` → row, first
   // hit wins, and only rows with a non-empty `abbreviation` are indexed.

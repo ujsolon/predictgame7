@@ -45,7 +45,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  *
  * It renders NOTHING when no series is pending or when the read fails — no
  * heading, no empty state, no error copy — so production Home renders as
- * before until a real pending series exists (April 2027). It is not free:
+ * before until a real pending series exists (April 2027). A failed read logs
+ * to the console, so the two stay distinguishable off the page. It is not free:
  * every Home load now makes one anon `series` read, which returns zero rows
  * while nothing is pending. Each pending series gets
  * one plain link to `/predict?series=<id>`, the link shape the banner
@@ -65,11 +66,19 @@ export function PendingGameSevens() {
           .select(SERIES_SELECT)
           .is('winner_team_id', null)
           .order('year', { ascending: false });
-        if (error || !Array.isArray(data) || cancelled) return;
+        if (error || !Array.isArray(data)) {
+          // Still renders nothing (D2 leaves Home no error surface for this block), but a broken
+          // read must not be indistinguishable from "nothing pending" once April 2027 depends on
+          // it. Sibling reads log the same way (`HistoricalPage.tsx:79`); exception capture
+          // through the isolated analytics layer stays Story 3.1's.
+          console.error('Error fetching pending Game 7s:', error?.message ?? 'unexpected response shape');
+          return;
+        }
+        if (cancelled) return;
         // Same unvalidated cast the picker makes (`PredictPage.tsx`'s `asSeries`).
         setPending((data as unknown as Series[]).filter((row) => isSeriesPending(row)));
-      } catch {
-        // A failed read renders nothing; Home has no error surface for this block.
+      } catch (err) {
+        console.error('Error fetching pending Game 7s:', err);
       }
     })();
     return () => {

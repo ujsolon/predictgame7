@@ -28,8 +28,10 @@
 //           so the owner can look at http://localhost:4174/predictgame7/ by hand.
 // Needs:  Docker Desktop running (`docker ps` answers), Node >= 22.18, Chrome/Edge installed.
 // Exit:   0 = every assertion held; 1 = at least one assertion failed (each printed as FAIL);
-//         2 = the stack could not be brought up (Docker down, image pull, build) — infra, not a red.
-// Exit codes go through process.exitCode, never process.exit() (the Windows libuv race, W1).
+//         2 = the stack could not be brought up (Docker down, image pull, build) — infra, not a red;
+//         130 = interrupted (Ctrl+C), after the teardown below.
+// Exit codes go through process.exitCode, never process.exit() (the Windows libuv race, W1) —
+// with the SIGINT path as the one exception, so an interrupt cannot be re-reported as 1 or 2.
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
@@ -137,6 +139,13 @@ function startProxy(restPort) {
       upRes.pipe(res);
     });
     up.on("error", (e) => {
+      // An upstream failure mid-body (teardown's `docker rm -f`, a container death) lands here
+      // with the response already started; writeHead would then throw ERR_HTTP_HEADERS_SENT and
+      // kill the drill with a stack and exit 1 instead of the InfraError / exit 2 it documents.
+      if (res.headersSent || res.writableEnded) {
+        res.destroy();
+        return;
+      }
       res.writeHead(502, { ...cors, "Content-Type": "application/json" });
       res.end(JSON.stringify({ message: `PostgREST unreachable: ${e.message}` }));
     });
@@ -392,7 +401,9 @@ async function drill() {
   L.check("db byte-identical to step 1 (every column of series + scores)", db2.fingerprint === db1.fingerprint, `${db1.fingerprint} vs ${db2.fingerprint}`);
   const ui2 = await uiState(S, { expectHome: true });
   show("ui", ui2);
-  const sameUi = (u) => JSON.stringify({ ...u, home: u.home.map((h) => h.id) });
+  // Every field, Home's link text and href included: collapsing `home` to its id let a re-run
+  // that rendered a different label or destination still read as "identical to step 1".
+  const sameUi = (u) => JSON.stringify(u);
   L.check("UI identical to step 1 after the re-run", sameUi(ui2) === sameUi(ui1));
 
   console.log("\n== step 3 — night 2: BOS/MIA game 7 (completion) + OKC/DEN reaches 3-3 (birth) ==");
@@ -475,9 +486,12 @@ async function main() {
 process.on("exit", teardown);
 // Ctrl+C skips 'exit' listeners: without this, a run stopped mid-way (or a --keep session) left
 // both containers, the network, the proxy on 54321 and dist-drill-2-7/ behind.
+// Printed before the teardown so the line has the ~1s of docker calls to flush, then exit(130):
+// an interrupt can land inside bringUp's 120 s waitFor or the harness's 60 s navigation race,
+// and either would keep the loop alive long enough for main's catch to report 2 or 1 over it.
 process.on("SIGINT", () => {
+  console.log("\ninterrupted: tearing the stack down (containers, network, proxy, dist-drill-2-7/).");
   teardown();
-  console.log("\ninterrupted: stack torn down.");
-  process.exitCode = 130;
+  process.exit(130);
 });
 main();

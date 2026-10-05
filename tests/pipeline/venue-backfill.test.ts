@@ -591,7 +591,9 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // literals) and Story 2.13's leg-B reader over `--fixture-teamlist=`, both
   // executed below as the real scripts.
   // Story 2.7 adds its drill harnesses, and `measure-predict-latency.mjs` (now
-  // imported by the local-stack drill) — the evidence behind §6.5's closure.
+  // imported by the local-stack drill) — the evidence behind §6.5's closure. Its
+  // pass-2 review adds the one spike audit Story 2.7 edited (`status` dropped from
+  // the projection): nothing else parses it, and it next runs at the owner's hand.
   for (const script of [
     'probe-game7-venues.mjs',
     'probe-espn-adapter.mjs',
@@ -600,6 +602,7 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
     'measure-predict-latency.mjs',
     'drill-2-7-reconcile.mjs',
     'drill-2-7-local-stack.mjs',
+    'spike-2-1/audit-archive.mjs',
   ]) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {

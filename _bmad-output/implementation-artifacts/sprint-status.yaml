@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-05-2026 22:23
+last_updated: 10-06-2026 06:56
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -309,11 +309,15 @@ development_status:
   # 26/26). Leg 3: qa-matrix §6.5 option (c) via a CDP Fetch override, 1440x900 + 390x844 (retro
   # item 3 done). Home gained a pending-series data reach (D2). Review: 3 same-model layers, 36
   # findings -- 18 patched, 1 deferred (F4), the rest rejected with evidence; no loopback. Gate
-  # exit 0 (575 tests). OWNER-OWED: F1 first scheduled cron (2027-04-16), F2 first real espn write,
-  # and the usual fresh-context external review. 2026-10-06: external review (different model)
-  # ran; its one finding (EXT-D1, the venue probe unrun / F3 undated) resolved by the owner running
-  # the probe: 160/160 lines match the curated CSV, F3 closed.
-  2-7-epic-verification-simulated-playoff-week: review
+  # exit 0 (575 tests). 2026-10-06 pass 2 -- the fresh-context external review on a different
+  # model, four layers over 94b4988..c8031fe (the spec's baseline_commit): 31 raw findings, 25
+  # entries after merging -- 10 patched, 13 rejected with evidence, 1 low deferred (ECH-1's
+  # unplaced-winner branch), 1 decision-needed (EXT-D1: the venue probe unrun, F3 undated)
+  # resolved by the owner running `node scripts/probe-game7-venues.mjs` -- 160/160 printed lines
+  # match the curated CSV slot for slot, no unplaced winner, so F3 is closed and the defer is
+  # confirmed rather than discharged. No loopback. Gate exit 0 (576 tests). DONE -- remaining
+  # OWNER-OWED: F1 first scheduled cron (2027-04-16) and F2 first real espn write.
+  2-7-epic-verification-simulated-playoff-week: done
   epic-2-retrospective: optional
 
   epic-3: backlog

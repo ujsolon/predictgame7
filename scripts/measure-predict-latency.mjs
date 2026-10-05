@@ -49,7 +49,7 @@
 // is closer to a real user's bandwidth contention but pollutes the dashboard.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -973,9 +973,14 @@ export async function openBrowserSession({ viewport = "1440x900", seriesOverride
   };
   process.on("exit", close);
   // Ctrl+C skips 'exit' listeners, which left headless Chrome and its profile behind.
+  // exit(130) rather than exitCode alone: the browser dies here, but the 60 s
+  // navigation race and any in-flight CDP send outlive it, so the loop would stay
+  // open for up to a minute and a downstream catch would report 1 over the
+  // interrupt. Same call the legacy handler above makes; an aborted run produces
+  // no evidence for the W1 stdout race to truncate.
   process.once("SIGINT", () => {
     close();
-    process.exitCode = 130;
+    process.exit(130);
   });
 
   try {
@@ -1601,9 +1606,12 @@ async function runArchiveRead(opts) {
 
 // Run only when executed directly: `scripts/drill-2-7-local-stack.mjs` imports the
 // CDP session and the page readers below without starting a latency study.
+// realpathSync on both sides because Node realpaths the main module: through a shim
+// or a symlink the raw comparison goes false, and a silent exit 0 reads as green.
 const invokedDirectly =
   process.argv[1] !== undefined &&
-  resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+  existsSync(process.argv[1]) &&
+  realpathSync(resolve(process.argv[1])).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase();
 if (invokedDirectly) {
   main().catch((err) => {
     console.error(`\n${err.stack || err.message}`);
