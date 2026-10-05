@@ -104,7 +104,10 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // The pair sat at 09:00/09:30 until the owner's 2026-10-04 call moved it:
     // ESPN filters its scoreboard by US local date, so the run has to land
     // after the latest tip-off has become yesterday in America/New_York.
-    expect(cronsOf(INSEASON)).toEqual(['30 7 16-30 4 *', '30 7 * 5 *', '30 7 1-30 6 *']);
+    // June ends on the 24th (owner call 2026-10-05, review #39): a one-date
+    // source reads an empty feed every day after the Finals, so a June 30 end
+    // filed a run of reds that would bury a real failure.
+    expect(cronsOf(INSEASON)).toEqual(['30 7 16-30 4 *', '30 7 * 5 *', '30 7 1-24 6 *']);
   });
 
   it('declares the empty-feed alarm itself, so the runner stays date-blind', () => {
@@ -156,6 +159,16 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     });
   });
 
+  it('the alarm carries its own repair for a Game 7 the one-date source missed', () => {
+    // `espn` never re-asks a date, so a red run the morning after a Game 7
+    // loses that game from the automated path (owner call 2026-10-05, review
+    // #39). The issue body is where the operator reads the recovery.
+    const body = String(notifyStepOf(INSEASON)?.with?.body ?? '');
+    expect(body).toContain('MISSED GAME 7 RECOVERY');
+    expect(body).toContain('supabase/scripts/pipeline/data/series_manual.csv');
+    expect(body).toContain('--source=manual_csv --dry-run');
+  });
+
   it('never exposes the operator-only insights refresh', () => {
     // U10 makes --refresh-insights a deliberate human action; a workflow input
     // would turn it into an automatic one. Parsed shape, same reason as above.
@@ -167,8 +180,13 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
 });
 
 describe('pipeline-offseason.yml — the bracket edges (FR-20)', () => {
-  it('fires at the two edges (April 12 outside the alarm window, June 25 the finalize re-run inside it)', () => {
+  it('fires at the two edges, both outside the alarm window', () => {
     expect(cronsOf(OFFSEASON)).toEqual(['30 7 12 4 *', '30 7 25 6 *']);
+    // "Outside" is a relation between two files, so it is pinned as one: no
+    // offseason date may fall on a day the inseason file fires with the flag.
+    const inseasonJuneEnd = Number(/^30 7 1-(\d+) 6 \*$/.exec(cronsOf(INSEASON)[2] ?? '')?.[1]);
+    expect(inseasonJuneEnd).toBeLessThan(25);
+    expect(cronsOf(INSEASON)[0]).toBe('30 7 16-30 4 *');
   });
 
   it('passes no empty-feed alarm anywhere in its parsed shape', () => {

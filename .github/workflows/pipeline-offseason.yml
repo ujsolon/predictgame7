@@ -18,12 +18,12 @@ name: Pipeline - offseason bracket edges
 # What this file deliberately lacks is `--require-feed`: an empty feed on April
 # 12, before the postseason really starts, is legitimate, and making it red
 # would train the owner to ignore the one alarm that matters (failure mode 1).
-# Only April 12 sits outside the alarm window. June 25 is INSIDE it —
-# `pipeline-inseason.yml`'s `1-30 6` line fires the same morning with the flag
-# on, and the two queue in `pipeline-writes` — so this file's June run is the
-# finalize pass re-run, not a quiet edge. The absence is the design decision,
-# which is why it is visible in a workflow file and not derived from a date in
-# code.
+# Both edges sit outside the alarm window. `pipeline-inseason.yml`'s June line
+# ends on the 24th (owner call 2026-10-05, Story 2.6 review #39), so the June 25
+# run here reads June 24 with no alarm: it finalizes a Game 7 played that late,
+# and stays green on the empty post-Finals feed that would otherwise be red.
+# The absence is the design decision, which is why it is visible in a workflow
+# file and not derived from a date in code.
 
 on:
   schedule:
