@@ -397,7 +397,7 @@ so that the cadence FR-20/21 requires runs without me remembering to run it.
 **Then** offseason runs at playoff start/end initialize and finalize the postseason bracket idempotently (FR-20); inseason runs daily within the configured window and Predict's Active Series reflect the latest results after each run (FR-21)
 **And** `service_role` is injected from GH Actions secrets only (NFR-S1)
 **And** a non-zero pipeline exit produces a detectable notification (SM-4) — verified by a deliberate dry failure in a test run
-**And** if manual_csv is the inseason source (Story 2.1 both-fail outcome): documented operator cadence — owner edits the CSV daily before 09:00 UTC (aligned with the keepalive cron slot), so Active Series are never more than one day stale during the playoff window
+**And** if manual_csv is the inseason source (Story 2.1 both-fail outcome): documented operator cadence — owner edits the CSV daily before 07:00 UTC (aligned with the keepalive cron slot) `[Amended 2026-10-05 by owner call: was 09:00, moved with the keepalive's Story 2.13 timing change]`, so Active Series are never more than one day stale during the playoff window
 **And** failed runs are visible in Actions history with logs sufficient to diagnose without local repro
 
 ### Story 2.12: Venue probe and census guard follow-up
