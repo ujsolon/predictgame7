@@ -52,3 +52,11 @@ minutes. The detector for a missing row stays what `failure-modes.md` mode 2 alr
 gets to see a real `state == 'in'` payload, which is the shape nobody has ever fetched. The
 premise that the 09:30 slot existed to guarantee finished games was never recorded anywhere; the
 owner held it, and the amendment makes the actual trade visible instead of leaving it implied.
+
+**Re-priced and kept, 2026-10-05.** Asked whether the margin is worth trading back, the owner kept
+07:30/07:00 as shipped. The two rejected alternatives are recorded so a future session does not
+re-propose them as if new: reverting to 09:30 (restores ~4 hours of margin and gives up the
+early-refresh gain, which exists for SM-1's morning-traffic measurement), and adding a second
+same-date pass later in the day (a second fetch of one date is new cadence surface and contradicts
+the one-date-per-run owner call). No cron line changed on 2026-10-05; this paragraph is the
+confirmation, and the file stays the record of the 2026-10-04 call.

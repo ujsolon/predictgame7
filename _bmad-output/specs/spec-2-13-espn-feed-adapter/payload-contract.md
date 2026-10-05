@@ -15,7 +15,7 @@ Source of the measurements: `deferred-work.md` §"CONFIRMED GREEN AND BOTH THROW
 | Range form | `dates=20260601-20260608` → `400`, 80 bytes, a JSON error body with no `.events` key | measured |
 | Date semantics | `dates` filters by **US local date**. `dates=20260605` returned the game stamped `2026-06-06T00:30Z` | measured |
 | Latency | 78 ms from a GitHub-hosted runner, 226 ms from Supabase, same URL | measured |
-| Compression | Response is `application/json;charset=UTF-8`; a `--compressed` client sees ~5.9 KB where an uncompressed one sees ~46.9 KB for the same URL | measured |
+| Compression | Response is `application/json;charset=UTF-8`; a `--compressed` client sees ~5.9 KB where an uncompressed one sees ~46.9 KB for the same URL. The two rounds are read as **the same payload, one of them gzipped** — moved here from `SPEC.md`'s Assumptions by owner call 2026-10-05 because it bends no design decision (admission, team resolution and the date rule are all shape-based). Honest limit: the committed captures are **bodies only and no response header was ever captured**, so the gzip reading cannot be settled from bytes in this repo; settling it needs one header dump on an owner leg, which nobody has authorised. | sizes measured · reading inferred |
 | `seasontype` / `playoffType` | never probed | **out of scope** |
 | Auth | none — the probe sent no key and no `Authorization` header. (The `apikey` + `Authorization: Bearer` requirement belongs to the Supabase function gateway, not to ESPN.) | measured |
 
