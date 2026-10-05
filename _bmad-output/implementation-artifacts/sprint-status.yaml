@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-05-2026 20:30
+last_updated: 10-05-2026 19:34
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -287,14 +287,21 @@ development_status:
   # 00016 re-emitted twice -- once for the first tail edit, once for BH-11 -- with --check going red
   # (exit 2, line 435) between them, and the throwaway rehearsal green both times. The committed file
   # now diverges byte-wise from the text production applied 2026-10-02 under an unchanged filename;
-  # recorded in docs/CURRENT_DATA_MODEL.md. Review: 13 findings adjudicated in spec-2-12's Review
+  # recorded in docs/CURRENT_DATA_MODEL.md. Review: 14 findings adjudicated in spec-2-12's Review
   # Triage Log -- 8 accepted and patched, 4 rejected with code evidence, 1 deferred to 2-13 (the
-  # load-sensitive --fixture-report spawnSync timeout). No loopback.
+  # load-sensitive --fixture-report spawnSync timeout), and 1 (ECH-1) judged real, pre-existing and
+  # left as-is (filed to deferred-work by the 2026-10-05 external review). No loopback.
   # OWED BY THE OWNER, as on every story this epic: a fresh-context external code review on a
   # different model (this story's review layers ran as same-model subagents), and `db push` -- which
   # this story does NOT need, because the divergence is guard advice text that fires only on a future
   # re-emit/apply. Nothing was pushed and nothing was applied.
-  2-12-venue-probe-and-census-followup: review
+  # 2026-10-05: fresh-context external bmad-code-review (four layers over f1c59dd..c79add1) ran;
+  # findings in spec-2-12 `### Review Findings`. Owner call: NO db push owed for 2.12. Five patches
+  # applied (BH-11 clause pinned + mutation-checked, two test comments, deferred-work closure
+  # corrected -- only league_backfill_complete is reachable for a pending series -- and this tally);
+  # four deferred (probe per-match logic untested and ECH-1 to 2-7; the 2.13 prose leak and the
+  # epics.md AC wording to the retro). Gate exit 0 (560 tests). DONE.
+  2-12-venue-probe-and-census-followup: done
   2-7-epic-verification-simulated-playoff-week: backlog
   epic-2-retrospective: optional
 

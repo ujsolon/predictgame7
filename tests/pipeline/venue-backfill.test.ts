@@ -321,6 +321,10 @@ describe('renderMigration — the single emitted copy of 00016', () => {
       // append-the-newer-series advice is now explicitly fenced to series that
       // HAVE a Game 7 (the pending case is named as not-appendable).
       expect(message).toMatch(/cannot be appended/);
+      // Review finding BH-11: neither message may read as leave to delete a
+      // series row — the explicit prohibition is pinned, the alternative absent.
+      expect(message).toContain('never delete a series row');
+      expect(message).not.toContain('or remove it');
     }
     // And per O-2 the census population line stays exactly as written: league
     // only, no winner_team_id filter — the two guards above already refuse the
@@ -671,7 +675,7 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
 
   it('the venue probe passes the matched row\'s slots at every resolver call (Story 2.12)', () => {
     // The resolver's slot parameter is required in TypeScript, but `scripts/**` is
-    // in no gate program (AGENTS.md: Biome's includes stop at src/, tsc -b covers
+    // in no gate program (biome.json's includes cover no `scripts/*.mjs`, tsc -b covers
     // src + supabase/scripts/pipeline), so a call site regressing to the two-arg
     // form parses, lints, type-checks and tests green — and fails only in the
     // owner's next live run, which is the run Story 2.12 exists to protect. This
@@ -889,7 +893,7 @@ describe('the era-code alias table and the two-pass season matcher (curation opt
   });
 
   it('a code that names neither slot and no alias stays raw — the probe slot check still refuses it', () => {
-    // The refusal branch at probe:262-267 is only reachable when resolution lands
+    // The refusal branch at probe:269-274 is only reachable when resolution lands
     // outside both slots; the resolver must not invent an answer there.
     expect(resolveFeedCode('ZZQ', aliases, ['BOS', 'WAS'])).toEqual({ abbr: 'ZZQ', alias: null });
   });

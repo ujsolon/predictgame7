@@ -181,3 +181,37 @@ step-04, 2026-10-04. Three layers run in parallel on the story diff (blind hunte
 - `node scripts/rehearse-migration-00014.mjs` -- expected (required under O-2, since emitted text changed): the harness's own final pass line plus the guard-failure cases, captured verbatim into Implementation Notes. Spawns its own throwaway `postgres:16` container; touches no hosted database.
 - `npm run gate` -- expected: exit 0 (read the code from the run, not a pipe).
 - `npx supabase db push` -- **not run here.** Handed to the owner: the re-emitted `00016` is never applied to production, and the committed file therefore diverges by content from the text production applied on 2026-10-02.
+
+### Review Findings
+
+Fresh-context `bmad-code-review`, 2026-10-05, over `f1c59dd..c79add1` (the two Story 2.12 commits; release commit `b8b24d9` excluded). Four layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor, all of which completed. Line numbers are current HEAD.
+
+- [x] [Review][Decision] **RESOLVED 2026-10-05, owner: no push owed for Story 2.12** — the `db push` line in Verification is waived, since name-only migration tracking means it would never re-apply `00016`. AC 5's `db push` handoff vs "this story does NOT need it" — the Verification bullet above hands `npx supabase db push` to the owner, while sprint-status says 2.12 needs no push. `docs/CURRENT_DATA_MODEL.md` agrees: name-only migration tracking means a push never re-applies `00016`, and a push today only applies other pending migrations as a side effect. Owner call: formally waive the push for 2.12 (recorded as "no push owed"), or keep it as an owed step.
+- [x] [Review][Patch] Pin the BH-11 clause: the O-2 guard-message test checks neither "never delete a series row" nor the absence of "or remove it", so the BH-11 fix can be silently reverted under a green gate [tests/pipeline/venue-backfill.test.ts:316]
+- [x] [Review][Patch] Stale pointer in new test code: "refusal branch at probe:262-267" is now `probe-game7-venues.mjs:269-274` [tests/pipeline/venue-backfill.test.ts:892]
+- [x] [Review][Patch] Source-shape test comment misstates the gate: "Biome's includes stop at src/" is false. `biome.json` also includes `supabase/functions/**`, `supabase/scripts/**/*.ts` and `tests/**`; the true point is that `scripts/*.mjs` is in no gate program [tests/pipeline/venue-backfill.test.ts:674]
+- [x] [Review][Patch] The deferred-work.md census closure misstates what changed:
+  - (a) "The tails also drop the pre-fix 'or remove it' alternative": no commit ever carried that phrase (`git log -S"or remove it"` is empty); it existed only in this story's uncommitted first build.
+  - (b) "`--check` byte-agreement never went red": true only at commit granularity; the build recorded exit 2 between re-emits.
+  - (c) "The two guards a pending series actually reaches": `00016` adds `league` NULL with no default (`:383`), and only the curated UPDATE sets it (`:410-417`). So any pending series present at apply time stops at `league_backfill_complete` (`:426`). The `DEFAULT 'NBA'` (`:457`) only matters after the migration has run, and `00016` never runs again. `venue_coverage`'s new tail is accurate, but a pending series can never reach it.
+
+  [_bmad-output/implementation-artifacts/deferred-work.md:353]
+- [x] [Review][Patch] The sprint-status tally says "13 findings — 8 accepted, 4 rejected, 1 deferred", but the Review Triage Log has 14 rows, and ECH-1 ("real, pre-existing, left as-is") fits none of the three buckets [_bmad-output/implementation-artifacts/sprint-status.yaml:287]
+- [x] [Review][Defer] The probe's per-match decision is verified only by reading source text [scripts/probe-game7-venues.mjs:268-292] — deferred: no test runs a modern `BOS`/`WAS` match through the probe's resolve → slot-check → paste/refuse → inversion logic, and the "winner-inversion read" test only repeats resolver cases. Fixing it needs that per-match decision moved into a pure function in `venueBackfill.ts`, which means refactoring an owner-run script. Owner: Story 2.7.
+- [x] [Review][Defer] ECH-1 was never filed: a feed winner code that names neither slot and no alias is silently dropped from the inversion report (only `feedWinner === m.row.teamB` is handled) [scripts/probe-game7-venues.mjs:287-292] — deferred: pre-existing (same before and after D-1); this story's triage log judged it real, but it was missing from deferred-work.md. Owner: Story 2.7.
+- [x] [Review][Defer] Story 2.13 planning prose went into this story's commit: in `6c7d1df`, `epic-2-context.md` gained the 2.13 bullet, the re-derived chain and the nba.com-superseded paragraph. That breaks the Boundaries rule "no Story 2.13 / scheduling work leaks in", and BH-12 was rejected as out of boundary [_bmad-output/implementation-artifacts/epic-2-context.md:23] — deferred: already in history, the content is correct, and nothing short of a rewrite would fix it. Owner: the epic-2 retrospective.
+- [x] [Review][Defer] The `epics.md` Story 2.12 AC still requires `--check` to byte-agree with "the already-applied `00016`", which O-2 as built deliberately breaks. Its "Recorded as built" paragraph neither marks that line superseded nor refreshes the stale pointers (`venueBackfill.ts:512`, `probe:261,276`, `:928`) [_bmad-output/planning-artifacts/epics.md] — deferred: this is a planning-artifact edit, outside a code review's patch scope.
+
+**Rejected:**
+- false: "`venue_coverage` counts a pending row as an 'archived series'". A pending series never reaches that guard, because its NULL `league` stops it at `league_backfill_complete` (`00016:426`).
+- false: "`last_updated` written forward". The field now reads `10-05-2026 20:30`, and later honest stamps have replaced the one in question.
+- false: "VG-other-1 routed to 2.13 without a scope test". 2.13 already landed the fix (`55801f0`, which gives each case its own wall-clock budget).
+- low: "`indexOf('USING ERRCODE')` can return -1 and slice to EOF". `at` always lands on a `RAISE` that carries `USING ERRCODE`, so failing needs the guard itself rewritten, and the fix would add a guard.
+- low: "a destructured or aliased call sidesteps the source-shape regex". That is unlikely, and the real remedy is the deferred extraction into a testable function.
+- low: "no case pins a raw code naming one slot while its alias maps to the other slot". That is accepted D-1 behaviour, and the raw-first tests already cover it.
+- rejected (spec edit): frontmatter `status: 'done'` vs sprint-status `review`. This review's status step re-syncs it.
+- rejected (spec edit): Implementation Notes quote a mutation-test name that differs from the committed test (`test:877`).
+- rejected (spec edit): the I/O matrix calls the winner row "unchanged", but the probe now reports a modern-row inversion it used to drop.
+- rejected (spec edit): the BH-2/BH-3 rebuttal in the triage log relies on the post-apply `DEFAULT 'NBA'`, which a re-run of `00016` never meets. Patch (c) above has the correct reachability.
+- rejected (spec edit): the BH-12 verdict doesn't match the `epic-2-context.md` hunk. The substance is carried by the defer above.
+- rejected (spec edit): stale planning prose (the O-1 token count, pre-build Code Map/Task wording, `test:523`).
