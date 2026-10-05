@@ -2,7 +2,7 @@
 title: 'Story 2.13 — ESPN feed adapter'
 type: 'feature'
 created: '2026-10-04'
-status: 'review'
+status: 'done'
 baseline_commit: '332b7c2a4f558cfe0fb183364399e052cda754f4'
 route: 'dispatch'
 review_loop_iteration: 1
@@ -538,3 +538,50 @@ next reader to add a divergence that is already recorded); `espn-adapter.test.ts
 measured divergences" for a case that pins `NY` and `SA`, retitled "two of the six"; and the pre-proof-D
 paragraph above that listed "no measurement from the *scheduled* environment" as unknown was rewritten rather
 than left to contradict the run it now describes.
+
+### Review Findings
+
+Code review 2026-10-05 (`bmad-code-review`, four layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor). Diff reviewed: net `332b7c2..HEAD` over the files only Story 2.13 touched, plus 2.13's own commits (`84b52fd`, `55801f0`, `3ca8175`, `2c093c1`) in files that other, already-reviewed stories also edited. Fixture JSONs and the narrative docs were not in the diff. Result: 1 decision-needed (resolved to a patch), 10 patch, 1 defer, 17 rejected. **All 10 patches applied 2026-10-05; `npm run gate` exit 0 (561/561 tests). The new reversed-archive pin was mutation-checked: narrowing `reversedIsMatch` to pending rows turns exactly that test red.**
+
+- [x] [Review][Decision] `nba_com` is still a `workflow_dispatch` choice in `pipeline-inseason.yml` — **Resolved 2026-10-05 (owner): drop it. Now the first patch below.** Two spec lines say it should be gone: Never ("`nba_com` … leaves the workflow surface") and AC 4 ("every … choice list … reads `espn`"). Yet `.github/workflows/pipeline-inseason.yml:74` lists it, and `tests/pipeline/workflows.test.ts:157` pins `['espn','manual_csv','nba_com','fantrax']` together with a comment defending that choice. A hosted runner cannot reach nba.com, so dispatching it always goes red. The options are to drop the option and its pin, or to keep it and amend the spec's Never line and AC 4.
+- [x] [Review][Patch] Drop `nba_com` from the inseason `workflow_dispatch` options and update the pin; it stays registered and runs by hand from the command line [.github/workflows/pipeline-inseason.yml:74, tests/pipeline/workflows.test.ts:157]
+- [x] [Review][Patch] No test covers re-dispatching a date whose Game 7 completed through a reversed stored pair (archived replay, slots swapped) [tests/pipeline/plan.test.ts] — the `reversedIsMatch` archive skip is unproven. Narrowing it to pending rows keeps every test green but turns the replay red. Add a case with `{ ...currentArchive(id), team_a_id: TEAM_B, team_b_id: TEAM_A }` plus `gameSevenOnlySource()` that expects 1 skip and 0 completions.
+- [x] [Review][Patch] Wording written before the capture still says there are 2 divergences and 26 assumed codes, and the probe prints a false count [scripts/probe-espn-adapter.mjs:366]
+  - The leg B output reads "28 equal teams.abbreviation". The measured split is 24 agree, 6 diverge.
+  - The probe header (`:14`) says five codes were measured and 26 assumed.
+  - The probe's `harvestFranchiseCodes` doc (`:430`) says "the two divergences".
+  - `adapters/espn.ts:34-35` says "`NY`/`SA`; `CLE`/`TOR`/`DEN` agree".
+  - `port.ts:113` and `run.ts:322` cite `NY`/`SA` only.
+  - `writer.ts` `TeamRow.espn_code` says "at least `NY`/`SA`".
+  - `tests/pipeline/run.test.ts:16` says "other 26 … CAP-8's probe to measure".
+  - `seriesdatasource-port.md:218` repeats the same outdated wording.
+- [x] [Review][Patch] The port doc contradicts `plan.ts` and carries stale pointers [_bmad-output/implementation-artifacts/seriesdatasource-port.md:279]
+  - Item 2 says the game-7-only shape is kept honest by the identity assertion that "aborts on the mirror image". `plan.ts`'s `reversedIsMatch` now adopts the reversed stored row instead.
+  - Item 6 cites `plan.ts:314-333/:411-424/:453-481/:493-502/:515`, but those blocks moved to about `:323/:434/:510/:539`. Use symbol names.
+  - `:222` says the seeds "come only from the owner's probe output". They come from the committed capture `espn-teams-site-20261004.json` and are audited by `espn-adapter.test.ts`.
+- [x] [Review][Patch] Three places name `Team A`/`Team B` placeholder rows that do not exist [docs/CURRENT_DATA_MODEL.md:77] — `writer.ts:26` and `run.ts:326` repeat them. No migration creates such rows: `teams` holds 59 = 30 (`00005`) + 29 historical (`00007`). The rehearsal also asserts exactly 29 NULLs.
+- [x] [Review][Patch] The unknown-code abort tells the operator to "add the code through migration 00018" [supabase/scripts/pipeline/adapters/espn.ts:454] — `00018` is applied, and its guards refuse a 31st code or any code outside ids 1–30. A new code needs a new migration. The same copy appears at `:461`.
+- [x] [Review][Patch] The stored-row certification refusal leaves out the wording the spec task requires [supabase/scripts/pipeline/plan.ts:474] — The `plan.ts` task says the message must name both team ids and say the games 1–6 cross-check does not apply to this path. The `gameSevenOnly` throw names only the series id. Its tail, "the runner never rewrites stored games", also misleads, because no source games 1–6 were compared.
+- [x] [Review][Patch] A test title claims the opposite of what the test asserts [tests/pipeline/espn-adapter.test.ts:253] — The title says "a UTC-derived date … would ask for June 6". The body's own comment admits the pinned instant cannot tell the two clocks apart; the 03:30Z case is the one that discriminates. Retitle it to describe that case.
+- [x] [Review][Patch] A comment says "`setUTCDate(-1)` cannot get wrong" [tests/pipeline/espn-adapter.test.ts:273] — The code uses `Date.UTC(y, m-1, d-1)`. `setUTCDate(-1)` would return the second-to-last day of the previous month, so the comment names a wrong method as if it were safe.
+- [x] [Review][Patch] A fixture id says `'pending-2027'` but labels a `year: 2026` row [tests/pipeline/espn-adapter.test.ts:841]
+- [x] [Review][Defer] Nothing tests that `createSupabaseSink().readTeams` selects `espn_code` [supabase/scripts/pipeline/writer.ts:103] — deferred, medium. Reverting the select empties `espnTeamIds`, and every scheduled run would then abort with "unknown ESPN team code" while `npm test` stays green, because every test injects a fake sink. The failure is loud, and the sink has never had a unit seam; adding one is separate work. The only evidence today is live dispatch `37235646137`.
+
+**Rejected (17):**
+- `false` (edge-case, blind, auditor) — "Every event must resolve, so an exhibition, All-Star or international-club code aborts the run". This is the spec's Always rule ("A code that resolves to nothing aborts naming the code"), and `espn.ts:445-449` documents it as deliberate. Every cron date in the bracket (Apr 16–Jun 24, plus the Apr 12 and Jun 25 edges) reads a day when only NBA franchises play. Hand dispatches outside the window fail loudly, which is the intended posture.
+- `low` (edge-case) — A `null` event or competitor gives a raw TypeError instead of a named drift message. It still exits non-zero, it needs a payload never observed, and the fix adds guards.
+- `false` (edge-case, blind) — "A missed date or a June 30 Game 7 is never recovered". The fix is a lookback, which the spec's Never section forbids. The bracket end and the missed-Game-7 recovery are Story 2.6's recorded decision (`c8e22f5`, #39/#40).
+- `false` (edge-case) — "`manual_csv` with a winner plus game 7 alone now silently completes". It completes only against a stored pending row, `storedPendingCertification` checks that row, and `pipeline_complete_series` re-asserts the 3–3. This is the source-agnostic shape the owner's 2026-10-04 planning call admitted.
+- `false` (edge-case) — "`00018` guards bind only the six divergent rows, so a swapped agreeing code passes". `espn-adapter.test.ts`'s `migrationSeed()` audits every `UPDATE` against the committed capture, and the migration is already applied.
+- `maybe-false`/`low` (verification-gap) — "The `plan.ts` comment misreads the 117–43 census". In archived NBA/BAA rows `team_a` is the winner (177/178), so the 43 Game-7 home losses are Game 7s hosted by `team_b`. The comment's reading holds for that population.
+- `low` (blind) — The headline's round is not compared to the stored round on a completion. The stored round is authoritative and never rewritten, so nothing wrong is written, and the fix adds a branch.
+- `false` (blind) — "Probe leg A resolves through abbreviations instead of `00018`". Its seed map plus the six `MEASURED_DIVERGENCES` is the `00018` content by construction.
+- `low` (blind) — Shape errors in single events are neither retried nor tagged with the URL. They still abort with a named event, they are rare, and the fix adds a branch.
+- `false` (blind) — "The order of exclusions makes the counts line misleading". A game with no headline really is excluded for that reason, so the stated reason is true.
+- `low` (blind) — There is no reversed-pair case at the runner level. The plan-level patch above covers the branch, and the RPC fakes add nothing for slot adoption.
+- Spec edit (auditor) — The slot-clash message does not name a series id. No stored row matches, so there is no id to name; the fix is amending the I/O matrix row.
+- Spec edit (auditor) — Always/Never still forbid the committed `fixtures/espn-*.json` captures and the live fetch the owner released.
+- Spec edit (auditor) — The Tasks checklist still marks `00018`, `COVERED_THROUGH = 18` and `CURRENT_DATA_MODEL.md` as BLOCKED.
+- `low` (auditor) — `00018` departs from the Code Map's house style (`IF NOT EXISTS`, no `ERRCODE '23514'`). The migration is applied to production, so editing it would create drift.
+- `false` (auditor) — "The duplicate-code proof does not go through `applyRejected`". The intent is met by a stronger proof that also asserts the rejecting index's name.
+- `low` (auditor) — `validatedShape` now runs before the identity assertion, so error precedence changed. It is unrecorded but harmless, and recording it is a spec edit.

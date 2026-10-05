@@ -493,7 +493,11 @@ export function planPipeline(sources: SourceSeries[], current: CurrentSeriesRow[
           continue;
         }
         throw new PlanAssertionError(
-          `${label}: series ${exact.id} is pending on the table but ${mismatch} — the runner never rewrites stored games`,
+          gameSevenOnly
+            ? `${label}: series ${exact.id} (${year}, team ${exact.team_a_id} vs ${exact.team_b_id}) is pending on the table but ${mismatch}. ` +
+                'The games 1–6 cross-check does not apply to this path — the source carries game 7 alone — so the stored row must ' +
+                'certify the 3–3 on its own, and it does not. The runner never rewrites stored games'
+            : `${label}: series ${exact.id} is pending on the table but ${mismatch} — the runner never rewrites stored games`,
         );
       }
       throw new PlanAssertionError(

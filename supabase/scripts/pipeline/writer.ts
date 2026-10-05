@@ -23,10 +23,10 @@ export interface TeamRow {
   /**
    * Story 2.13 (migration `00018`) — the provider code `site.api.espn.com`
    * prints for this franchise, when it has one. Nullable by design: the 29
-   * historical identities and the `Team A`/`Team B` placeholders carry no
-   * modern ESPN code and stay NULL, and the `espn` adapter's join key resolves
-   * only through this column (never `abbreviation`, which differs for at least
-   * `NY`/`NYK` and `SA`/`SAS`).
+   * historical identities carry no modern ESPN code and stay NULL, and the
+   * `espn` adapter's join key resolves only through this column (never
+   * `abbreviation`, which differs for six franchises — `NY`/`NYK`, `SA`/`SAS`,
+   * `GS`/`GSW`, `NO`/`NOP`, `UTAH`/`UTA`, `WSH`/`WAS`).
    */
   espn_code: string | null;
 }

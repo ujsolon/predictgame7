@@ -10,9 +10,10 @@
 //      coverage CAP-8 exists to measure: `notes[0].headline`, `status.type`,
 //      `competitors[].team.abbreviation`, `.homeAway`, `.score`. A PASS here
 //      certifies the parse the pipeline runs, on a payload nobody trimmed.
-//   B. The 30-franchise ESPN code table. `payload-contract.md` measures five
-//      codes (`CLE`, `TOR`, `DEN`, `NY`, `SA`) and ASSUMES the other 26 agree
-//      with `teams.abbreviation`. This leg measures them, which is what makes
+//   B. The 30-franchise ESPN code table. `payload-contract.md` first measured
+//      five codes (`CLE`, `TOR`, `DEN`, `NY`, `SA`) and ASSUMED the other 25
+//      agreed with `teams.abbreviation`; this leg's 2026-10-04 run measured all
+//      30 (six diverge, 24 agree — see `MEASURED_DIVERGENCES`). It measures them, which is what makes
 //      `00018`'s seeds evidence instead of a guess list — the file's own rule.
 //      It reads the codes from ESPN's team list, whose shape has never been
 //      measured here, so the reader is deliberately tolerant and every
@@ -363,7 +364,10 @@ async function runProbe(datesArg) {
     for (const code of codesOnFeed) {
       if (!table.some((row) => row.code === code)) failures.push(`leg B: leg A saw ${code} on the scoreboard but the team-list table does not hold it — the two routes disagree about the code space`);
     }
-    console.log('00018 transcription rule: every espn_code above is the measured value, one UPDATE per row; 28 equal teams.abbreviation and the divergence rows above are the only exceptions.');
+    console.log(
+      `00018 transcription rule: every espn_code above is the measured value, one UPDATE per row; ${table.length - divergences.length} equal ` +
+        `teams.abbreviation and the ${divergences.length} divergence rows above are the only exceptions.`,
+    );
   }
 
   // ---- Leg C: the range control ---------------------------------------------
@@ -427,7 +431,7 @@ async function runProbe(datesArg) {
  * they are instead of failing as "entry null has no code".
  *
  * Tolerance never means trust: 30 distinct codes, each resolving to a distinct
- * `00005` row, with the two divergences confirmed by the name beside them.
+ * `00005` row, with each of the six `MEASURED_DIVERGENCES` confirmed by the name beside it.
  * Anything that fails verification returns null after naming what it found and
  * where it found it, so the owner inspects the real shape instead of seeding
  * `00018` from a misread field.

@@ -13,8 +13,8 @@ import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabas
 /**
  * Story 2.13 grows `TeamRow.espn_code`. Only `CLE` and `DEN` are filled, because
  * those two agreements are MEASURED (`payload-contract.md` "Team codes"). `GSW`
- * and `OKC` stay NULL rather than carrying an invented code — the other 26
- * franchises are CAP-8's probe to measure, not this suite's to guess, and a
+ * and `OKC` stay NULL rather than carrying a code this table does not need — the
+ * full 30-franchise seed is `00018`'s and `espn-adapter.test.ts` audits it, and a
  * fixture code nobody read is the silent-mismatch failure finding 5 warns about.
  * Nothing here runs the `espn` resolver: this table serves the `manual_csv` and
  * `nba_com` cases, and the adapter's own suite injects a table that does hold

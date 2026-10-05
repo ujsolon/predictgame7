@@ -214,13 +214,15 @@ stays registered and hand-runnable (owner call C1).
   `--require-feed` on a day that had games. `ADAPTER_FLAGS` gives `espn` no
   flags at all: a `--date=` would be the calendar logic AD-4 refuses.
 - **Identity resolves through `teams.espn_code`, not `abbreviation`.** Measured
-  divergences: ESPN prints `NY` for `NYK` (id 20) and `SA` for `SAS` (id 27),
-  while `CLE`/`TOR`/`DEN` agree. A code that resolves to nothing aborts the run
+  divergences (all 30 franchises captured 2026-10-04): ESPN prints `NY`, `SA`,
+  `GS`, `NO`, `UTAH` and `WSH` where the table holds `NYK`, `SAS`, `GSW`, `NOP`,
+  `UTA` and `WAS`; the other 24 agree. A code that resolves to nothing aborts the run
   naming the code, and substring, city and nickname matching are refused by the
   adapter's own text — a silent mismatch drops games. `team.displayName` is
   never read as an identity. The column is migration `00018` (additive,
-  nullable, partial unique index) and its seeds come only from the owner's probe
-  output.
+  nullable, partial unique index), seeded from the committed capture
+  `tests/pipeline/fixtures/espn-teams-site-20261004.json`, which
+  `espn-adapter.test.ts` audits every `UPDATE` against.
 - **Round and game number come from the headline.**
   `competitions[0].notes[0].headline` ("East 1st Round - Game 2") is the only
   naming source on the measured payload — `competitions[0].type.shortName` is
@@ -274,9 +276,14 @@ floor beneath both.
    slot honest; a mismatch names the row and aborts. Story 2.13's game-7-only
    shape cannot be checked this way and is not: `espn` sets `team_a` to game
    7's HOME side because it never sees game 1, so there is no game-1 row to
-   compare against (`plan.ts:215-221` fires only when one exists). What holds
-   that shape's slots honest instead is item 1 — the either-slot-order identity
-   assertion against the STORED pair, which aborts on the mirror image.
+   compare against (the game-1 check in `validatedShape` fires only when one
+   exists). What holds that shape's slots honest instead is the STORED pair:
+   `planPipeline` looks the pair up in either slot order and, for this shape
+   only, adopts the stored row's slots when it finds the pair reversed
+   (`reversedIsMatch`), because game 7 is often hosted by the stored `team_b`.
+   A game 7 whose sides leave the pair is still refused by `validatedShape`,
+   mirror rows in both orders still abort, and a source that carries game 1
+   still aborts on a reversed stored row.
 3. **AD-4 derivation invariant**: a winner implies exactly the seven decided
    score rows `{1..7}` whose game-7 winner matches `winner_team_id` **and** a
    games-1-6 split of 3–3 (a 4–2 through six is an impossible shape, not a
@@ -298,17 +305,20 @@ floor beneath both.
    - the 3–3 certification is NOT dropped. `pipeline_complete_series` re-reads
      the STORED games 1..6 and raises unless they are six decided games split
      3–3 (`00015:286-308`), and the plan mirrors that on the stored row with
-     `storedPendingCertification` (`plan.ts:314-333`) so the run keeps its
+     `storedPendingCertification` in `plan.ts` so the run keeps its
      promise that nothing reaches a write the database would reject.
    - it never births. A game 7 with no stored pending row aborts naming the
      path that does supply games 1–6 (`--source=manual_csv`), rather than
-     inserting a series that starts at one game (`plan.ts:411-424`).
+     inserting a series that starts at one game (the `!exact && gameSevenOnly`
+     refusal in `planPipeline`).
    - the pending completion compares against the stored row instead of the
-     source's games 1–6, which the shape does not carry (`plan.ts:453-481`).
+     source's games 1–6, which the shape does not carry (the pending branch's
+     `mismatch` in `planPipeline`).
    - an archived replay of the same game 7 SKIPS rather than aborting, so
-     dispatching one date twice stays green (`plan.ts:493-502`), and the
+     dispatching one date twice stays green (the archive branch's `agrees`), and the
      non-reconciling repair branch is excluded for this shape — agreeing with
-     one row out of seven would prove nothing about the 3–3 (`plan.ts:515`).
+     one row out of seven would prove nothing about the 3–3 (the `!gameSevenOnly`
+     guard on the repair branch).
    Births and whole-series archive rows therefore stay on the curated path; the
    scheduled feed's job is Game 7 admissions only.
 

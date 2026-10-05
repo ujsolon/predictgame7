@@ -74,7 +74,7 @@ An empty population writes `total_game_sevens: 0` with zeros in every numeric me
 
 ## The feed's franchise identity — `teams.espn_code` (`00018`, Story 2.13)
 
-`espn_code text` on `teams`: nullable, CHECKed `^[A-Z]{2,4}$` when present, with a **partial unique index** (`WHERE espn_code IS NOT NULL`) so the 29 historical franchises and the `Team A`/`Team B` placeholders can stay NULL without colliding with each other. Seeded on exactly ids 1–30 — the modern franchises — and on nothing else. `00018` also carries four raise-to-abort post-condition guards (30 rows seeded, 30 distinct codes, the six divergences present on their named franchises, no code outside ids 1–30).
+`espn_code text` on `teams`: nullable, CHECKed `^[A-Z]{2,4}$` when present, with a **partial unique index** (`WHERE espn_code IS NOT NULL`) so the 29 historical franchises can stay NULL without colliding with each other. Seeded on exactly ids 1–30 — the modern franchises — and on nothing else. `00018` also carries four raise-to-abort post-condition guards (30 rows seeded, 30 distinct codes, the six divergences present on their named franchises, no code outside ids 1–30).
 
 **Why a new column at all.** The scheduled source is now `site.api.espn.com`, and its code is not `teams.abbreviation`. Measured 2026-10-04 from the committed capture `tests/pipeline/fixtures/espn-teams-site-20261004.json` (the 30 rows at `sports[0].leagues[0].teams`): **24 agree with `00005`, 6 do not** — `GS`/`GSW`, `NO`/`NOP`, `UTAH`/`UTA`, `WSH`/`WAS`, `NY`/`NYK`, `SA`/`SAS`. `payload-contract.md` carried four of those six as "assumed to agree" until they were measured; the assumption is what made three probe rounds report a partial table.
 

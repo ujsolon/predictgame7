@@ -250,7 +250,7 @@ describe('espn — the request date is derived from the run instant (CAP-5)', ()
     expect(deriveRequestDate(RUN_INSTANT)).toBe(DATES);
   });
 
-  it('a UTC-derived date — the bug this pin exists to catch — would ask for June 6', () => {
+  it('the date follows the ET calendar, not UTC — the 03:30Z instant is where a UTC-derived date goes wrong', () => {
     expect(deriveRequestDate(RUN_INSTANT)).toBe('20260605');
     expect(deriveRequestDate(RUN_INSTANT)).not.toBe('20260606');
     // At 04:30Z the UTC calendar has already rolled to June 6 while ET is still
@@ -270,7 +270,8 @@ describe('espn — the request date is derived from the run instant (CAP-5)', ()
   it('it crosses the year boundary by calendar arithmetic, not a hand-written table', () => {
     // Dec 31 backwards from the new year, Feb 28 backwards from March 1, and the
     // 2028 leap day backwards from March 1 — the three crossings a table of
-    // month lengths would have to get right and `setUTCDate(-1)` cannot get wrong.
+    // month lengths would have to get right and `Date.UTC(y, m - 1, d - 1)`
+    // gets right by construction (day 0 rolls back into the previous month).
     expect(deriveRequestDate(new Date('2027-01-01T12:00:00Z'))).toBe('20261231');
     // 05:00Z is 00:00 EST on March 1, so the played day is Feb 28; 04:00Z is
     // still 23:00 on Feb 28, so the played day is Feb 27.
@@ -838,7 +839,7 @@ function runnerHarness(
 /** A stored pending pair: NYK(20)/SAS(27), games 1–6 split 3–3, game 7 hosted by NYK. */
 function storedPendingPair(scores?: CurrentSeriesRow['scores']): CurrentSeriesRow {
   return {
-    id: 'pending-2027',
+    id: 'pending-2026',
     year: 2026,
     team_a_id: 20,
     team_b_id: 27,

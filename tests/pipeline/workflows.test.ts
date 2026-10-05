@@ -150,11 +150,13 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     expect(inputs.require_feed).toMatchObject({ type: 'boolean', default: false });
     // `fantrax` is a deliberate option: it is the recognised-but-unimplemented
     // name whose refusal is the zero-write failure the alarm is tested with.
-    // `nba_com` stays listed after Story 2.13 demoted it from the default — it
-    // is still the source a residential address can run by hand (owner call C1).
+    // `nba_com` is NOT offered: a hosted runner cannot reach nba.com (Story
+    // 2.6's egress evidence), so the option could only ever go red. It stays
+    // registered in `port.ts` and runs by hand from a residential address
+    // (Story 2.13 review, owner call 2026-10-05).
     expect(inputs.source).toMatchObject({
       type: 'choice',
-      options: ['espn', 'manual_csv', 'nba_com', 'fantrax'],
+      options: ['espn', 'manual_csv', 'fantrax'],
       default: 'espn',
     });
   });

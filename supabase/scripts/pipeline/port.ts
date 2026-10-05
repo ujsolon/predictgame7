@@ -110,7 +110,8 @@ export interface AdapterDeps {
    * `espn` adapter. Per-adapter by construction: which column an adapter
    * resolves through is its own fact, and the shared abbreviation map above must
    * never silently apply to a provider whose codes diverge from it (measured:
-   * ESPN prints `NY`/`SA` where the table holds `NYK`/`SAS`). Optional the way
+   * six franchises, e.g. ESPN prints `NY`/`SA` where the table holds
+   * `NYK`/`SAS` — the full list is `00018`'s seed). Optional the way
    * the other HTTP seams are — the runner always supplies it, and an adapter
    * constructed without it refuses rather than falling back.
    */

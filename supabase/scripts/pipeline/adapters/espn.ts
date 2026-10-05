@@ -31,8 +31,10 @@
  *   rule, not a state rule, and no postseason calendar lives anywhere.
  * - Team identity is RESOLVED through `teams.espn_code` (migration `00018`,
  *   owner call C2) — the provider's own code, NOT `teams.abbreviation`.
- *   Measured divergences: ESPN prints `NY` for the Knicks (`NYK`, id 20) and
- *   `SA` for the Spurs (`SAS`, id 27); `CLE`/`TOR`/`DEN` agree. A code that
+ *   Measured divergences (all 30 franchises captured 2026-10-04, seeded by
+ *   `00018`): ESPN prints `NY`, `SA`, `GS`, `NO`, `UTAH` and `WSH` where the
+ *   table holds `NYK`, `SAS`, `GSW`, `NOP`, `UTA` and `WAS`; the other 24
+ *   agree string-for-string. A code that
  *   resolves to nothing ABORTS the run naming the code. Substring, city and
  *   nickname matching are forbidden here, because a silent mismatch drops games
  *   (finding 5 — the one item in the evidence with a real silent-failure mode).
@@ -451,14 +453,14 @@ function selectEvents(events: ParsedEvent[], deps: AdapterDeps, dates: string, u
     if (homeId === undefined) {
       throw new EspnError(
         `espn: unknown ESPN team code "${event.homeCode}" (${event.describe}, dates=${dates}) — no teams row holds it in espn_code. ` +
-          `Refusing to match it by abbreviation, city, nickname or substring; add the code through migration 00018 or fix the URL ${url}.`,
+          `Refusing to match it by abbreviation, city, nickname or substring; seed it through a NEW migration (00018 is applied and its guards fix the 30-row seed) or fix the URL ${url}.`,
       );
     }
     const awayId = resolver(event.awayCode);
     if (awayId === undefined) {
       throw new EspnError(
         `espn: unknown ESPN team code "${event.awayCode}" (${event.describe}, dates=${dates}) — no teams row holds it in espn_code. ` +
-          `Refusing to match it by abbreviation, city, nickname or substring; add the code through migration 00018 or fix the URL ${url}.`,
+          `Refusing to match it by abbreviation, city, nickname or substring; seed it through a NEW migration (00018 is applied and its guards fix the 30-row seed) or fix the URL ${url}.`,
       );
     }
 

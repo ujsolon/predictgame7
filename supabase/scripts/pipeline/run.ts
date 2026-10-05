@@ -319,11 +319,12 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const teamIds = new Map<string, number>(teams.map((team) => [team.abbreviation, team.id]));
     // Story 2.13: a SECOND, per-adapter resolver, keyed on `teams.espn_code`
     // rather than `teams.abbreviation`. It is not the same map under another
-    // name and must not become one: ESPN prints `NY`/`SA` where the table holds
-    // `NYK`/`SAS` (measured), so an abbreviation-equality join would silently
-    // drop those franchises' games — the one failure mode in the evidence with
-    // no loud signal at all. Identities with no provider code (the 29 historical
-    // rows, the placeholders) are absent from this map by construction, which is
+    // name and must not become one: ESPN's code differs from the table's for six
+    // franchises (measured — `NY`/`NYK`, `SA`/`SAS` and four more, seeded by
+    // `00018`), so an abbreviation-equality join would silently drop those
+    // franchises' games — the one failure mode in the evidence with no loud
+    // signal at all. Identities with no provider code (the 29 historical rows)
+    // are absent from this map by construction, which is
     // what makes an unresolvable code abort naming the code instead of resolving
     // to a wrong franchise.
     const espnTeamIds = new Map<string, number>(

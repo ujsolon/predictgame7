@@ -66,12 +66,11 @@ on:
         type: boolean
         default: false
       source:
-        description: 'Adapter: espn is the feed, manual_csv the floor, nba_com the hand-runnable one, fantrax the refusal'
+        description: 'Adapter: espn is the feed, manual_csv the floor, fantrax the refusal (nba_com runs by hand only, off this runner)'
         type: choice
         options:
           - espn
           - manual_csv
-          - nba_com
           - fantrax
         default: espn
 

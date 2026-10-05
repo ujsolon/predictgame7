@@ -301,6 +301,11 @@ describe('planPipeline — Story 2.13 game-7-only source', () => {
     expect(() => planFor([gameSevenOnlySource()], [currentPending('series-42', skewed)])).toThrowError(
       /stored games 1–6 split 4-2 rather than the 3–3/,
     );
+    // The refusal names the series id and both team ids, and says why the
+    // source-side comparison is not what failed here.
+    expect(() => planFor([gameSevenOnlySource()], [currentPending('series-42', skewed)])).toThrowError(
+      new RegExp(`series-42 \\(${YEAR}, team ${TEAM_A} vs ${TEAM_B}\\).*games 1–6 cross-check does not apply to this path`),
+    );
   });
 
   it('an undecided stored game rejects the completion the way the RPC would', () => {
@@ -391,6 +396,18 @@ describe('planPipeline — Story 2.13 game-7-only source', () => {
     expect(plan.completions).toHaveLength(0);
     expect(plan.skips).toHaveLength(1);
     expect(plan.skips[0].reason).toBe('already archived with identical games 1–7');
+  });
+
+  it('archived row stored in the OTHER slot order + the SAME game 7 again: still a skip, not an identity failure', () => {
+    // The replay of a Game 7 that completed through the reversed-row match: the
+    // first run adopted the stored slots, so the archived row keeps them, and a
+    // second dispatch of the same date must stay green rather than trip AD-5.
+    const reversedArchive: CurrentSeriesRow = { ...currentArchive('series-42'), team_a_id: TEAM_B, team_b_id: TEAM_A };
+    const plan = planFor([gameSevenOnlySource()], [reversedArchive]);
+    expect(plan.completions).toHaveLength(0);
+    expect(plan.births).toHaveLength(0);
+    expect(plan.skips).toHaveLength(1);
+    expect(plan.skips[0]).toMatchObject({ team_a_id: TEAM_B, team_b_id: TEAM_A, reason: 'already archived with identical games 1–7' });
   });
 
   it('archived row + a DIFFERENT game 7: refuse — an archived outcome is never rewritten', () => {

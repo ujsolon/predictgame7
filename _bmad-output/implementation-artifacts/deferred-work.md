@@ -526,3 +526,9 @@ exit 0, 24/24, 541 tests, then a repeated `npm run gate` exit 0), not the count.
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-12-venue-probe-and-census-followup.md`
   summary: **`epics.md` Story 2.12's AC still requires `--check` to byte-agree with "the already-applied `00016`".** The built O-2 choice breaks that on purpose: the committed file now diverges from production's applied text. The "Recorded as built" paragraph neither marks that AC line superseded nor refreshes its stale pointers (`venueBackfill.ts:512`, `probe:261,276`, `:928`). **Owner: the next planning-artifact pass (epic-2 retrospective).**
   evidence: Blind-hunter layer of the 2026-10-05 review.
+
+## Deferred from: code review of spec-2-13-espn-feed-adapter.md (2026-10-05)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-13-espn-feed-adapter.md`
+  summary: **No test checks that `createSupabaseSink().readTeams` selects `espn_code` (`supabase/scripts/pipeline/writer.ts:103`).** Every runner test injects a fake sink, so reverting the select to `'id, abbreviation'` empties `espnTeamIds` and every scheduled `espn` run aborts with "unknown ESPN team code" while `npm test` stays green. The failure is loud, not silent, and the sink has no unit seam. The only evidence today is live dispatch `37235646137`.
+  evidence: Verification-gap layer of the 2026-10-05 review (unverified severity: medium).
