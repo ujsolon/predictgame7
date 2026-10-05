@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-05-2026 19:10
+last_updated: 10-05-2026 20:30
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -173,14 +173,17 @@ development_status:
   # under (Bullets BLB, Royals CNR, Kings SAC, Warriors GSW, Hawks ATL, Lakers LAL, Rockets HOU,
   # Nets BKN, Hornets CHA, Pistons DET). Archive left as is. Resolves the UJ-2 nickname deferral
   # for the form. Mutations M18-M21 4/4.
-  # AT REVIEW — the owner's preview look is the acceptance (U15
-  # was accepted sight-unseen: "I have to see it to completely verify").
+  # DONE 2026-10-05 — the owner took the preview look after pass 2 and U16 ("the build looks good")
+  # and accepted the story; the stale-claim sweep ran across epics/deferred-work/spec-2-10/code
+  # comments in the same commit. The NEXT RELEASE's CHANGELOG entry must carry pass 2's fixes (D3
+  # trim, own-key placeholder lookup) and U16 — 0.2.6's entry describes only 55de7ee.
+  # (Was AT REVIEW: U15 was accepted sight-unseen — "I have to see it to completely verify".)
   # 2026-10-04: the published site already carries this build — the gh-pages tip (1d30317,
   # 11:59 +0800) serves the bundle whose `index.html` references `assets/index-B2-pLpNs.js`,
   # md5-identical to the local `dist` of 55de7ee, and that bundle contains the U14 placeholder
   # string which exists in no earlier commit. So the look can be taken on production, not only
-  # on `npm run preview`; the row stays `review` until it is taken.
-  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: review
+  # on `npm run preview`; the row stayed `review` until it was taken (2026-10-05, on preview).
+  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: done
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   # 2026-10-03: spec approved at CHECKPOINT 1 (owner decisions U10-U13; history split out to

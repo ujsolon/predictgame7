@@ -1198,8 +1198,9 @@ export default function PredictPage() {
                 // row names back, so equality matching is safe and no Edge
                 // Function deploy is needed (U7). A custom matchup has no series FK,
                 // so its rows come from U15's index by the same name the trigger
-                // label resolved — otherwise the card would print a name initialism
-                // beside a picker reading the stored code.
+                // label resolved, and a typed nickname resolves through the logo
+                // alias table (U16) — otherwise the card would print a name
+                // initialism beside a label reading the stored code.
                 const rowA = selectedSeries?.data?.team_a ?? rowFor(teamAName);
                 const rowB = selectedSeries?.data?.team_b ?? rowFor(teamBName);
                 // U16: a custom matchup's names are typed text, so they resolve

@@ -31,7 +31,7 @@ context:
 - **U9** the committed-JSON team snapshot stays parked in `deferred-work.md:396-400` — not built here.
 - **U14 (owner, 2026-10-04 — answers this spec's OQ2; numbered past U10-U13, which Stories 2.5/2.6 already consumed)** the search field's placeholder becomes `Search by team name or code...`, in place of `Search by team name...` at `HistoricalPage.tsx:177`. Rejected first, on the owner's read: `Search for a team` — redundant with the `Search Team` label directly above the field, which stays as written (Story 5.2's AA entry names it). The 7 `getByPlaceholderText` references in `historical-page-archive.test.tsx` move with the copy.
 - **U15 (owner, 2026-10-04 — answers this spec's OQ1; the custom-matchup form after the map is deleted).** The typed name is resolved against the team rows the page **already holds in memory** (`games`, loaded once by `fetchAllGames` through `SERIES_SELECT`, which embeds `abbreviation`), and a hit prints that stored `abbreviation`. This renegotiates `epics.md:545`'s claim that `PredictPage.tsx:423,424` "stay on the name path **by construction** (no row, no stored code)" — true of the series FK, false of the app, which has every team row from the picker fetch. Accepted consequences, stated with the decision:
-  - Resolution order becomes **matching row → placeholder literal → `getTeamAbbreviation(name)`**, one order on every surface — the story's title holds on all three.
+  - Resolution order becomes **matching row → placeholder literal → `getTeamAbbreviation(name)`**, one order on every surface — the story's title holds on all three. **[Amended by owner decision U16, 2026-10-05: the custom form inserts the logo alias table after the matching row — row → alias → placeholder → name path — while FK-backed surfaces keep this order.]**
   - The epic's clause "removing the map changes nothing for any modern team on any surface" and U8's "rendering exactly as it does today" are **recorded as falsified** for a typed modern name (24 of the 30 modern franchises fall from `BOS` to `BC`-class initialisms on the bare name path), and U15 is the fix, not the acceptance.
   - What U15 does **not** claim, and the owner verifies by looking at it: mid-typing transients still exist (`Utah J` has no matching row, so it shows `UJ` until `Utah Jazz` completes and corrects to `UTA`) — the direction of the mutation inverts from right→wrong to wrong→right; nicknames (`Celtics`) stay truncations, since only `full_name` is matched **[Amended by owner decision U16, 2026-10-05 — see U16 above.]**; and `New Orleans Pelicans` is the one seeded franchise with no archived series, so it is absent from `games` and falls to the name path (which yields `NOP` correctly by truncation).
 - **U16 (owner, 2026-10-05 — raised in review pass 2's follow-up: "typing `jazz` would show the Utah Jazz logo, but then the abbreviation is `JAZ`").** On the custom-matchup form the code follows the logo: a typed name resolves through the **same alias table and the same normalization** `getTeamLogo` uses (`src/lib/team-logos.ts` — full name, nickname(s) and code per team; lower-cased with every non-alphanumeric stripped), and prints that entry's stored code (its last alias, pinned against the `00005` + `00007` seeds). Order on the custom form: matching loaded row (U15) → logo alias table (U16) → placeholder literal → name path. Measured before the change: 62 aliases already agreed and 119 did not (49 nicknames such as `Jazz` → `JAZ`, `Sixers` → `SIX`; 70 spacing/punctuation variants such as `UtahJazz` → `UTA`-by-accident and `UtahStars` → the Jazz's `UTA` beside the Stars logo). Recorded with the decision:
@@ -168,7 +168,8 @@ Code Map's citations are the baseline's, and the two differ only by drift inside
 - `src/pages/PredictPage.tsx` — `teamRowByName` `:431-442` (a `useMemo` over `games`, both
   embedded sides, lower-cased `full_name`, first hit wins, rows with an empty `abbreviation`
   never indexed) and `rowFor` `:444`; the custom branch `:453-454` is
-  `getTeamCode(customInput.team_X, rowFor(customInput.team_X)) || 'TBD'`; the DB branch `:460`;
+  `getTeamCode(customInput.team_X, rowFor(customInput.team_X)) || 'TBD'` **[since U16, 2026-10-05:
+  `getTypedTeamCode`, and the card/sheet choose it through `codeFor` for a custom selection]**; the DB branch `:460`;
   `renderSeriesOption` `:522`; the result-card IIFE hoists `rowA`/`rowB`/`codeA`/`codeB`/
   `winnerCode` at `:1203-1207` and the detailed sheet mirrors it at `:1294-1298`. Both `rowA` and
   `rowB` read `selectedSeries?.data?.team_X ?? rowFor(teamXName)` — added at review (E2/E5/V2),
@@ -244,7 +245,8 @@ Code Map's citations are the baseline's, and the two differ only by drift inside
   30→31→… 31, `historical-page-archive` 33→34). Two findings are frozen-text or owner-visible-copy
   calls the build may not make: the matrix `:63` `NOW` cell (E7) and the same count sentence at `:32`
   (B13) are both inside `<frozen-after-approval>` and are escalated for the owner's renegotiation, and
-  the label/placeholder pairing (B7) plus PRD UJ-2's nickname promise (B6b) are in
+  the label/placeholder pairing (B7) plus PRD UJ-2's nickname promise (B6b — resolved for the
+  custom form by U16, 2026-10-05) are in
   `deferred-work.md`. **The step-03 implement subagent could not be re-engaged** (it hit its turn
   ceiling with an empty report in the previous pass), so per step-04's fallback the patches were
   applied by this session and re-verified here rather than delegated.
@@ -308,6 +310,16 @@ Code Map's citations are the baseline's, and the two differ only by drift inside
 - **Frontmatter**: `status` `in-progress` → `review` → `done` at step 05 (2.5's precedent: the spec
   is finished work, the *story* stays at `review` in `sprint-status.yaml` because the owner's preview
   look is the acceptance), `review_loop_iteration` 0 → 1 → 2 (review pass 2, 2026-10-05).
+- **2026-10-05 — accepted; Story 2.11 `done`.** The owner took the preview look after pass 2 and
+  U16 ("the build looks good") and closed the story. A stale-claim sweep ran in the same commit:
+  dated pointers on every clause U16 or pass 2 falsified (this spec's U15 order bullet, the
+  Implementation Notes custom branch, the CDP note and the Owner look; `epics.md`'s `Celtics` → `CEL`
+  bracket and the epic status line; two older `deferred-work.md` nickname entries — one resolved,
+  one narrowed; the accname re-measure recorded in `spec-2-10` and `deferred-work.md`; the
+  resolution comments in `nba-utils.ts`, `PredictPage.tsx` and two test files). Dated records of
+  earlier stories (Story 1.4's catalog and specs, the QA matrix) describe their own time and were
+  left as written. `docs/CHANGELOG.md`'s 0.2.6 entry describes what 0.2.6 shipped and stays; the
+  next release's entry carries pass 2 and U16.
 
 ## Review Triage Log
 
@@ -469,11 +481,12 @@ mid-typing states are real keystroke states.
   print stored codes (`1979 WSB vs SAS`, `1948 PHW vs SLB`). Screenshot reviewed: `WSB` rows with
   logos.
 - **`/predict` custom matchup label** (the trigger's `span`), typed in order: `Seattle SuperSonics`
-  → `SEA vs TBD`; `Utah J` → `SEA vs UJ`; `Utah Jazz` → `SEA vs UTA`; `Celtics` → `CEL vs UTA`;
+  → `SEA vs TBD`; `Utah J` → `SEA vs UJ`; `Utah Jazz` → `SEA vs UTA`; `Celtics` → `CEL vs UTA` (measured before U16, which makes it
+  `BOS vs UTA` — pinned in jsdom, not re-probed);
   `Boston Celtics` → `BOS vs UTA`; `boston celtics` → `BOS vs UTA` (E1); `Nowhere FC` → `NF vs UTA`
   (the renegotiated cell); `constructor` → `CON vs UTA` (M15's pin, live). Screenshot reviewed:
   `SEA vs UTA` with the Sonics and Jazz logos.
 - What stays human: "does this look right" — the two screenshots are evidence for the owner's look,
   not a substitute for it.
 
-**Owner look (U15 was accepted sight-unseen — "I have to see it to completely verify"):** `npm run preview`, then /predict → Custom Matchup and type, watching the label above the score boxes: `Seattle SuperSonics` → `SEA`, `Utah Jazz` → `UTA` (and `UJ` while the second word is still incomplete), `Celtics` → `CEL`, `Boston Celtics` → `BOS`. Then `/historical`: type `SLB` (1 row), `WSB` (5), `NY` (19) and check the row codes against what the same franchise shows on the predict side. The programmatic substitute for this look already exists as the jsdom pins in the Tasks list — this is confirmation of the reading, not the only evidence of the behavior; the 39-row `/historical` change is also diffable in preview against the pre-story build.
+**Owner look (U15 was accepted sight-unseen — "I have to see it to completely verify"):** `npm run preview`, then /predict → Custom Matchup and type, watching the label above the score boxes: `Seattle SuperSonics` → `SEA`, `Utah Jazz` → `UTA` (and `UJ` while the second word is still incomplete), `Celtics` → `BOS` and `Jazz` → `UTA` (U16 — the code of the logo shown; `CEL` before U16), `Boston Celtics` → `BOS`, `Bullets` → `BLB` (a shared nickname takes the logo's team). **[Taken by the owner on preview 2026-10-05: "the build looks good".]** Then `/historical`: type `SLB` (1 row), `WSB` (5), `NY` (19) and check the row codes against what the same franchise shows on the predict side. The programmatic substitute for this look already exists as the jsdom pins in the Tasks list — this is confirmation of the reading, not the only evidence of the behavior; the 39-row `/historical` change is also diffable in preview against the pre-story build.

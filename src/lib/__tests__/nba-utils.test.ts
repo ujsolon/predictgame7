@@ -48,8 +48,9 @@ describe("getTeamCode — the stored row wins", () => {
   });
 
   it("ignores a row that does not name the same team", () => {
-    // Exact-after-trim match only — no nickname, city or fuzzy arm beside the
-    // archive's substring search (Design Notes).
+    // Exact-after-trim match only — `getTeamCode` has no nickname, city or fuzzy
+    // arm (Design Notes). The custom form's nickname arm is `getTypedTeamCode`
+    // in `team-logos.ts` (U16), never this helper.
     expect(getTeamCode("Celtics", celticsRow)).toBe("CEL");
     expect(getTeamCode("  Boston Celtics  ", celticsRow)).toBe("BOS"); // trims first
   });

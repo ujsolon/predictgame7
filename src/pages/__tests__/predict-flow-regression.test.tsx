@@ -152,8 +152,9 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   // Story 2.11 U15 (owner, 2026-10-04): after the map is deleted the typed name
   // resolves against the rows the page already holds in memory — `fetchAllGames`
   // loads every series through `SERIES_SELECT`, which embeds `abbreviation` on
-  // both sides — and a hit prints that stored code. No new query, no new matching
-  // rule: `full_name` only, exact after trim + lower-case.
+  // both sides — and a hit prints that stored code. No new query; the row arm is
+  // `full_name` only, exact after trim + lower-case. Owner decision U16
+  // (2026-10-05) adds the logo alias table behind it for names no row spells.
   const sonicsTeam: Team = { id: 25, full_name: 'Seattle SuperSonics', abbreviation: 'SEA', created_at: 'e' };
   const jazzTeam: Team = { id: 29, full_name: 'Utah Jazz', abbreviation: 'UTA', created_at: 'f' };
   const historicalFixture: Series = {

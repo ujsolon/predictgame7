@@ -58,6 +58,11 @@ export const getTeamAbbreviation = (name: string): string => {
  *      would turn into `TA`;
  *   3. `getTeamAbbreviation(name)`, the name path.
  *
+ * The custom-matchup form does not call this directly: since owner decision U16
+ * (2026-10-05) it goes through `getTypedTeamCode` in `team-logos.ts`, which puts
+ * the logo alias table between step 1 and step 2 so a typed nickname prints the
+ * code of the logo it shows. Every FK-backed surface stays on this order.
+ *
  * `rows` is variadic because the predicted-winner sites hold two candidate rows
  * and only a `full_name` to discriminate: `_shared/contract.ts` carries names,
  * and `predict-game-7` echoes the exact row names back
