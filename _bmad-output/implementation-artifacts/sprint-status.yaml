@@ -167,7 +167,9 @@ development_status:
   # spec-2-5-trail.md), built, and review pass 1 (three layers) applied — 2-5 sits at review pending
   # the owner's fresh-context code review, exactly as 2-4 and 2-10 do. F7 CLOSED 2026-10-03: the
   # owner applied `00017`, ran --refresh-insights (117 of 160 held), read /insights back as anon.
-  2-5-insights-cache-refresh: review
+  # 2026-10-05: fresh-context code review (pass 2, findings #22-#29 in the spec) applied; one patch
+  # (a failed automatic refresh now names its --refresh-insights recovery). DONE by owner direction.
+  2-5-insights-cache-refresh: done
   # Carried to this story 2026-10-02 by owner decision (Story 2.10's walkthrough): the two Story 2.8
   # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
   # alias collision in the venue probe's resolver, and game7_home_win_census counting pending series.
