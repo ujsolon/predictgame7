@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-04-2026 18:04
+last_updated: 10-05-2026 08:13
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -229,6 +229,12 @@ development_status:
   # migration-rehearsal.yml dispatch, and the green non-dry CAP-2 dispatch all go to 2-13's spec.
   # STAYS AT REVIEW: the owner's fresh-context external code review is still owed before done,
   # same gate as 2-4 and 2-5. `supabase functions delete feed-egress-probe` done by owner 2026-10-03.
+  # 2026-10-05: the owed fresh-context external review ran (pass 2, findings #26-#55 in the spec;
+  # three BMAD layers over 1e96951..630edd4, HEAD checked where 2.13 touched 2.6's files). 13 patches
+  # applied, gate exit 0. The main one: a stall that hit the JOB ceiling ended cancelled, not failed,
+  # so nothing was filed; the stall-prone steps now carry their own ceilings. STAYS AT REVIEW on two
+  # owner questions (deferred-work.md, "Story 2.6 code review pass 2"): #39 D-5's premises vs espn's
+  # one-date feed (post-Finals red tail; a missed day loses its Game 7), #40 the frozen keepalive text.
   2-6-scheduled-workflows-failure-notification-sm-4: review
   # Added by sprint-change-proposal-2026-10-03.md (approved same day, owner calls C1-C4): the
   # scheduled source changes from stats.nba.com to site.api.espn.com -- new `espn` adapter behind

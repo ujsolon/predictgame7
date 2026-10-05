@@ -864,6 +864,9 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     // log diagnoses without a local repro (CAP-4) — the report line is the
     // evidence that the run reached the endpoint at all.
     expect(run.lines).toMatch(/nba_com: 0 series in feed/);
+    // AC 2: the derived season is in the log on the red path, so the empty
+    // feed is read against the scope that was actually fetched.
+    expect(run.lines).toMatch(/; season=\d{4}-\d{2}$/m);
     // Failure precedes planning and writing entirely: no readCurrent, no write.
     expect(sink.calls).toEqual(['readTeams']);
     expect(sink.births).toHaveLength(0);
@@ -899,8 +902,9 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     // `createSink` throwing is the credential-free evidence: the refusal must
     // reach the operator before `requiredEnv` runs, which is what makes this
     // path dispatchable and testable with no database to talk to.
-    const sink = new FakeSink();
+    let sinkBuilds = 0;
     const buildMustNotRun = () => {
+      sinkBuilds += 1;
       throw new Error('test seam violated: the run opened a sink before refusing the flag');
     };
     for (const argv of [['--source=manual_csv', '--require-feed'], ['--require-feed']]) {
@@ -917,16 +921,17 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
         /--require-feed does not apply to adapter "manual_csv" — the empty-feed alarm reads the adapter's run report/,
       );
     }
-    expect(sink.calls).toEqual([]);
+    expect(sinkBuilds).toBe(0);
   });
 
   it('the flag refuses the operator refresh, which reads the archive and fetches no feed', async () => {
-    const sink = new FakeSink();
+    let sinkBuilds = 0;
     const errors = capture();
     const code = await runPipeline({
       env: {},
       argv: ['--require-feed', '--refresh-insights'],
       createSink: () => {
+        sinkBuilds += 1;
         throw new Error('test seam violated: the flag/refresh conflict built a client');
       },
       fetch: () => {
@@ -936,7 +941,7 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     });
     expect(code).toBe(2);
     expect(errors.lines.join('\n')).toMatch(/--require-feed cannot be combined with --refresh-insights/);
-    expect(sink.calls).toEqual([]);
+    expect(sinkBuilds).toBe(0);
   });
 
   it('the alarm is a refusal, not a write: it is red under --dry-run too', async () => {
@@ -989,6 +994,11 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
       const sink = new FakeSink();
       const run = await runOver(sink, [`--source=${name}`, '--require-feed'], { body: emptyBodyByAdapter[name] });
       expect(run.code, `--require-feed must never pass vacuously for ${name}`).toBe(2);
+      // The red must be the alarm (or, for an adapter with no report, the
+      // up-front refusal) — a shape error would also exit 2 and prove nothing.
+      expect(run.errors).toMatch(
+        adapterHasRunReport(name) ? new RegExp(`--require-feed: ${name} returned 0 series`) : /--require-feed does not apply/,
+      );
       expect(sink.calls).not.toContain('birth');
       expect(sink.calls).not.toContain('complete');
     }

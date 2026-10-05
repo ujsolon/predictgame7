@@ -576,7 +576,9 @@ export function createNbaComAdapter(deps: AdapterDeps): SeriesDataSource {
       if (!settled) {
         throw new NbaComError('nba_com describeRun() called before the feed resolved — the report describes a parse that has not happened yet');
       }
-      return settled.report;
+      // AC 2 of Story 2.6: the log names the derived season, not only on a
+      // fetch failure — an empty-feed red is read against the scope fetched.
+      return { ...settled.report, countsLine: `${settled.report.countsLine}; season=${season}` };
     },
   };
 }

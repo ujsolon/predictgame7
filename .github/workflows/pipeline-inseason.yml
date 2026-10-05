@@ -63,7 +63,10 @@ on:
 # One group shared with pipeline-offseason.yml. A hand dispatch queues behind a
 # scheduled run instead of interleaving a completion write with it, and
 # cancel-in-progress is off because killing a run halfway through its write
-# phase is the one outcome worse than waiting.
+# phase is the one outcome worse than waiting. The queue is ONE slot deep:
+# GitHub keeps a single pending run per group, so a third arrival cancels the
+# pending one, and a cancelled run files no issue. Do not dispatch while a run
+# is both running and pending.
 concurrency:
   group: pipeline-writes
   cancel-in-progress: false
@@ -75,12 +78,15 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # A hung run is the one failure this design cannot otherwise hear: the job
-    # never fails, so `if: failure()` never fires, and the shared
-    # `pipeline-writes` group with `cancel-in-progress: false` makes the hang
-    # block every later cron. The ceiling is generous (the runner's own fetch
-    # loop self-limits to 25 s x 3 attempts per leg) so it can only ever cut off
-    # a stall, never a slow-but-healthy season run.
+    # A hung run is the one failure this design cannot otherwise hear, and the
+    # shared `pipeline-writes` group with `cancel-in-progress: false` makes the
+    # hang block every later cron. The ceilings are generous (the runner's own
+    # fetch loop self-limits to 25 s x 3 attempts per leg) so they only ever cut
+    # off a stall. The STEP ceilings are what make a stall loud: a step that
+    # times out FAILS, so `if: failure()` fires. A job that hits its own
+    # `timeout-minutes` is CANCELLED instead, and `failure()` is false, so the
+    # job ceiling below is only the backstop for checkout/setup-node and sits
+    # above the sum of the step ceilings.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -112,8 +118,10 @@ jobs:
       # `@supabase/supabase-js` is a runtime dependency, so the production
       # install is enough to run the pipeline.
       - run: npm ci --omit=dev
+        timeout-minutes: 5
 
       - name: Run the pipeline
+        timeout-minutes: 10
         # Note what is NOT here: `--env-file=.env`, which is how the operator
         # command is written in the docs. A runner has no .env, and Node treats
         # a missing env-file as fatal — so the credentials arrive through the

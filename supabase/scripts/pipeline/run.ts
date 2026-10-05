@@ -365,7 +365,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
         throw new PipelineRunError(
           `--require-feed: ${sourceName} returned 0 series — an empty feed inside the playoff window is a failure, not a quiet ` +
             'success (Story 2.6 / SM-4). No plan was computed and nothing was written; the report lines above are what the feed ' +
-            'carried. Check the endpoint and the derived season before the next cron slot.',
+            'carried, including the season or date the adapter derived. Check the endpoint and that scope before the next cron slot.',
         );
       }
     }
