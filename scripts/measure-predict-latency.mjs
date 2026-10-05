@@ -31,6 +31,11 @@
 // accessibility tree, and prints the results, so a claim about what CDP can observe
 // can be checked in-repo rather than taken on faith (qa-matrix-1-5.md §6.4).
 //
+//   npm run preview, then (Story 2.7, the epic drill — see the block above runFakeSeries):
+//   node scripts/measure-predict-latency.mjs --fake-pending   # §6.5 (c): six rows + NULL winner
+//   node scripts/measure-predict-latency.mjs --fake-short     # + a five-row row: excluded, reported
+//   node scripts/measure-predict-latency.mjs --archive-read   # /historical 178 + chips + gloss, /insights 160
+//
 // The run reports two independent numbers per sample, because conflating them is
 // what made the earlier mobile reading look like a network problem:
 //   request_ms  send -> response complete for the predict-game-7 invoke (network)
@@ -47,7 +52,9 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { gunzipSync } from "node:zlib";
 
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
@@ -93,6 +100,9 @@ function parseArgs(argv) {
     timeout: 90000,
     serverOnly: false,
     probeEvidence: false,
+    fakePending: false,
+    fakeShort: false,
+    archiveRead: false,
     perMethod: 6,
     methods: METHOD_SLUGS,
   };
@@ -109,6 +119,9 @@ function parseArgs(argv) {
     else if (a === "--with-analytics") opts.withAnalytics = true;
     else if (a === "--server-only") opts.serverOnly = true;
     else if (a === "--probe-evidence") opts.probeEvidence = true;
+    else if (a === "--fake-pending") opts.fakePending = true;
+    else if (a === "--fake-short") opts.fakeShort = true;
+    else if (a === "--archive-read") opts.archiveRead = true;
     else if (a === "--per-method") opts.perMethod = Number(next());
     else if (a === "--methods") opts.methods = next().split(",").map((s) => s.trim()).filter(Boolean);
     else if (a === "--help" || a === "-h") {
@@ -121,6 +134,10 @@ function parseArgs(argv) {
   }
   if (!opts.serverOnly && !PROFILES[opts.profile]) {
     console.error(`Unknown --profile. One of: ${Object.keys(PROFILES).join(", ")}`);
+    process.exit(2);
+  }
+  if ([opts.serverOnly, opts.probeEvidence, opts.fakePending, opts.fakeShort, opts.archiveRead].filter(Boolean).length > 1) {
+    console.error("--server-only, --probe-evidence, --fake-pending, --fake-short and --archive-read are separate modes; pass one");
     process.exit(2);
   }
   if (opts.serverOnly && (!opts.methods.length || !(opts.perMethod >= 1))) {
@@ -475,6 +492,8 @@ const RUN_SAMPLE = `
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.serverOnly) return runServerOnly(opts);
+  if (opts.fakePending || opts.fakeShort) return runFakeSeries(opts);
+  if (opts.archiveRead) return runArchiveRead(opts);
 
   const [vw, vh] = opts.viewport.split("x").map(Number);
   const profile = PROFILES[opts.profile];
@@ -829,7 +848,767 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`\n${err.stack || err.message}`);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// Story 2.7 — the drill modes and the reusable page readers.
+//
+//   --fake-pending  qa-matrix-1-5.md §6.5 option (c), re-scored against the
+//                   derivation: a CDP `Fetch` override at the Response stage
+//                   appends ONE synthetic series — six score rows (games 1–6,
+//                   a 3–3 split) and a NULL winner, the only shape the server's
+//                   00015 birth RPC writes — to the production `series` list
+//                   response and serves it on the `?id=eq.` preload. No status
+//                   flag exists to fake (00014 dropped it); the client's
+//                   `isSeriesPending` derivation is what has to light up.
+//                   Asserted: the "Current Game 7s" group renders it, its year
+//                   card reads `Current`, selecting it reports
+//                   `series_source: 'current'`, the predict request carries six
+//                   games (and the real function answers), the `?series=<id>`
+//                   preload resolves it, and Home links it to its preview page.
+//   --fake-short    the same override plus a SECOND synthetic row with five
+//                   score rows and a NULL winner: it must be excluded from
+//                   every picker group and reported (`Non-reconciling series:`),
+//                   while the six-row one still renders.
+//   --archive-read  no override: /historical against production, reading the
+//                   announced total, every row's league chip, one chipped
+//                   record's gloss, and /insights' two denominators — the
+//                   178-vs-160 pair shown rather than inferred.
+//
+// Production stays read-only: the override rewrites RESPONSES in the browser,
+// the only writes are the anon REST GETs the app already makes plus the normal
+// user Predict call --fake-pending triggers. PostHog requests are answered
+// locally (Fetch at the Request stage, fulfilled 200 here) and decoded so the
+// `series_source` property is READ without a single event reaching the
+// production project — stricter than the latency study's URL block.
+// Exit: 0 = every assertion held; 1 = at least one failed (each printed as
+// FAIL) or the harness could not run.
+// ---------------------------------------------------------------------------
+
+export const FAKE_PENDING_ID = "00000000-0000-4000-8000-000000002027";
+export const FAKE_SHORT_ID = "00000000-0000-4000-8000-000000002028";
+
+/** One assertion ledger per run: every check prints, failures set exit 1. */
+export function createLedger() {
+  const failures = [];
+  const check = (label, ok, detail = "") => {
+    console.log(`${ok ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
+    if (!ok) failures.push(label);
+    return ok;
+  };
+  return { check, failures };
+}
+
+/** PostHog bodies arrive as JSON, gzip-js, or `data=<base64>` — decode all three to event objects. */
+function decodeAnalyticsBody(buf) {
+  if (!buf || buf.length === 0) return [];
+  let text;
+  try {
+    text = buf[0] === 0x1f && buf[1] === 0x8b ? gunzipSync(buf).toString("utf8") : buf.toString("utf8");
+  } catch {
+    return [];
+  }
+  const tryJson = (s) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  };
+  let parsed = tryJson(text);
+  if (parsed === null && text.startsWith("data=")) {
+    const b64 = decodeURIComponent(text.slice(5).split("&")[0]);
+    parsed = tryJson(Buffer.from(b64, "base64").toString("utf8"));
+  }
+  if (parsed === null) return [];
+  const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.batch) ? parsed.batch : [parsed];
+  return list.filter((e) => e && typeof e.event === "string");
+}
+
+/**
+ * Spawn headless Chrome and attach one page session. `seriesOverride(body,
+ * request)` — when given — rewrites every `rest/v1/series` response at the
+ * Response stage (return `undefined` to pass a response through unchanged).
+ * PostHog traffic is always answered locally and decoded into `analytics`.
+ */
+export async function openBrowserSession({ viewport = "1440x900", seriesOverride = null, analyticsHost = null } = {}) {
+  const [vw, vh] = viewport.split("x").map(Number);
+  const chromePath = findChrome();
+  const port = await freePort();
+  const userDataDir = mkdtempSync(join(tmpdir(), "p1-chrome-"));
+  const chrome = spawn(
+    chromePath,
+    [
+      "--headless=new",
+      `--remote-debugging-port=${port}`,
+      `--user-data-dir=${userDataDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-extensions",
+      "--hide-scrollbars",
+      `--window-size=${vw},${vh}`,
+      "about:blank",
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] }
+  );
+  let chromeErr = "";
+  chrome.stderr.on("data", (d) => {
+    chromeErr += d.toString();
+  });
+  let browserWs = null;
+  const close = () => {
+    try {
+      browserWs?.close();
+    } catch {
+      /* already closed */
+    }
+    try {
+      chrome.kill();
+    } catch {
+      /* already gone */
+    }
+    try {
+      rmSync(userDataDir, { recursive: true, force: true });
+    } catch {
+      /* best effort — Chrome may still hold a lock for a moment */
+    }
+  };
+  process.on("exit", close);
+  // Ctrl+C skips 'exit' listeners, which left headless Chrome and its profile behind.
+  process.once("SIGINT", () => {
+    close();
+    process.exitCode = 130;
+  });
+
+  try {
+    browserWs = await connectBrowser(port).catch((e) => {
+      throw new Error(`${e.message}\nchrome stderr:\n${chromeErr.slice(-2000)}`);
+    });
+    const browser = new CDP(browserWs, null);
+    const { targetId } = await browser.send("Target.createTarget", { url: "about:blank" });
+    const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true });
+    const cdp = new CDP(browserWs, sessionId);
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Network.enable");
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: vw, height: vh, deviceScaleFactor: 1, mobile: vw < 768 });
+    // posthog-js drops every capture from a user agent on its bot list, and
+    // `HeadlessChrome` is on it — measured: with the default UA the SDK sent
+    // only config and /flags, never an event, so `series_source` could not be
+    // read. Present as ordinary Chrome; the events are still answered locally.
+    const { userAgent } = await browser.send("Browser.getVersion");
+    await cdp.send("Network.setUserAgentOverride", { userAgent: userAgent.replace(/HeadlessChrome/g, "Chrome") });
+
+    const consoleMessages = [];
+    cdp.on("Runtime.consoleAPICalled", (p) => {
+      const text = (p.args || [])
+        .map((a) => (a.value !== undefined ? String(a.value) : a.description || a.preview?.description || ""))
+        .join(" ");
+      consoleMessages.push({ type: p.type, text });
+    });
+
+    const predictRequests = [];
+    const predictResponses = new Map();
+    // Every finished `rest/v1/series` response, in arrival order — so a caller can
+    // wait for a read to have LANDED before asserting that something is absent.
+    const seriesLoads = [];
+    const seriesUrls = new Map();
+    cdp.on("Network.responseReceived", (p) => {
+      if (p.response.url.includes("/rest/v1/series") && p.type !== "Preflight") seriesUrls.set(p.requestId, p.response.url);
+    });
+    cdp.on("Network.loadingFinished", (p) => {
+      const url = seriesUrls.get(p.requestId);
+      if (url) seriesLoads.push(url);
+    });
+    cdp.on("Network.requestWillBeSent", (p) => {
+      if (!p.request.url.includes("/functions/v1/predict-game-7") || p.request.method !== "POST") return;
+      predictRequests.push({ requestId: p.requestId, body: p.request.postData ?? null });
+    });
+    cdp.on("Network.responseReceived", (p) => {
+      if (p.response.url.includes("/functions/v1/predict-game-7")) predictResponses.set(p.requestId, p.response.status);
+    });
+
+    const analytics = [];
+    const isAnalytics = (url) => /posthog/i.test(url) || (analyticsHost ? url.startsWith(analyticsHost) : false);
+    const patterns = [{ urlPattern: "*posthog*", requestStage: "Request" }];
+    if (analyticsHost) patterns.push({ urlPattern: `${analyticsHost}*`, requestStage: "Request" });
+    if (seriesOverride) patterns.push({ urlPattern: "*/rest/v1/series*", requestStage: "Response" });
+    const seriesCalls = [];
+    cdp.on("Fetch.requestPaused", async (p) => {
+      try {
+        const url = p.request.url;
+        if (p.responseStatusCode === undefined && isAnalytics(url)) {
+          const entries = p.request.postDataEntries || [];
+          const buf = entries.length
+            ? Buffer.concat(entries.map((e) => Buffer.from(e.bytes || "", "base64")))
+            : p.request.postData
+              ? Buffer.from(p.request.postData, "utf8")
+              : null;
+          for (const e of decodeAnalyticsBody(buf)) analytics.push({ event: e.event, properties: e.properties || {} });
+          // Answer each PostHog endpoint with a body the SDK accepts, or it keeps
+          // its capture queue parked and no event is ever sent to be decoded:
+          // `/flags` needs a flags-shaped object, remote config an empty one.
+          // Uncompressed batches are JSON POSTs, so the browser preflights them;
+          // a preflight answered without Allow-Methods/Headers is refused and
+          // the SDK retries forever without ever sending the batch.
+          if (p.request.method === "OPTIONS") {
+            await cdp.send("Fetch.fulfillRequest", {
+              requestId: p.requestId,
+              responseCode: 204,
+              responseHeaders: [
+                { name: "Access-Control-Allow-Origin", value: "*" },
+                { name: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS" },
+                { name: "Access-Control-Allow-Headers", value: "*" },
+                { name: "Access-Control-Max-Age", value: "600" },
+              ],
+            });
+            return;
+          }
+          const isScript = /\.js(\?|$)/.test(url);
+          const answer = isScript
+            ? ""
+            : /\/flags\//.test(url)
+              ? JSON.stringify({ featureFlags: {}, featureFlagPayloads: {}, errorsWhileComputingFlags: false, flags: {} })
+              : /\/config(\?|$)/.test(url)
+                ? "{}"
+                : '{"status":1}';
+          await cdp.send("Fetch.fulfillRequest", {
+            requestId: p.requestId,
+            responseCode: 200,
+            responseHeaders: [
+              { name: "Content-Type", value: isScript ? "application/javascript" : "application/json" },
+              { name: "Access-Control-Allow-Origin", value: "*" },
+            ],
+            body: Buffer.from(answer).toString("base64"),
+          });
+          return;
+        }
+        // A CORS preflight (OPTIONS) reaches the Response stage too; it has no
+        // JSON body to rewrite, so it passes through and is not recorded.
+        if (p.responseStatusCode !== undefined && seriesOverride && url.includes("/rest/v1/series") && p.request.method !== "OPTIONS") {
+          const raw = await cdp.send("Fetch.getResponseBody", { requestId: p.requestId });
+          const text = raw.base64Encoded ? Buffer.from(raw.body, "base64").toString("utf8") : raw.body;
+          let body = null;
+          try {
+            body = JSON.parse(text);
+          } catch {
+            body = null;
+          }
+          const accept = Object.entries(p.request.headers || {}).find(([k]) => k.toLowerCase() === "accept")?.[1] ?? "";
+          const rewritten = seriesOverride(body, { url, accept, status: p.responseStatusCode });
+          seriesCalls.push({ url, rewritten: rewritten !== undefined });
+          if (rewritten === undefined) {
+            await cdp.send("Fetch.continueRequest", { requestId: p.requestId });
+            return;
+          }
+          const headers = (p.responseHeaders || []).filter(
+            (h) => !["content-length", "content-encoding", "content-type"].includes(h.name.toLowerCase())
+          );
+          headers.push({ name: "Content-Type", value: "application/json; charset=utf-8" });
+          await cdp.send("Fetch.fulfillRequest", {
+            requestId: p.requestId,
+            responseCode: 200,
+            responseHeaders: headers,
+            body: Buffer.from(JSON.stringify(rewritten)).toString("base64"),
+          });
+          return;
+        }
+        await cdp.send("Fetch.continueRequest", { requestId: p.requestId });
+      } catch (err) {
+        console.error(`interception error on ${p.request.url}: ${err.message}`);
+        await cdp.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+      }
+    });
+    await cdp.send("Fetch.enable", { patterns });
+
+    const evaluate = async (expression, timeout = 90000) => {
+      const res = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, timeout });
+      if (res.exceptionDetails) {
+        const d = res.exceptionDetails;
+        throw new Error(`page error: ${d.exception?.description || d.text || "unknown"}`);
+      }
+      return res.result.value;
+    };
+
+    const navigate = async (url) => {
+      const loaded = cdp.once("Page.loadEventFired");
+      await cdp.send("Page.navigate", { url });
+      let timer;
+      try {
+        await Promise.race([
+          loaded,
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`page never fired load: ${url}`)), 60000);
+          }),
+        ]);
+      } finally {
+        // A pending 60 s timer kept every run alive for up to a minute after it finished.
+        clearTimeout(timer);
+      }
+      await evaluate(`(() => { ${PAGE_HELPERS} ${SELECT_METHOD} ${RUN_SAMPLE} ${DRILL_HELPERS} return true; })()`);
+      return evaluate(`({ visibilityState: document.visibilityState, hidden: document.hidden, href: location.href })`);
+    };
+
+    const waitForAnalytics = async (predicate, timeoutMs = 20000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const hit = analytics.find(predicate);
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return null;
+    };
+
+    const waitForSeriesLoad = async (predicate, sinceIndex = 0, timeoutMs = 30000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const hit = seriesLoads.slice(sinceIndex).find(predicate);
+        if (hit) return hit;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return null;
+    };
+
+    return { cdp, evaluate, navigate, close, consoleMessages, predictRequests, predictResponses, analytics, waitForAnalytics, seriesCalls, seriesLoads, waitForSeriesLoad, chromePath };
+  } catch (err) {
+    close();
+    throw err;
+  }
+}
+
+// In-page readers for the drill. Installed by `navigate`, so every page load
+// carries them; written as source because they run inside Chrome.
+const DRILL_HELPERS = `
+  window.__drill = (() => {
+    const H = window.__p1;
+    const norm = (s) => (s || "").replace(/\\s+/g, " ").trim();
+    const dialog = () => document.querySelector('[role="dialog"]');
+    const buttonsIn = (root) => Array.from((root || document).querySelectorAll("button"));
+
+    const openSeriesDialog = async () => {
+      await H.waitFor(() => H.trigger("series"), "the series trigger", 60000);
+      if (!dialog()) H.trigger("series").click();
+      await H.waitFor(() => dialog(), "the series dialog", 15000);
+    };
+
+    const closeDialog = async () => {
+      if (!dialog()) return;
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      dialog()?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await H.waitFor(() => !dialog(), "the dialog to close", 15000);
+    };
+
+    // The decade level: what the Active group holds, and whether its empty copy shows.
+    // Waits for the list to answer (group populated or the empty-state copy present).
+    const readActiveGroup = async () => {
+      await openSeriesDialog();
+      const label = await H.waitFor(
+        () => Array.from(dialog().querySelectorAll("p")).find((p) => norm(p.textContent) === "Current Game 7s"),
+        "the Current Game 7s label", 30000);
+      const settled = await H.waitFor(() => {
+        const next = label.nextElementSibling;
+        if (!next) return null;
+        const btns = buttonsIn(next);
+        const empty = /No active series right now/.test(next.textContent || "");
+        return btns.length || empty ? { next, btns, empty } : null;
+      }, "the Active group to settle", 30000);
+      return {
+        options: settled.btns.map((b) => norm(b.textContent)),
+        emptyCopy: settled.empty,
+      };
+    };
+
+    const clickInDialog = async (re, what) => {
+      const btn = await H.waitFor(() => buttonsIn(dialog()).find((b) => re.test(norm(b.textContent)) && !/Go Back/i.test(b.textContent)), what, 15000);
+      const text = norm(btn.textContent);
+      btn.click();
+      return text;
+    };
+
+    // decade -> year cards (text of every card in that decade)
+    const readYearCards = async (decade) => {
+      await clickInDialog(new RegExp("^" + decade + "s"), "decade " + decade);
+      await H.waitFor(() => /Select Year from/.test(dialog().textContent), "the year level", 15000);
+      return buttonsIn(dialog()).filter((b) => /^\\d{4}/.test(norm(b.textContent))).map((b) => norm(b.textContent));
+    };
+
+    const readSeriesLevel = async (year) => {
+      await clickInDialog(new RegExp("^" + year), "year " + year);
+      await H.waitFor(() => /Select Series from/.test(dialog().textContent), "the series level", 15000);
+      return buttonsIn(dialog()).filter((b) => / vs /.test(b.textContent || "")).map((b) => norm(b.textContent));
+    };
+
+    const pickSeries = async (re) => {
+      await clickInDialog(re, "a series option");
+      await H.waitFor(() => !dialog(), "the dialog to close", 15000);
+    };
+
+    // The Series card's Games 1-6 readout, as printed.
+    const readReadout = () => {
+      const out = {};
+      for (const span of document.querySelectorAll("span")) {
+        const m = /^Game ([1-7])$/.exec(norm(span.textContent));
+        if (!m || out[m[1]]) continue;
+        const value = span.parentElement && span.parentElement.lastElementChild;
+        if (value && value !== span) out[m[1]] = norm(value.textContent);
+      }
+      return out;
+    };
+
+    const seriesTriggerText = () => norm(H.trigger("series") && H.trigger("series").textContent);
+
+    const homePending = () => Array.from(document.querySelectorAll("[data-home-pending-series] a")).map((a) => ({
+      href: a.getAttribute("href"), text: norm(a.textContent), id: a.getAttribute("data-pending-series-id"),
+    }));
+
+    // /historical: the announced total, every rendered row, and the chips on them.
+    const LEAGUE_CHIP = (el) => el.tagName === "SPAN" && /rounded-md/.test(el.className) && /tracking-widest/.test(el.className) && /^[A-Z]{3}$/.test(norm(el.textContent));
+    const readHistorical = async () => {
+      const announced = await H.waitFor(() => {
+        const p = Array.from(document.querySelectorAll('p[aria-live="polite"]')).find((n) => /^Showing \\d+ of \\d+ series\\.$/.test(norm(n.textContent)));
+        if (!p) return null;
+        const m = /^Showing (\\d+) of (\\d+) series\\.$/.exec(norm(p.textContent));
+        return Number(m[2]) > 0 ? { shown: Number(m[1]), total: Number(m[2]), text: norm(p.textContent) } : null;
+      }, "the announced archive total", 60000);
+      for (let i = 0; i < 100; i++) {
+        const more = buttonsIn().find((b) => /Load More History/.test(b.textContent || ""));
+        if (!more) break;
+        const before = document.querySelectorAll("tbody tr").length;
+        more.click();
+        await H.waitFor(() => document.querySelectorAll("tbody tr").length > before, "more rows", 15000);
+      }
+      const rows = Array.from(document.querySelectorAll("tbody tr")).map((tr) => {
+        const chip = Array.from(tr.querySelectorAll("span")).find(LEAGUE_CHIP);
+        return { text: norm(tr.textContent), chip: chip ? norm(chip.textContent) : null };
+      });
+      const final = Array.from(document.querySelectorAll('p[aria-live="polite"]')).map((n) => norm(n.textContent)).find((t) => /^Showing/.test(t));
+      return { announced, finalAnnouncement: final, rows };
+    };
+
+    // Open the first row matching (re) and read the record's chip and gloss.
+    const openRecord = async (re) => {
+      const tr = Array.from(document.querySelectorAll("tbody tr")).find((r) => re.test(norm(r.textContent)));
+      if (!tr) return { missing: true };
+      tr.click();
+      const card = await H.waitFor(() => {
+        return Array.from(document.querySelectorAll("div.fixed")).find((n) => /×/.test(n.textContent || "") && /Close/.test(n.textContent || "")) || null;
+      }, "the record card", 15000);
+      const chip = Array.from(card.querySelectorAll("span")).find(LEAGUE_CHIP);
+      const gloss = Array.from(card.querySelectorAll("p")).map((p) => norm(p.textContent)).find((t) => /BAA is the league/.test(t)) || null;
+      const title = norm(card.textContent).slice(0, 120);
+      const closeBtn = buttonsIn(card).find((b) => /Close/.test(b.textContent || ""));
+      closeBtn && closeBtn.click();
+      await H.sleep(300);
+      return { title, chip: chip ? norm(chip.textContent) : null, gloss };
+    };
+
+    return { openSeriesDialog, closeDialog, readActiveGroup, readYearCards, readSeriesLevel, pickSeries, readReadout, seriesTriggerText, homePending, readHistorical, openRecord, norm };
+  })();
+`;
+
+/** Two real team rows, read once over anon REST, so the synthetic series embeds true team objects. */
+async function readTeamRows(env, codes) {
+  const select = "id,full_name,abbreviation,city,nickname,logo_url,created_at,updated_at";
+  const res = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/teams?select=${select}&abbreviation=in.(${codes.join(",")})`, {
+    headers: { apikey: env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}` },
+  });
+  if (!res.ok) throw new Error(`teams read -> HTTP ${res.status}`);
+  const rows = await res.json();
+  const byCode = Object.fromEntries(rows.map((r) => [r.abbreviation, r]));
+  for (const c of codes) if (!byCode[c]) throw new Error(`teams has no abbreviation ${c}`);
+  return byCode;
+}
+
+/**
+ * A synthetic series in SERIES_SELECT's shape. `games` lists
+ * [home_code, away_code, home_score, away_score] per game, game 1 first —
+ * team_a is game 1's home team (plan.ts's slot convention).
+ */
+export function buildSyntheticSeries({ id, year, round, teams, teamA, teamB, games, winner = null }) {
+  const A = teams[teamA];
+  const B = teams[teamB];
+  const stamp = "2027-04-30T00:00:00+00:00";
+  return {
+    id,
+    year,
+    round,
+    league: "NBA",
+    team_a_id: A.id,
+    team_b_id: B.id,
+    winner_team_id: winner,
+    created_at: stamp,
+    updated_at: stamp,
+    team_a: A,
+    team_b: B,
+    winner_team: null,
+    series_game_scores: games.map(([home, away, hs, as], i) => ({
+      id: `${id.slice(0, 24)}${String(i + 1).padStart(12, "0")}`,
+      series_id: id,
+      game_number: i + 1,
+      home_team_id: teams[home].id,
+      away_team_id: teams[away].id,
+      home_score: hs,
+      away_score: as,
+      winner_team_id: hs > as ? teams[home].id : teams[away].id,
+      created_at: stamp,
+    })),
+  };
+}
+
+// A certified 3–3: BOS (team_a, game-1 home) wins 1, 4, 5; MIA wins 2, 3, 6.
+const FAKE_PENDING_GAMES = [
+  ["BOS", "MIA", 110, 102],
+  ["BOS", "MIA", 98, 105],
+  ["MIA", "BOS", 108, 99],
+  ["MIA", "BOS", 101, 112],
+  ["BOS", "MIA", 120, 110],
+  ["MIA", "BOS", 104, 95],
+];
+// Team-relative (BOS, MIA) per game — what the readout and the predict request must carry.
+const FAKE_PENDING_TEAM_SCORES = [
+  [110, 102],
+  [98, 105],
+  [99, 108],
+  [112, 101],
+  [120, 110],
+  [95, 104],
+];
+
+function previewBase(url) {
+  const u = new URL(url);
+  const base = u.pathname.replace(/\/(predict|historical|insights)\/?$/, "/");
+  return `${u.origin}${base.endsWith("/") ? base : `${base}/`}`;
+}
+
+async function assertPreviewUp(url) {
+  const probe = await fetch(url, { method: "GET" }).catch(() => null);
+  if (!probe || !probe.ok) {
+    throw new Error(`${url} did not answer (${probe ? probe.status : "no response"}). Start it first:  npm run preview`);
+  }
+}
+
+async function runFakeSeries(opts) {
+  const mode = opts.fakeShort ? "--fake-short" : "--fake-pending";
+  const env = readViteEnv();
+  const base = previewBase(opts.url);
+  await assertPreviewUp(`${base}predict`);
+  const teams = await readTeamRows(env, ["BOS", "MIA", "OKC", "DEN"]);
+  const pending = buildSyntheticSeries({
+    id: FAKE_PENDING_ID,
+    year: 2027,
+    round: "Eastern Conference First Round",
+    teams,
+    teamA: "BOS",
+    teamB: "MIA",
+    games: FAKE_PENDING_GAMES,
+  });
+  const short = buildSyntheticSeries({
+    id: FAKE_SHORT_ID,
+    year: 2027,
+    round: "Western Conference First Round",
+    teams,
+    teamA: "OKC",
+    teamB: "DEN",
+    games: [
+      ["OKC", "DEN", 110, 102],
+      ["OKC", "DEN", 104, 115],
+      ["DEN", "OKC", 108, 99],
+      ["DEN", "OKC", 101, 112],
+      ["OKC", "DEN", 120, 110],
+    ],
+  });
+  const synthetic = opts.fakeShort ? [pending, short] : [pending];
+
+  // The override emulates the server-side filters the app sends, so a faked
+  // row only lands where the real table would put it: never on /historical's
+  // `winner_team_id=not.is.null` read.
+  const seriesOverride = (body, { url, accept }) => {
+    const q = decodeURIComponent(url);
+    const idMatch = /[?&]id=eq\.([0-9a-f-]+)/.exec(q);
+    if (idMatch) {
+      const hit = synthetic.find((s) => s.id === idMatch[1]);
+      if (!hit) return undefined;
+      return /vnd\.pgrst\.object/.test(accept) ? hit : [hit];
+    }
+    if (/winner_team_id=not\.is\.null/.test(q)) return undefined;
+    if (!Array.isArray(body)) return undefined;
+    return [...synthetic, ...body];
+  };
+
+  const L = createLedger();
+  console.log(
+    [
+      `Story 2.7 leg 3 — qa-matrix-1-5.md §6.5 option (c), ${mode}`,
+      `  preview    ${base}`,
+      `  backend    production read path (anon REST GETs; the series response rewritten in the browser only)`,
+      `  synthetic  ${synthetic.map((s) => `${s.id} ${s.team_a.abbreviation}/${s.team_b.abbreviation} games=${s.series_game_scores.map((g) => g.game_number).join("")} winner=${s.winner_team_id}`).join("; ")}`,
+      `  analytics  answered locally and decoded — nothing reaches the PostHog project`,
+      "",
+    ].join("\n")
+  );
+
+  const S = await openBrowserSession({ viewport: opts.viewport, seriesOverride, analyticsHost: env.VITE_POSTHOG_HOST || null });
+  try {
+    // 1. The picker, cold.
+    const vis = await S.navigate(`${base}predict`);
+    L.check("page visible (not a hidden-tab measurement)", vis.visibilityState === "visible" && vis.hidden === false, JSON.stringify(vis));
+    const group = await S.evaluate("window.__drill.readActiveGroup()");
+    console.log(`     Current Game 7s: ${JSON.stringify(group)}`);
+    L.check("Active group renders exactly the synthetic six-row / null-winner series", group.options.length === 1 && /^BOS vs MIA/.test(group.options[0]));
+    L.check("Active group's empty-state copy is absent while a series is pending", group.emptyCopy === false);
+    // The list read is the one with no row filter: SERIES_SELECT itself names
+    // `winner_team_id`, so only the filter forms (`=is.null`, `=not.is.null`)
+    // and the preload's `id=eq.` mark the other reads.
+    const listCall = S.seriesCalls.find((c) => !/[?&]id=eq\./.test(c.url) && !/[?&]winner_team_id=/.test(c.url));
+    L.check("the picker's list response was rewritten in flight (Fetch, Response stage)", Boolean(listCall?.rewritten), listCall?.url ?? "no list call seen");
+
+    const years = await S.evaluate("window.__drill.readYearCards(2020)");
+    console.log(`     2020s year cards: ${JSON.stringify(years)}`);
+    L.check("year card 2027 reads `Current`", years.some((y) => /^2027/.test(y) && /Current/.test(y)));
+    L.check("year card 2026 (archived only) reads `View Series`", years.some((y) => /^2026/.test(y) && /View Series/.test(y) && !/Current/.test(y)));
+    const level = await S.evaluate("window.__drill.readSeriesLevel(2027)");
+    console.log(`     2027 series level: ${JSON.stringify(level)}`);
+    L.check("2027's series level lists the synthetic series", level.some((t) => /^BOS vs MIA/.test(t)));
+
+    if (opts.fakeShort) {
+      L.check("five-row / null-winner series is excluded from the Active group", !group.options.some((t) => /OKC vs DEN/.test(t)));
+      L.check("five-row / null-winner series is excluded from its year's series level", !level.some((t) => /OKC vs DEN/.test(t)));
+      const report = S.consoleMessages.find((m) => /Non-reconciling series:/.test(m.text) && m.text.includes(FAKE_SHORT_ID));
+      L.check("`Non-reconciling series:` logged naming the short row", Boolean(report), report ? report.text.slice(0, 160) : "no such console line");
+      const pendingReported = S.consoleMessages.some((m) => /Non-reconciling series:/.test(m.text) && m.text.includes(FAKE_PENDING_ID));
+      L.check("the six-row row is NOT reported as non-reconciling", !pendingReported);
+      const exc = await S.waitForAnalytics((e) => e.event === "$exception" && JSON.stringify(e.properties).includes(FAKE_SHORT_ID), 20000);
+      L.check("captureException sent for the short row (decoded, answered locally)", Boolean(exc));
+      await S.evaluate("window.__drill.closeDialog()");
+      await S.navigate(base);
+      const home = await S.evaluate(`window.__p1.waitFor(() => window.__drill.homePending().length ? window.__drill.homePending() : null, "a Home pending link", 30000)`);
+      console.log(`     Home pending links: ${JSON.stringify(home)}`);
+      L.check("Home links the six-row series and drops the five-row one", home.length === 1 && home[0].id === FAKE_PENDING_ID);
+    } else {
+      // 2. Select it, read the readout and the reported source.
+      await S.evaluate("window.__drill.pickSeries(/^BOS vs MIA/)");
+      const readout = await S.evaluate("window.__drill.readReadout()");
+      console.log(`     readout: ${JSON.stringify(readout)}`);
+      const expectedReadout = FAKE_PENDING_TEAM_SCORES.every(([a, b], i) => readout[String(i + 1)] === `${a} — ${b}`);
+      L.check("Series card readout prints games 1–6 team-relative from the home-relative rows", expectedReadout);
+      const selected = await S.waitForAnalytics((e) => e.event === "series_selected" && e.properties.series_id === FAKE_PENDING_ID);
+      L.check("selecting it reports series_source: 'current'", selected?.properties?.series_source === "current", selected ? `series_source=${selected.properties.series_source}` : "no series_selected event decoded");
+
+      // 3. Predict: the request carries six games and the real function answers.
+      await S.evaluate(`window.__p1SelectMethod(/Bayes/i, ${opts.timeout})`);
+      const sample = await S.evaluate(`window.__p1RunSample(${opts.timeout})`, opts.timeout + 30000);
+      const req = S.predictRequests.at(-1);
+      let body = null;
+      try {
+        body = JSON.parse(req?.body ?? "null");
+      } catch {
+        body = null;
+      }
+      const sixGames = Boolean(body) && FAKE_PENDING_TEAM_SCORES.every(([a, b], i) => body[`game_${i + 1}_score_a`] === a && body[`game_${i + 1}_score_b`] === b);
+      L.check("the predict request carries six games, team-relative", sixGames, body ? JSON.stringify(body) : "no request body captured");
+      L.check("the predict request names the synthetic series and no Game-7 home side", body?.series_id === FAKE_PENDING_ID && body?.home_team === undefined);
+      const status = req ? S.predictResponses.get(req.requestId) : undefined;
+      L.check("the deployed predict-game-7 answered 200 and the result rendered", status === 200 && sample.to_result_ms > 0, `status=${status} to_result=${Math.round(sample.to_result_ms)}ms`);
+      const generated = await S.waitForAnalytics((e) => e.event === "prediction_generated" && e.properties.series_id === FAKE_PENDING_ID);
+      L.check("prediction_generated reports series_source: 'current'", generated?.properties?.series_source === "current", generated ? `series_source=${generated.properties.series_source}` : "no prediction_generated event decoded");
+
+      // 4. The ?series=<id> preload.
+      await S.navigate(`${base}predict?series=${FAKE_PENDING_ID}`);
+      // The preloaded series is read off the Series card's Games 1-6 readout
+      // (the trigger keeps its "Select a Series" label, so its text is no signal).
+      const preRead = await S.evaluate(`window.__p1.waitFor(() => { const r = window.__drill.readReadout(); return Object.keys(r).length >= 6 ? r : null; }, "the preloaded selection's readout", 30000)`);
+      const notFound = await S.evaluate(`(document.body.textContent || "").includes("Series not found")`);
+      const preloadMatches = FAKE_PENDING_TEAM_SCORES.every(([a, b], i) => preRead[String(i + 1)] === `${a} — ${b}`);
+      L.check("preload ?series=<id> resolves the synthetic series", preloadMatches && !notFound, JSON.stringify(preRead));
+      const preloadCall = S.seriesCalls.find((c) => /id=eq\./.test(c.url));
+      L.check("the preload's ?id=eq. response was served from the override", Boolean(preloadCall?.rewritten), preloadCall?.url ?? "no preload call seen");
+      await S.evaluate(`window.__p1SelectMethod(/Bayes/i, ${opts.timeout})`);
+      const before = S.analytics.length;
+      await S.evaluate(`window.__p1RunSample(${opts.timeout})`, opts.timeout + 30000);
+      const preGen = await S.waitForAnalytics((e, i) => e.event === "prediction_generated" && e.properties.series_id === FAKE_PENDING_ID && S.analytics.indexOf(e) >= before);
+      L.check("the preloaded selection predicts with series_source: 'current'", preGen?.properties?.series_source === "current", preGen ? `series_source=${preGen.properties.series_source}` : "no event decoded");
+
+      // 5. Home's data reach (D2): present, and resolving to the preview page.
+      await S.navigate(base);
+      const home = await S.evaluate(`window.__p1.waitFor(() => window.__drill.homePending().length ? window.__drill.homePending() : null, "a Home pending link", 30000)`);
+      console.log(`     Home pending links: ${JSON.stringify(home)}`);
+      L.check("Home renders one pending link for the synthetic series", home.length === 1 && home[0].id === FAKE_PENDING_ID, home[0]?.text);
+      // The router prefixes its basename (`/predictgame7/`), so the rendered href ends with the route.
+      L.check("its href is <basename>/predict?series=<id>", Boolean(home[0]?.href?.endsWith(`/predict?series=${FAKE_PENDING_ID}`)), home[0]?.href);
+      await S.evaluate(`document.querySelector('[data-home-pending-series] a').click()`);
+      const landed = await S.evaluate(`window.__p1.waitFor(() => Object.keys(window.__drill.readReadout()).length >= 6 ? { href: location.href, readout: window.__drill.readReadout() } : null, "the preview page", 30000)`);
+      const landedMatches = FAKE_PENDING_TEAM_SCORES.every(([a, b], i) => landed.readout[String(i + 1)] === `${a} — ${b}`);
+      L.check("following it lands on that series' preview page, preloaded", landed.href.endsWith(`/predict?series=${FAKE_PENDING_ID}`) && landedMatches, landed.href);
+    }
+
+    const leaked = S.analytics.length;
+    console.log(`\n     PostHog events decoded and answered locally: ${leaked} (${[...new Set(S.analytics.map((e) => e.event))].join(", ") || "none"})`);
+  } finally {
+    S.close();
+  }
+  if (L.failures.length) {
+    console.log(`\nRED: ${L.failures.length} assertion(s) failed — ${L.failures.join("; ")}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`\nGREEN: ${mode} — every assertion held.`);
+}
+
+async function runArchiveRead(opts) {
+  const base = previewBase(opts.url);
+  await assertPreviewUp(`${base}historical`);
+  const env = readViteEnv();
+  const L = createLedger();
+  console.log(`Story 2.7 leg 1 (UI half) — /historical and /insights against production\n  preview ${base}\n`);
+  const S = await openBrowserSession({ viewport: opts.viewport, analyticsHost: env.VITE_POSTHOG_HOST || null });
+  try {
+    await S.navigate(`${base}historical`);
+    const h = await S.evaluate("window.__drill.readHistorical()", 180000);
+    const chips = h.rows.filter((r) => r.chip);
+    const tally = chips.reduce((acc, r) => ({ ...acc, [r.chip]: (acc[r.chip] ?? 0) + 1 }), {});
+    console.log(`     announced at load: "${h.announced.text}"; after paging: "${h.finalAnnouncement}"; rows rendered ${h.rows.length}; chips ${JSON.stringify(tally)}`);
+    L.check("the announced archive total is 178", h.announced.total === 178, h.announced.text);
+    L.check("all 178 rows render once paged through", h.rows.length === 178, `rendered ${h.rows.length}`);
+    L.check("19 rows carry a league chip (18 ABA + 1 BAA), no NBA chip", chips.length === 19 && tally.ABA === 18 && tally.BAA === 1 && !tally.NBA, JSON.stringify(tally));
+    const baa = await S.evaluate(`window.__drill.openRecord(/BAA/)`);
+    console.log(`     chipped record: ${JSON.stringify(baa)}`);
+    L.check("a chipped record repeats its chip and carries the gloss sentence", baa.chip === "BAA" && /^BAA is the league that became the NBA in 1949/.test(baa.gloss ?? ""));
+    const nbaRow = h.rows.find((r) => !r.chip);
+    const nbaRe = nbaRow ? new RegExp(nbaRow.text.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) : /$^/;
+    const nba = await S.evaluate(`window.__drill.openRecord(${nbaRe.toString()})`);
+    L.check("an NBA record carries neither chip nor gloss", !nba.missing && nba.chip === null && nba.gloss === null, JSON.stringify(nba).slice(0, 160));
+
+    await S.navigate(`${base}insights`);
+    const ins = await S.evaluate(`window.__p1.waitFor(() => {
+      const t = (document.body.textContent || "").replace(/\\s+/g, " ");
+      const g6 = /Based on (\\d+) historical Game 7s/.exec(t);
+      const home = /Home teams won (\\d+) out of (\\d+) Game 7s/.exec(t);
+      return g6 && Number(g6[1]) > 0 && home ? { g6: Number(g6[1]), homeWins: Number(home[1]), homeTotal: Number(home[2]) } : null;
+    }, "the insight cards", 60000)`);
+    L.check("/insights counts 160 Game 7s", ins.g6 === 160 && ins.homeTotal === 160, JSON.stringify(ins));
+    L.check("/insights home-court card reads 117 of 160", ins.homeWins === 117);
+    console.log("\n== shown side by side ==");
+    console.log(`  /historical announces ${h.announced.total} series; ${chips.length} chipped (${tally.ABA ?? 0} ABA + ${tally.BAA ?? 0} BAA)`);
+    console.log(`  /insights counts      ${ins.g6} Game 7s = ${h.announced.total} - ${tally.ABA ?? 0} ABA (the population is league IN ('NBA','BAA'), 00016/00017; the gloss explains it to readers)`);
+  } finally {
+    S.close();
+  }
+  if (L.failures.length) {
+    console.log(`\nRED: ${L.failures.length} assertion(s) failed — ${L.failures.join("; ")}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log("\nGREEN: --archive-read — every assertion held.");
+}
+
+// Run only when executed directly: `scripts/drill-2-7-local-stack.mjs` imports the
+// CDP session and the page readers below without starting a latency study.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase();
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`\n${err.stack || err.message}`);
+    // exitCode, not exit(): an explicit exit races libuv teardown on Windows
+    // (deferred-work.md W1), and a failed assertion here must read as 1.
+    process.exitCode = 1;
+  });
+}

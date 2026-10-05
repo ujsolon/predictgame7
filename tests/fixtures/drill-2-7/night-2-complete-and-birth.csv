@@ -1,0 +1,16 @@
+# Story 2.7 drill, night 2: BOS/MIA game 7 (home win, BOS) completes it; OKC/DEN reaches 3-3.
+# Fixture only: replayed into the throwaway stack by scripts/drill-2-7-local-stack.mjs, never production.
+year,round,game_number,home_team,away_team,home_score,away_score
+2027,Eastern Conference First Round,1,BOS,MIA,110,102
+2027,Eastern Conference First Round,2,BOS,MIA,98,105
+2027,Eastern Conference First Round,3,MIA,BOS,108,99
+2027,Eastern Conference First Round,4,MIA,BOS,101,112
+2027,Eastern Conference First Round,5,BOS,MIA,120,110
+2027,Eastern Conference First Round,6,MIA,BOS,104,95
+2027,Eastern Conference First Round,7,BOS,MIA,105,99
+2027,Western Conference First Round,1,OKC,DEN,111,100
+2027,Western Conference First Round,2,OKC,DEN,97,104
+2027,Western Conference First Round,3,DEN,OKC,99,108
+2027,Western Conference First Round,4,DEN,OKC,113,106
+2027,Western Conference First Round,5,OKC,DEN,118,109
+2027,Western Conference First Round,6,DEN,OKC,102,96

@@ -11,8 +11,8 @@
 //
 // Story 2.2 review (H2): the `status` column is gone from the live schema (00014), so
 // this audit projects only surviving columns and stays runnable as the post-apply
-// duplicate-free check. `audit-archive.mjs` still projects `status` because its own
-// subject is the `status` domain — it stays red until Story 2.7 retires that section.
+// duplicate-free check. `audit-archive.mjs` projected `status` until Story 2.7 retired
+// that section (2026-10-05); both audits now run green against the post-00014 schema.
 //
 // Usage: node scripts/spike-2-1/audit-unique-key.mjs
 // Exit: 0 = audit completed (it may report that no candidate is unique), 2 = could not run.

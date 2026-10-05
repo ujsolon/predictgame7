@@ -14,6 +14,14 @@
 //
 // Usage: node scripts/spike-2-1/audit-archive.mjs
 // Exit: 0 = audit completed (the audit itself may report anomalies), 2 = could not run.
+//
+// Story 2.7 (2026-10-05): the projection no longer names `status` — migration 00014 dropped the
+// column, and from then on PostgREST answered this script with HTTP 400 (42703) — and the
+// vestigial `status` domain section went with it. Phase is derived (AD-4); the "AD-4 premise"
+// section below already cross-tabulates the derivation's two inputs. Exit codes go through
+// `process.exitCode`, never `process.exit()`: an explicit exit raced the undici pool's teardown
+// on Windows and surfaced as a libuv assertion with exit 127 instead of the documented 2
+// (deferred-work.md, the Story 2.2 and W1 entries; `run.ts` documents the same fix).
 
 import { readFileSync } from "node:fs";
 
@@ -70,10 +78,11 @@ async function main() {
   const key = env.VITE_SUPABASE_ANON_KEY;
   if (!base || !key) {
     console.error(".env is missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
 
-  const series = await getAll(base, key, "series", "id,year,round,team_a_id,team_b_id,winner_team_id,status", "year.asc,id.asc");
+  const series = await getAll(base, key, "series", "id,year,round,team_a_id,team_b_id,winner_team_id", "year.asc,id.asc");
   const scores = await getAll(base, key, "series_game_scores", "series_id,game_number,home_team_id,away_team_id,home_score,away_score,winner_team_id", "series_id.asc,game_number.asc");
 
   const seriesRows = series.rows;
@@ -165,11 +174,6 @@ async function main() {
     console.log(`  ${String(n).padStart(4)}  ${JSON.stringify(value)}`);
   }
 
-  const statusDomain = new Map();
-  for (const row of seriesRows) statusDomain.set(row.status, (statusDomain.get(row.status) ?? 0) + 1);
-  console.log("\n== `status` domain (vestigial; 2.2 drops it) ==");
-  for (const [value, n] of statusDomain) console.log(`  ${String(n).padStart(4)}  ${JSON.stringify(value)}`);
-
   const years = seriesRows.map((row) => row.year).sort((a, b) => a - b);
   console.log(`\n== year range == ${years[0]}..${years.at(-1)} across ${new Set(years).size} distinct years`);
 
@@ -179,5 +183,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(`audit could not complete: ${error.message}`);
-  process.exit(2);
+  process.exitCode = 2;
 });

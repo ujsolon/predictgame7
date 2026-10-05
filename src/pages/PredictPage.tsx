@@ -13,6 +13,8 @@ import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
 import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
 import { deriveSeriesPhase, isSeriesPending, seriesSourceForPhase } from '@/lib/series-phase';
+// The projection is shared with Home's pending-Game-7 read (Story 2.7, D2).
+import { SERIES_SELECT } from '@/lib/series-query';
 import { cn } from '@/lib/utils';
 import type { Series, Team } from '@/types/types';
 import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
@@ -28,25 +30,10 @@ interface SelectedSeries {
   customData?: PredictionInput;
 }
 
-const SERIES_SELECT = `
-  id,
-  year,
-  round,
-  league,
-  team_a_id,
-  team_b_id,
-  winner_team_id,
-  created_at,
-  updated_at,
-  team_a:team_a_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
-  team_b:team_b_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
-  winner_team:winner_team_id(id, full_name, abbreviation, city, nickname, logo_url, created_at, updated_at),
-  series_game_scores(*)
-`;
-
 // supabase-js has no generated Database types in this app, so `series` rows come
 // back with their to-one embeds typed as arrays. These two casts are the only
-// place a row is read as `Series`; nothing is validated.
+// places the picker reads a row as `Series` (Home's pending read has its own,
+// equally unvalidated, cast); nothing is validated.
 const asSeries = (rows: unknown): Series[] => (Array.isArray(rows) ? rows : []) as Series[];
 const asSeriesRow = (row: unknown): Series => row as Series;
 

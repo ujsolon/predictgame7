@@ -289,6 +289,12 @@ async function runVenueProbe(seasonOverrideRaw) {
           winnerInversions.push(
             `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — the feed says ${feedWinner} won this series, while the curated row holds ${m.row.teamA} in the winner-first slot. Resolution is by UNORDERED pair so the venue still lands on the right row; this is a provenance question about the row, not a blocker.`,
           );
+        } else if (feedWinner !== m.row.teamA) {
+          // ECH-1 (Story 2.7): a winner code naming neither slot and no approved
+          // alias used to fall through both branches and print nothing.
+          winnerInversions.push(
+            `${m.row.year} ${m.row.teamA} vs ${m.row.teamB} (csv:${m.row.line}) — the feed's winner code resolved to "${feedWinner}", which is neither of that row's two slots: the winner could not be placed. The venue line above still stands; check the row and the alias table.`,
+          );
         }
       }
 

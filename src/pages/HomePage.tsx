@@ -5,6 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/db/supabase';
+import { getTeamCode } from '@/lib/nba-utils';
+import { isSeriesPending } from '@/lib/series-phase';
+import { SERIES_SELECT } from '@/lib/series-query';
+import type { Series } from '@/types/types';
 import { usePostHog } from '@posthog/react';
 import {
   Trophy,
@@ -26,6 +30,75 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div className="sticky top-0 z-10 bg-background/90 backdrop-blur-sm py-3 -mx-4 px-4 md:-mx-6 md:px-6 border-b border-border/40">
       <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{children}</p>
     </div>
+  );
+}
+
+/**
+ * Story 2.7 (owner decision D2) — the pending-Game-7 DATA REACH on Home, not
+ * its design. Reads `series` through the picker's own projection and keeps a
+ * row only when the shared derivation calls it pending (six score rows for
+ * games 1–6 and a NULL winner — `isSeriesPending`, AD-4); no stored flag,
+ * date or `created_at` decides it. The server-side `winner_team_id IS NULL`
+ * filter only narrows the payload (production holds 178 archived rows and
+ * none pending): every surviving row still has to pass the derivation, so a
+ * winner-less row with the wrong game set is dropped, not promoted.
+ *
+ * It renders NOTHING when no series is pending or when the read fails — no
+ * heading, no empty state, no error copy — so production Home renders as
+ * before until a real pending series exists (April 2027). It is not free:
+ * every Home load now makes one anon `series` read, which returns zero rows
+ * while nothing is pending. Each pending series gets
+ * one plain link to `/predict?series=<id>`, the link shape the banner
+ * hotspots below already use (`/series/<id>` arrives with Story 4.1). Visual
+ * treatment, copy and the AA floor are Story 4.5's; this block proves only
+ * that the data arrives and resolves to that series' preview page.
+ */
+export function PendingGameSevens() {
+  const [pending, setPending] = React.useState<Series[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('series')
+          .select(SERIES_SELECT)
+          .is('winner_team_id', null)
+          .order('year', { ascending: false });
+        if (error || !Array.isArray(data) || cancelled) return;
+        // Same unvalidated cast the picker makes (`PredictPage.tsx`'s `asSeries`).
+        setPending((data as unknown as Series[]).filter((row) => isSeriesPending(row)));
+      } catch {
+        // A failed read renders nothing; Home has no error surface for this block.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (pending.length === 0) return null;
+
+  return (
+    <section className="pb-12" data-home-pending-series="">
+      <ul className="space-y-2 text-center">
+        {pending.map((series) => {
+          const teamA = getTeamCode(series.team_a?.full_name || 'Team A', series.team_a);
+          const teamB = getTeamCode(series.team_b?.full_name || 'Team B', series.team_b);
+          return (
+            <li key={series.id}>
+              <Link
+                to={`/predict?series=${series.id}`}
+                data-pending-series-id={series.id}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                {`${teamA} vs ${teamB} — Game 7 pending`}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -168,6 +241,9 @@ export default function HomePage() {
         <h1 className="text-4xl md:text-6xl font-medium tracking-tight text-balance font-montserrat">{"Predict Game 7"}</h1>
         <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto text-pretty">{"A platform designed to decode the most intense moments in NBA history through data and probability."}</p>
       </section>
+
+      {/* Story 2.7 (D2): renders nothing unless a series is pending. */}
+      <PendingGameSevens />
 
       {/* Iconic Moments Banner */}
       <section className="pb-24">

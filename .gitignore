@@ -115,3 +115,6 @@ supabase/.branches/
 
 # Claude
 .claude
+
+# Story 2.7 drill build (scripts/drill-2-7-local-stack.mjs removes it; a crash or --keep may not)
+dist-drill-2-7/

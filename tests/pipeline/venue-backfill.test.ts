@@ -590,7 +590,17 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // U11's `--fixture-report` (the real-score reader, its join, the pinned
   // literals) and Story 2.13's leg-B reader over `--fixture-teamlist=`, both
   // executed below as the real scripts.
-  for (const script of ['probe-game7-venues.mjs', 'probe-espn-adapter.mjs', 'probe-nba-com-adapter.mjs', 'rehearse-migration-00014.mjs']) {
+  // Story 2.7 adds its drill harnesses, and `measure-predict-latency.mjs` (now
+  // imported by the local-stack drill) — the evidence behind §6.5's closure.
+  for (const script of [
+    'probe-game7-venues.mjs',
+    'probe-espn-adapter.mjs',
+    'probe-nba-com-adapter.mjs',
+    'rehearse-migration-00014.mjs',
+    'measure-predict-latency.mjs',
+    'drill-2-7-reconcile.mjs',
+    'drill-2-7-local-stack.mjs',
+  ]) {
     it(`node --check parses scripts/${script}`, () => {
       const res = spawnSync(process.execPath, ['--check', fileURLToPath(new URL(`../../scripts/${script}`, import.meta.url))], {
         encoding: 'utf8',
@@ -599,6 +609,28 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
       expect(res.status).toBe(0);
     });
   }
+
+  // Story 2.7: `measure-predict-latency.mjs` runs `main()` only when executed
+  // directly. A guard that misfires either way is silent — false on a direct run
+  // prints nothing and exits 0 (a drill leg would read green), true on import
+  // starts a latency study inside the local-stack drill — so both halves are pinned.
+  it('measure-predict-latency.mjs runs main() when executed directly (--help prints the drill modes)', () => {
+    const script = fileURLToPath(new URL('../../scripts/measure-predict-latency.mjs', import.meta.url));
+    const res = spawnSync(process.execPath, [script, '--help'], { encoding: 'utf8' });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain('--fake-pending');
+  });
+
+  it('measure-predict-latency.mjs starts nothing when imported', () => {
+    const href = new URL('../../scripts/measure-predict-latency.mjs', import.meta.url).href;
+    const res = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-e', `const m = await import(${JSON.stringify(href)}); console.log(typeof m.openBrowserSession, typeof m.createLedger);`],
+      { encoding: 'utf8', timeout: 30000 },
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout.trim()).toBe('function function');
+  });
 
   it('the espn probe refuses a bad flag with exit 2 before any fetch', () => {
     // `node --check` proves the file parses, nothing more, and the probe's live
