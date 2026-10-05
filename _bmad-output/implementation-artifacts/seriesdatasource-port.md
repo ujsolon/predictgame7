@@ -392,6 +392,11 @@ A refresh failure on either path exits 2 naming
 `pipeline_refresh_insights_cache` (the single catch already turns any sink
 throw into exit 2); series writes from a completed write phase stay landed —
 a PostgREST client cannot roll them back — and the run is not a success.
+The automatic trigger is **one-shot**: once those writes have landed, a re-run
+plans them as skips and does not refresh on their account, so a failed
+automatic refresh stays stale until the operator path runs. The exit-2 message
+says so and names the `--refresh-insights` command (review pass 2,
+2026-10-05).
 
 Rehearsal: `scripts/rehearse-migration-00014.mjs` section 6 exercises the
 function in the replayed 00001–00017

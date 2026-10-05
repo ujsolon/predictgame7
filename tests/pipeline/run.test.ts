@@ -623,6 +623,12 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
     // back) — the frozen matrix row's state, asserted, not assumed.
     expect(sink.births).toHaveLength(2);
     expect(sink.completions).toHaveLength(1);
+    // The trigger is one-shot, so the message must carry the recovery: a
+    // re-run of the same input plans skips and does not refresh.
+    expect(errors.lines.join('\n')).toMatch(/a re-run will NOT retry this refresh; recover with .*--refresh-insights/);
+    const rerun = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture });
+    expect(rerun).toBe(0);
+    expect(sink.refreshes).toHaveLength(0);
   });
 
   it('U10: --refresh-insights is recognised, refreshes, and touches nothing else', async () => {
