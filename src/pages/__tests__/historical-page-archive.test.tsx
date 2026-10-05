@@ -782,11 +782,72 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
     for (const entry of DIVERGENT_FRANCHISES) {
       expect(seededAbbreviations.has(entry.stored)).toBe(true);
     }
-    // What this does NOT settle: the seed reader returns abbreviation → id, so the
-    // name↔code pairing is not observable here (widening it needs a `supabase/`
-    // change, which this story's boundaries forbid). The 39-series / 47-cell half
-    // of the census is a measurement over the live 178-row archive and stays with
-    // the owner's preview look — recorded in Verification.
+    // The name↔code pairing and the 39-series / 47-cell half of the census are
+    // settled by the next case, which recomputes both from committed files.
+  });
+
+  it('recomputes the 39-series / 47-cell / 20-franchise census from the committed archive and seeds', () => {
+    // Owner decision D1 (review pass 2, 2026-10-05): the census the frozen Intent
+    // rests on is reproducible from the tree, so it is pinned, not recited. The
+    // archive is `game7_venues_curated.csv` — one row per archived series (178),
+    // carrying both sides' stored codes — and the seeds give each code its
+    // `full_name` (`00005`: the 30 modern franchises; `00007`: the 29 historical
+    // identities). What the surface printed before Story 2.11 was the retired map
+    // for the 30 modern names (verified 2026-10-05 against `9c91056`: 0 mismatches,
+    // 0 missing, so no modern cell could diverge) and the name path for everything
+    // else; a divergent cell is therefore a `00007` identity whose name path
+    // differs from its stored code.
+    const readRepo = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), 'utf8');
+    const seedRows = (sql: string) => {
+      const block = sql.slice(sql.search(/INSERT INTO teams/i));
+      const values = block.slice(0, block.indexOf(';'));
+      return [...values.matchAll(/\(\s*\d+,\s*'((?:[^']|'')+)',\s*'([A-Z]{2,4})'/g)].map((m) => ({
+        name: m[1].replace(/''/g, "'"),
+        code: m[2],
+      }));
+    };
+    const modern = seedRows(readRepo('supabase/migrations/00005_release_1_data_model.sql'));
+    const historical = seedRows(readRepo('supabase/migrations/00007_backfill_missing_historical_series.sql'));
+    expect(modern).toHaveLength(30);
+    expect(historical).toHaveLength(29);
+    const historicalByCode = new Map(historical.map((team) => [team.code, team]));
+
+    const archive = readRepo('supabase/scripts/pipeline/data/game7_venues_curated.csv')
+      .split(/\r?\n/)
+      .filter((line) => line !== '' && !line.startsWith('#'));
+    expect(archive[0]).toBe('year,team_a,team_b,league,game7_home_team');
+    const series = archive.slice(1).map((line) => line.split(','));
+    expect(series).toHaveLength(178);
+
+    let divergentSeries = 0;
+    let divergentCells = 0;
+    const years: number[] = [];
+    const franchises = new Map<string, string>();
+    for (const [year, teamA, teamB] of series) {
+      let divergent = false;
+      for (const code of [teamA, teamB]) {
+        const team = historicalByCode.get(code);
+        if (team && getTeamAbbreviation(team.name) !== team.code) {
+          divergentCells++;
+          divergent = true;
+          franchises.set(team.name, team.code);
+        }
+      }
+      if (divergent) {
+        divergentSeries++;
+        years.push(Number(year));
+      }
+    }
+
+    expect(divergentSeries).toBe(39);
+    expect(divergentCells).toBe(47);
+    expect(Math.min(...years)).toBe(1948);
+    expect(Math.max(...years)).toBe(1997);
+    // The pairing the seed cross-check above could not see: the hand-typed table
+    // is exactly the measured franchise set, name and stored code together.
+    expect(Object.fromEntries(franchises)).toEqual(
+      Object.fromEntries(DIVERGENT_FRANCHISES.map((entry) => [entry.name, entry.stored]))
+    );
   });
 
   it('finds a series by the stored abbreviation on either FK, case-insensitively', async () => {
@@ -813,6 +874,15 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
     search('wsb');
     expect(visibleYears()).toEqual(['1978']);
     expect(liveRegion()?.textContent).toBe('Showing 1 of 1 series.');
+
+    // Owner decision D3 (review pass 2): padding from a paste does not hide a
+    // code — the query is trimmed for both arms — and whitespace alone is empty.
+    search('SLB ');
+    expect(visibleYears()).toEqual(['1970', '1948']);
+    search('  kck\t');
+    expect(visibleYears()).toEqual(['1976']);
+    search('   ');
+    expect(renderedRows()).toBe(4);
 
     // The event keeps its name and its `filter_type` — a code query is still a
     // team search; Story 3.1 moves the call site, not this fact.
@@ -867,8 +937,9 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
     search('Washington');
     expect(visibleYears()).toEqual(['1978', '1949']);
     // `sas` is a substring of "Kan-sas City" and the stored code of the Spurs, so
-    // both arms answer and the year-descending sort puts the noise row first
-    // (1985 > 1980): the consequence the owner accepted rather than fixed (U3).
+    // both arms answer and the year-descending sort orders them by year — the
+    // Spurs row (1985) first, the Kansas City noise row (1980) behind it: the
+    // consequence the owner accepted rather than fixed (U3).
     search('sas');
     expect(visibleYears()).toEqual(['1985', '1980']);
   });

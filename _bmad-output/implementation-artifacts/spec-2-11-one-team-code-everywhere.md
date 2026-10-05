@@ -4,7 +4,7 @@ type: 'bugfix'
 created: '2026-10-04'
 status: 'done'
 route: 'dispatch'
-review_loop_iteration: 1
+review_loop_iteration: 2
 baseline_commit: '9c9105622d384486ec78e8f1376baa2b15b9ed72'
 story_key: '2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation'
 context:
@@ -38,7 +38,7 @@ context:
 ## Boundaries & Constraints
 
 **Always:**
-- Client-only: `src/**` and tests/records. The FK row's stored value wins wherever it exists; the archive search's name path keeps its current behavior everywhere else (never narrowed to exact match). U15's typed-name index is an **added** arm ahead of the name path on the custom form, not a narrowing of the search predicate.
+- Client-only: `src/**` and tests/records. The FK row's stored value wins wherever it exists; the archive search's name path keeps its current behavior everywhere else (never narrowed to exact match). U15's typed-name index is an **added** arm ahead of the name path on the custom form, not a narrowing of the search predicate. **[Owner decision D3, 2026-10-05 (review pass 2): the archive query is trimmed before both arms, so `SLB ` finds the Bombers and whitespace alone reads as empty. That changes the name path only for padded input, and only by widening — never narrowing — so U3 holds.]**
 - Tests per-file jsdom, and **no assertion on a computed accessible name** (AGENTS.md accname rule) — `textContent` or literal attributes.
 - `historical_filter_applied` keeps its name and its `filter_type: 'team_search'` value; the call site moves behind the analytics port only in Story 3.1.
 - The 39-row visible change on `/historical` is pinned per row, with mutation evidence for each new pin.
@@ -60,7 +60,7 @@ context:
 | FK join miss | `team_a` null, name `'Team A'` | placeholder literal `TMA`, no `getTeamAbbreviation` call | fall through |
 | Row present, `abbreviation` empty | `abbreviation: ''` | falls to name path — an empty cell never prints blank | fail visible |
 | Custom matchup, typed name | `Boston Celtics`, `Utah Jazz` — a `games` row carries that `full_name` | the matched row's stored `abbreviation`: `BOS`, `UTA` (U15) | falls through below |
-| Custom matchup, no row match | `Celtics`, `Nowhere FC`, mid-typing `Utah J` | the name path, unchanged from today: `CEL`, `NOW`, `UJ` | n/a |
+| Custom matchup, no row match | `Celtics`, `Nowhere FC`, mid-typing `Utah J` | the name path, unchanged from today: `CEL`, `NF`, `UJ` **[owner renegotiation, 2026-10-05 (E7, review pass 2): this cell read `NOW`; two words take the initials arm, so `Nowhere FC` → `NF` — `NOW` is what a single-word `Nowhere` truncates to. Code and `predict-flow-regression.test.tsx` already printed `NF`; the frozen text was the error.]** | n/a |
 | Custom matchup, blank | `''` | the caller's `\|\| 'TBD'`, unchanged | n/a |
 | Predicted winner | `predicted_winner` equals an embedded row's `full_name` | that row's `abbreviation`; else the name path | n/a |
 
@@ -97,6 +97,42 @@ context:
 - [x] `src/pages/__tests__/predict-flow-regression.test.tsx` — "answers a custom matchup with the stored codes the trigger label used (U15)": label → card → sheet, `SEA`/`UTA` on all three with `SS`/`UJ` absent -- E2/E5/V2.
 - [x] `src/pages/__tests__/predict-phase-groups.test.tsx` — the captured Predict projection names `abbreviation` inside both enumerated `team_a:`/`team_b:` embeds -- V1.
 - [x] `src/pages/__tests__/historical-page-archive.test.tsx` — "checks the hand-typed divergent-census table against the teams seed": all 20 `stored` codes exist in the `00005`+`00007` seed, table length pinned -- B10/E6.
+
+### Review Findings
+
+**Review pass 2 — fresh context, 2026-10-05, against commit `55de7ee`** — all 3 decisions resolved by the owner and all 12 patches applied the same day (see Spec Change Log). (Four layers: Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor; 38 raw findings → 3 decision-needed, 12 patch, 0 defer, 14 rejected; the Verification Gap layer reported no gaps. Every claim was checked at the cited location in the current tree before a verdict was given.)
+
+- [x] [Review][Decision] AC 1's "39-row change pinned per row" is met only by 20 synthetic rows — `divergentRows()` builds one fixture per franchise (1948–1967, every opponent `warriors`). The seed cross-check proves each `stored` code *exists* in the seed, not the name↔code *pairing*, and the 39-series / 47-cell / 1948→1997 census is reproducible from nothing in the tree. E6 (pass 1) called the census "a live-table census no jsdom fixture reaches", but the spec says it was measured against the committed archive CSV plus the `00005`/`00007` seeds, all of which are tracked. Options: (a) add a Node-environment test that recomputes 39/47/20 and the span from the committed CSV + seeds; (b) renegotiate AC 1's wording to "20 franchise pins + seed tie" (frozen-adjacent, owner's call); (c) accept as-is, with the owner look carrying the census. (blind-hunter + edge-case-hunter + acceptance-auditor; medium) — **Resolved 2026-10-05, owner chose (a):** new case "recomputes the 39-series / 47-cell / 20-franchise census from the committed archive and seeds" in `historical-page-archive.test.tsx` reads `game7_venues_curated.csv` (178 rows) + the `00005`/`00007` seeds and pins 39 / 47 / 1948 / 1997 and the exact name↔code set of `DIVERGENT_FRANCHISES`; M17 proves the pairing half.
+- [x] [Review][Decision] No programmatic substitute was tried for the owner look or the owed accessible-name re-measure — AGENTS.md (Evidence discipline) requires naming the substitute tried. `node scripts/measure-predict-latency.mjs --probe-evidence` against `npm run preview` returns the accessibility tree and screenshots. It could settle the U14 placeholder's accessible name that `spec-2-10:173` marks as owed, and could screenshot `SEA`/`UTA` and the `/historical` codes before acceptance. Options: run it now and record the result here, or leave it to the owner look. (blind-hunter; low) — **Resolved 2026-10-05, owner chose run it:** measured over CDP against `npm run preview`; results in Verification → "CDP evidence (review pass 2, D2)".
+- [x] [Review][Decision] The archive search's stored-code arm does not trim the query — `HistoricalPage.tsx:115` is `teamSearch.toLowerCase()`, so a pasted `SLB ` finds nothing, while `sas ` still hits Kansas City through the name arm. Trimming would only widen results (it never narrows, consistent with U3), but it changes the name path's behaviour for padded input, which the Always bullet says stays as it is. Options: trim for both arms; trim for the code arm only; leave it. (blind-hunter + edge-case-hunter + acceptance-auditor; low) — **Resolved 2026-10-05, owner chose trim for both arms:** `HistoricalPage.tsx:118` trims, `query === ''` gates the empty case; pinned in the code-search case (`SLB `, `  kck	`, whitespace-only), M16; recorded as a dated bracket on the frozen Always bullet.
+- [x] [Review][Patch] `getTeamCode` reads `Object.prototype` members as placeholder codes — `PLACEHOLDER_ABBREVIATIONS[trimmed] ?? …` returns a function for a typed `constructor`/`toString` (label prints `function Object() { [native code] } vs TBD`; `|| 'TBD'` cannot catch it) and `Object.prototype` for `__proto__`, which a React child render throws on. Use `Object.hasOwn`, and add a pin. The flaw predates this story (the baseline map lookup had it), but this diff rewrote the line. [src/lib/nba-utils.ts:73]
+- [x] [Review][Patch] The `sas` test comment states the U3 consequence backwards — it says the sort "puts the noise row first (1985 > 1980)", but 1985 is the Spurs (the correct match) and the Kansas City noise row (1980) comes second. [src/pages/__tests__/historical-page-archive.test.tsx:870]
+- [x] [Review][Patch] The `team-logos` test title is stale — "extracts every alias entry from the source (guards the regex harness itself)" now asserts seed→alias coverage, so a red run reads as an extractor regression. [src/lib/__tests__/team-logos.test.ts:103]
+- [x] [Review][Patch] `nba-utils.ts`'s header says "0 names absent from the table" without the decomposition B1 added to the records (30 franchise entries, all in the table; the 2 placeholder literals were never table names). [src/lib/nba-utils.ts:8-11]
+- [x] [Review][Patch] `deferred-work.md`'s BUILT paragraph says "the spec sits at `review`" — the spec is `done`; the *story* is at `review` (the Change Log's own rule). [_bmad-output/implementation-artifacts/deferred-work.md:388]
+- [x] [Review][Patch] "pre-1976" survives uncorrected later in the same `deferred-work.md` entry — "leaves every visible pre-1976 code unfindable". [_bmad-output/implementation-artifacts/deferred-work.md:388]
+- [x] [Review][Patch] The UJ-2 defer cites `src/lib/nba-utils.ts:39-52`'s "documented non-claims" — those lines are `getTeamCode`'s resolution-order comment; the no-nickname/city/fuzzy statement is `PredictPage.tsx:427-430`. [_bmad-output/implementation-artifacts/deferred-work.md:487]
+- [x] [Review][Patch] The `spec-2-10` D5' pointer misnames its examples — it says "the two examples named here: the stored-`SEA` SuperSonics and stored-`WSB` Bullets rows are 1978-1996 series", but D5' names SuperSonics and **Philadelphia Warriors**, which is not a 1978–1996 franchise. B2 was marked patched; this site is still wrong. [_bmad-output/implementation-artifacts/spec-2-10-nba-by-default-league-chip-and-in-record-gloss.md:32]
+- [x] [Review][Patch] `epics.md` has two falsified Story 2.11 clauses with no dated pointer — `:550`, "**two** test files are hidden consumers … re-key it onto `TEAM_LOGO_ENTRIES`" (four consumers; the build re-keyed onto `parseTeamsSeed` and Design Notes calls the `TEAM_LOGO_ENTRIES` re-key circular), and `:549`, "the name-derived initialism as the fallback for a custom matchup" (U15's index now serves the custom matchup on the answer surfaces). [_bmad-output/planning-artifacts/epics.md:549-550]
+- [x] [Review][Patch] The U14 bracket's count "9 `getByPlaceholderText` references move with the copy" is wrong — the baseline held **7** (measured by `git show 9c91056:… | grep -c`), all 7 moved, and the other 2 are new call sites. B13's "7 → 9" turned a correct number into a wrong one. [_bmad-output/planning-artifacts/epics.md:543]
+- [x] [Review][Patch] The `sprint-status.yaml` 2-11 tallies don't add up — "18 accepted … 5 refuted, 2 deferred" is 25 against 23 findings (the triage table has 15 whole patch rows, B6 and B13 split, B7 the one whole defer, 5 rejects). The BUILT line's "452 tests" also conflates the build (451) with the audit (+1). [_bmad-output/implementation-artifacts/sprint-status.yaml:139,147]
+- [x] [Review][Patch] `epic-2-context.md`'s Story 2.11 bullet still says "backlog, see `deferred-work.md`", although the same commit moved the story to `review` with U14/U15. [_bmad-output/implementation-artifacts/epic-2-context.md:19]
+
+**Rejected (pass 2):**
+- `false` — the card/sheet skip `rowFor` when a present FK row names a different team (blind-hunter, edge-case-hunter ×2). A present row always carries `teamAName`: any selection change clears the result (`PredictPage.tsx:105-128`), and `predict-game-7` echoes the client's own `full_name` back (`index.ts:380-381`).
+- `low` — a typed name prints `BC` while `games` is loading or after the fetch failed (edge-case-hunter). The window is transient, the failure state is visible (`:784`), and the fix adds a guard. This repeats pass 1's B8/E3.
+- `low` — a team found only in a non-reconciling series is missing from the index (edge-case-hunter). Each of the 58 archived franchises appears in several series, and a fix would rebuild the index from pre-filter rows.
+- `low` — repeated internal whitespace (`Seattle  SuperSonics`) misses the row (edge-case-hunter). Unlikely to be typed, and the fix adds normalisation in two places.
+- `false` — the commented-out Matchup block is uncompilable (edge-case-hunter). The spec's Never bullet orders it untouched, and re-enabling it fails loudly in `tsc -b`.
+- Spec edit — the frozen matrix `Nowhere FC` → `NOW` vs the code's `NF` (acceptance-auditor, blind-hunter). Rejected as a review patch because the fix edits the spec under review — **then renegotiated by the owner, 2026-10-05:** the cell now reads `NF` with a dated bracket (E7 closed).
+- Spec edit — the spec's own frozen block carries no markers for E7/B13 (blind-hunter).
+- Spec edit / `low` — tally and line-citation disagreements inside the spec (blind-hunter). Line citations in test comments drift with every edit, so they were not chased.
+- Spec edit — the Code Map's U6 count mixes files (blind-hunter).
+- Spec edit — the `docs/plans/…` delegation residue and the unparseable "Never violation" sentence in Implementation Notes (blind-hunter).
+- Spec edit — the Tasks line's "9 references moved" (acceptance-auditor). The `epics.md` half is the patch above.
+- `low` — the seed oracles read only `00005` + `00007` (blind-hunter). `00009` is the only later migration that writes `abbreviation`, and it sets `LAC`, already seeded. The reader convention is shared (`deferred-work.md:343`), and widening it adds complexity.
+- `false` — the `PLACEHOLDER_ABBREVIATIONS` lookup is case-sensitive (blind-hunter). The baseline map was equally case-sensitive, and the literals reach the helper only from the code's own `'Team A'` fallbacks.
+- `low` — `epic-2-context.md` carries 2.12/2.10 notes outside this story (acceptance-auditor). The notes are accurate, and no harm was named. The stale 2.11 bullet is the patch above.
 
 **Acceptance Criteria:**
 - Given a DB-backed archive row whose stored code differs from its name initialism, when the archive renders, then the cell shows the stored code, and the 39-row change is pinned per row with mutation evidence.
@@ -221,9 +257,33 @@ Code Map's citations are the baseline's, and the two differ only by drift inside
   the second candidate row), which is still the only case that reaches the card's `codeA` arm —
   `:1205`, printed only when side A loses (line numbers re-derived after pass 1's edits). The suite
   count moves 451 → 452.
+- **2026-10-05, review pass 2 (fresh context, against `55de7ee`) — 38 raw findings → 3 decisions,
+  12 patches, 0 defers, 14 rejects; every decision answered by the owner and every patch applied in
+  one pass.** Owner calls: **D1 (a)** — the census is now recomputed from committed files rather than
+  recited: "recomputes the 39-series / 47-cell / 20-franchise census from the committed archive and
+  seeds" reads `supabase/scripts/pipeline/data/game7_venues_curated.csv` (178 series with both
+  stored codes) plus the `00005`/`00007` teams seeds and pins 39 series, 47 cells, 1948→1997 and the
+  exact name↔code set of `DIVERGENT_FRANCHISES`. That settles AC 1 and the half of E6 pass 1 called
+  unreachable — the inputs were committed all along. Its premise (no modern cell could diverge) was
+  re-verified against `9c91056`'s retired map: 30 of 30 seed names present, 0 value mismatches.
+  **D2** — the owner look's programmatic substitute was run (Verification → CDP evidence). **D3** —
+  the archive query is trimmed before both arms (`HistoricalPage.tsx:118`), recorded as a dated
+  bracket on the frozen Always bullet. **Frozen edit (owner-authorised, 2026-10-05):** matrix `:63`
+  now reads `NF` for `Nowhere FC`, with a dated bracket naming E7; the only frozen-text changes in this
+  pass are that cell and the D3 bracket. Patches: `getTeamCode`'s placeholder step is an own-key test
+  (`Object.prototype.hasOwnProperty.call` — `Object.hasOwn` is ES2022 and the app's `lib` is ES2020),
+  pinned by "never reads an Object.prototype member as a placeholder code"; the `sas` comment, the
+  `team-logos` case title and the `nba-utils.ts` header decomposition corrected; record corrections in
+  `deferred-work.md` (spec-vs-story status, the surviving "pre-1976", the UJ-2 citation),
+  `spec-2-10` D5' (both named examples, and the SuperSonics span is 1978–1997, not 1996),
+  `epics.md` (`:543` count 7 + 2 new, not 9 moved; dated pointers on `:549` and `:550`),
+  `sprint-status.yaml` (the pass-1 tally summed to 25; build 451 vs audit 452) and
+  `epic-2-context.md` (2.11 was still "backlog"). Mutation evidence M15–M17 in Verification.
+  `npm run gate`: **exit 0, 24 files, 552 tests** (the count includes Story 2.13's suites, which
+  landed after `55de7ee`), code read from the run itself.
 - **Frontmatter**: `status` `in-progress` → `review` → `done` at step 05 (2.5's precedent: the spec
   is finished work, the *story* stays at `review` in `sprint-status.yaml` because the owner's preview
-  look is the acceptance), `review_loop_iteration` 0 → 1.
+  look is the acceptance), `review_loop_iteration` 0 → 1 → 2 (review pass 2, 2026-10-05).
 
 ## Review Triage Log
 
@@ -349,5 +409,38 @@ added. The harness that produced the first two attempts is on the record as untr
 and read as RED, and the ANSI stripper used `\e` — not an ESC escape in a JS regex literal — so a
 real red run parsed as "no failures reported". A mutation claim is only evidence with a green
 baseline and a parser proven against captured output.
+
+**Pass 3 mutations (review pass 2, 2026-10-05) — 3/3 reddened exactly their target, each
+restored byte-exactly (`md5sum` compared before and after):**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M15 | Placeholder step back to a bare index (`PLACEHOLDER_ABBREVIATIONS[trimmed]`) | "never reads an Object.prototype member as a placeholder code" alone (16/17 green) |
+| M16 | Archive query loses `.trim()` | "finds a series by the stored abbreviation on either FK, case-insensitively" alone |
+| M17 | `DIVERGENT_FRANCHISES` swaps two real seeded codes (`BLB` ↔ `WSB`) | the census case alone — the seed cross-check stays green on a swap of two real codes, which is the pairing gap the census closes |
+
+**CDP evidence (review pass 2, owner decision D2, 2026-10-05).** Harness: a scratch CDP script
+(not committed; same approach as `scripts/measure-predict-latency.mjs --probe-evidence` — headless
+Chrome it spawns itself, PostHog URLs blocked) against `npm run preview` on the working tree that
+carries this pass's patches. Typing went through `Input.insertText` one character at a time, so the
+mid-typing states are real keystroke states.
+- **Accessible name of the archive search field** (the re-measure `spec-2-10:173` owed): the AX tree's
+  only textbox is named `Search by team name or code...`, **source `placeholder`** — U14's copy is
+  live, and it is the field's accessible name because the `Search Team` label is still not paired
+  with the input (B7, deferred, unchanged).
+- **`/historical` live counts** (from the `aria-live` region): unfiltered 178; `SLB` 1, `WSB` 5,
+  `KCK` 1, `OKC` 7, `NY` 19 — every one equal to the matrix and to a recount over
+  `game7_venues_curated.csv`; `SAS` **15** = 14 code-arm rows (matrix `:57`, and the CSV recount) + 1 from the name arm —
+  inferred to be the archive's single `KCK` series, 1981 Kansas City Kings (U3's accepted noise), since
+  the probe read only the first three rows; `SLB ` (trailing space) 1 (D3); `Sonics` 7. Rows
+  print stored codes (`1979 WSB vs SAS`, `1948 PHW vs SLB`). Screenshot reviewed: `WSB` rows with
+  logos.
+- **`/predict` custom matchup label** (the trigger's `span`), typed in order: `Seattle SuperSonics`
+  → `SEA vs TBD`; `Utah J` → `SEA vs UJ`; `Utah Jazz` → `SEA vs UTA`; `Celtics` → `CEL vs UTA`;
+  `Boston Celtics` → `BOS vs UTA`; `boston celtics` → `BOS vs UTA` (E1); `Nowhere FC` → `NF vs UTA`
+  (the renegotiated cell); `constructor` → `CON vs UTA` (M15's pin, live). Screenshot reviewed:
+  `SEA vs UTA` with the Sonics and Jazz logos.
+- What stays human: "does this look right" — the two screenshots are evidence for the owner's look,
+  not a substitute for it.
 
 **Owner look (U15 was accepted sight-unseen — "I have to see it to completely verify"):** `npm run preview`, then /predict → Custom Matchup and type, watching the label above the score boxes: `Seattle SuperSonics` → `SEA`, `Utah Jazz` → `UTA` (and `UJ` while the second word is still incomplete), `Celtics` → `CEL`, `Boston Celtics` → `BOS`. Then `/historical`: type `SLB` (1 row), `WSB` (5), `NY` (19) and check the row codes against what the same franchise shows on the predict side. The programmatic substitute for this look already exists as the jsdom pins in the Tasks list — this is confirmation of the reading, not the only evidence of the behavior; the 39-row `/historical` change is also diffable in preview against the pre-story build.

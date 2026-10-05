@@ -5,10 +5,12 @@ import type { Team } from '@/types/types';
 // rows — a row each would re-pin `EXPECTED_TEAM_COUNT = 59` in
 // `supabase/scripts/pipeline/venueBackfill.ts` for a display convenience — so
 // the one place their codes exist is here. Every other code comes from the
-// table: the retired `TEAM_ABBREVIATIONS` map duplicated 30 of the 59 seeded
-// `teams.abbreviation` values and nothing else, and a second name→code source
-// is exactly the drift Story 2.11 removes (measured 2026-10-02: 0 names absent
-// from the table, 0 value mismatches).
+// table: the retired `TEAM_ABBREVIATIONS` map held 32 entries — 30 franchise
+// names, each a duplicate of one of the 59 seeded `teams.abbreviation` values,
+// plus these two literals, which were never table names — and a second
+// name→code source is exactly the drift Story 2.11 removes (measured
+// 2026-10-02, re-measured 2026-10-05: 0 of the 30 franchise names absent from
+// the table, 0 value mismatches).
 export const PLACEHOLDER_ABBREVIATIONS: Record<string, string> = {
   'Team A': 'TMA',
   'Team B': 'TMB',
@@ -70,7 +72,12 @@ export const getTeamCode = (name: string, ...rows: Array<Team | null | undefined
   const needle = trimmed.toLowerCase();
   const match = rows.find((row) => row?.full_name?.toLowerCase() === needle && row.abbreviation);
   if (match) return match.abbreviation;
-  return PLACEHOLDER_ABBREVIATIONS[trimmed] ?? getTeamAbbreviation(trimmed);
+  // An own-key test, not a bare index: a typed `constructor` or `__proto__`
+  // would otherwise read an `Object.prototype` member and print it as a code
+  // (`Object.hasOwn` is ES2022; the app's `lib` is ES2020).
+  return Object.prototype.hasOwnProperty.call(PLACEHOLDER_ABBREVIATIONS, trimmed)
+    ? PLACEHOLDER_ABBREVIATIONS[trimmed]
+    : getTeamAbbreviation(trimmed);
 };
 
 // Story 1.4 (issue #3): branch order AND the conference predicate are the

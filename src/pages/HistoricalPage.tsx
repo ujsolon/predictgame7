@@ -112,7 +112,10 @@ export default function HistoricalPage() {
     // today, including the `SAS`→Kansas City hit the owner accepted rather than
     // fixed (U3) — the list sorts year-descending (`:72-74`), so the newest match
     // is the first row.
-    const query = teamSearch.toLowerCase();
+    // Review pass 2 (owner decision D3, 2026-10-05): the query is trimmed for both
+    // arms, so a pasted `SLB ` finds the Bombers. Trimming only widens — it never
+    // narrows the name path U3 kept — and a whitespace-only query reads as empty.
+    const query = teamSearch.trim().toLowerCase();
     return seriesList.filter((series) => {
       const teamAName = series.team_a?.full_name ?? '';
       const teamBName = series.team_b?.full_name ?? '';
@@ -120,7 +123,7 @@ export default function HistoricalPage() {
       const teamBCode = series.team_b?.abbreviation ?? '';
       const matchesYear = yearFilter === 'all' || series.year.toString() === yearFilter;
       const matchesTeam =
-        teamSearch === '' ||
+        query === '' ||
         teamAName.toLowerCase().includes(query) ||
         teamBName.toLowerCase().includes(query) ||
         teamACode.toLowerCase().includes(query) ||

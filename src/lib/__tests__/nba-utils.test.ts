@@ -79,6 +79,16 @@ describe("getTeamCode — the stored row wins", () => {
     expect(getTeamCode("Boston Celtics", undefined, null)).toBe("BC");
   });
 
+  it("never reads an Object.prototype member as a placeholder code", () => {
+    // Review pass 2 (2026-10-05): a bare index answered `constructor` with a
+    // function and `__proto__` with an object, which the label printed as source
+    // text and a React child render throws on. Typed names go to the name path.
+    expect(getTeamCode("constructor")).toBe("CON");
+    expect(getTeamCode("toString")).toBe("TOS");
+    expect(getTeamCode("__proto__")).toBe("__P");
+    expect(getTeamCode("hasOwnProperty")).toBe("HAS");
+  });
+
   it("returns a falsy value for blank input so the caller keeps its 'TBD'", () => {
     expect(getTeamCode("")).toBe("");
     expect(getTeamCode("   ")).toBe("");

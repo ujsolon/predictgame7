@@ -100,7 +100,7 @@ describe('isRecognizedTeam', () => {
     );
   const seededAbbreviations = [...parseTeamsSeed(teamsSeedText, '00005 + 00007 teams seed').keys()];
 
-  it('extracts every alias entry from the source (guards the regex harness itself)', () => {
+  it('resolves every seeded teams.abbreviation to a logo alias (seed → alias coverage)', () => {
     // Non-vacuity first: a reader that parsed nothing, and an extractor that
     // matched nothing, would both make the loop below pass by checking nothing.
     expect(seededAbbreviations).toHaveLength(EXPECTED_TEAM_COUNT);
