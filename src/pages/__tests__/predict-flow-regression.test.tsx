@@ -116,8 +116,37 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     expect(screen.getByText('BOS vs TBD')).toBeInTheDocument(); // row hit (U15)
     fillField('team_b', 'Los Angeles');
     expect(screen.getByText('BOS vs LA')).toBeInTheDocument(); // multi-word initials
+    // Owner decision U16 (2026-10-05): a nickname the logo table knows prints
+    // the code of the team whose logo it shows — `Celtics` was `CEL` until U16.
     fillField('team_a', 'Celtics');
+    expect(screen.getByText('BOS vs LA')).toBeInTheDocument(); // logo alias (U16)
+    expect(screen.queryByText('CEL vs LA')).toBeNull();
+    // A single word no alias knows still truncates.
+    fillField('team_a', 'Celtic');
     expect(screen.getByText('CEL vs LA')).toBeInTheDocument(); // single-word truncation
+  });
+
+  it('prints the code of the team whose logo the typed text shows (U16)', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    // Neither name is a `full_name` any loaded row carries, so only the logo
+    // alias table can answer — through the same normalization `getTeamLogo` uses.
+    fillField('team_a', 'Jazz');
+    fillField('team_b', 'Sixers');
+    expect(screen.getByText('UTA vs PHI')).toBeInTheDocument();
+    expect(screen.queryByText('JAZ vs SIX')).toBeNull();
+    // Spacing and punctuation are ignored, as they are for the logo — and the
+    // glued `UtahStars` is the Stars (`UTS`), never the Jazz's `UTA`.
+    fillField('team_a', 'UtahStars');
+    fillField('team_b', 'golden-state warriors');
+    expect(screen.getByText('UTS vs GSW')).toBeInTheDocument();
+    // A shared nickname takes the team the alias table (and so the logo) chose.
+    fillField('team_a', 'Bullets');
+    fillField('team_b', 'Kings');
+    expect(screen.getByText('BLB vs SAC')).toBeInTheDocument();
+    // The one seeded franchise absent from the archive resolves by alias too.
+    fillField('team_a', 'Pelicans');
+    expect(screen.getByText('NOP vs SAC')).toBeInTheDocument();
   });
 
   // Story 2.11 U15 (owner, 2026-10-04): after the map is deleted the typed name
@@ -163,10 +192,10 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     fillField('team_b', 'Utah J');
     expect(screen.getByText('SEA vs UJ')).toBeInTheDocument();
 
-    // A nickname is not a `full_name`, so it stays a truncation rather than
-    // inventing a second matching rule beside the archive's substring search.
+    // A nickname is not a `full_name`, so the row arm misses — and since owner
+    // decision U16 the logo alias table answers it (it was `SUP` under U15).
     fillField('team_a', 'SuperSonics');
-    expect(screen.getByText('SUP vs UJ')).toBeInTheDocument();
+    expect(screen.getByText('SEA vs UJ')).toBeInTheDocument();
 
     // Exact after normalize, not exact in the raw string: padding still hits.
     fillField('team_a', '  Seattle SuperSonics  ');
@@ -303,6 +332,41 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
     expect(screen.getAllByText('SEA')).toHaveLength(2);
     expect(screen.getAllByText('UTA')).toHaveLength(2);
+  });
+
+  it('answers a custom matchup typed as nicknames with the codes its logos show (U16)', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    fillField('team_a', 'Sonics');
+    fillField('team_b', 'Jazz');
+    for (let game = 1; game <= 6; game++) {
+      fillField(`game_${game}_score_a`, `${100 + game}`);
+      fillField(`game_${game}_score_b`, `${90 + game}`);
+    }
+    await chooseMethod('Logistic Regression');
+    expect(screen.getByText('SEA vs UTA')).toBeInTheDocument();
+
+    // The function echoes the typed names back, so the card and the sheet hold
+    // nicknames and no row — only the alias arm can print the stored codes.
+    db.invoke.mockResolvedValue({
+      data: { ...conformingResult, predicted_winner: 'Jazz', team_a: 'Sonics', team_b: 'Jazz' },
+      error: null,
+    });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+
+    expect(screen.getByText('UTA')).toBeInTheDocument();
+    const cardLosingLine = Array.from(document.querySelectorAll('p')).find((node) =>
+      (node.textContent ?? '').startsWith('SEA · ')
+    );
+    expect(cardLosingLine).toBeDefined();
+    expect(screen.queryByText('JAZ')).toBeNull();
+
+    fireEvent.click(screen.getByText('View Detailed Analysis'));
+    await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
+    expect(screen.getAllByText('SEA')).toHaveLength(2);
+    expect(screen.getAllByText('UTA')).toHaveLength(2);
+    expect(screen.queryByText('JAZ')).toBeNull();
   });
 
   // Story 2.11 U8: `Team A` / `Team B` are one named client literal, never rows

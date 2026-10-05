@@ -1,3 +1,6 @@
+import { getTeamCode } from '@/lib/nba-utils';
+import type { Team } from '@/types/types';
+
 type TeamLogoEntry = {
   path: string;
   aliases: string[];
@@ -75,6 +78,51 @@ const TEAM_LOGO_ALIAS_MAP = new Map(
     entry.aliases.map((alias) => [normalizeTeamAlias(alias), entry.path] as const)
   )
 );
+
+// Story 2.11 (owner decision U16, 2026-10-05): a typed custom name prints the
+// code of the team whose logo it shows. Every entry's **last** alias is that
+// team's stored `teams.abbreviation` (`TMA`/`TMB` for the placeholders) —
+// pinned against the `00005` + `00007` seeds in `team-logos.test.ts` — so the
+// code comes from the same alias, through the same normalization, that picked
+// the logo, and the two cannot disagree. A nickname several franchises shared
+// (`Bullets`, `Royals`, `Kings`, `Warriors`, `Hawks`, `Lakers`, `Rockets`,
+// `Nets`, `Hornets`, `Pistons`) resolves to the one team this table lists it
+// under — the choice the logo already made.
+const TEAM_CODE_ALIAS_MAP = new Map(
+  TEAM_LOGO_ENTRIES.flatMap((entry) =>
+    entry.aliases.map((alias) => [normalizeTeamAlias(alias), entry.aliases[entry.aliases.length - 1]] as const)
+  )
+);
+
+/** The stored code of the team a typed name resolves to, or `undefined` when no alias matches. */
+export const getAliasTeamCode = (teamName: string): string | undefined => {
+  if (!teamName) return undefined;
+  return TEAM_CODE_ALIAS_MAP.get(normalizeTeamAlias(teamName.trim()));
+};
+
+/**
+ * A **typed** team name's code (Story 2.11, owner decision U16, 2026-10-05) —
+ * the custom-matchup form, where the fan's text is the only input. Order:
+ *   1. a matching loaded row (U15, exactly as `getTeamCode` step 1);
+ *   2. the logo alias table (`getAliasTeamCode`): the same aliases and the same
+ *      normalization `getTeamLogo` resolves through, so `Jazz`, `UtahJazz` and
+ *      `Sixers` print `UTA`/`UTA`/`PHI` beside the logo they already show, and a
+ *      shared nickname takes the team the logo picked;
+ *   3. `getTeamCode`'s remaining steps (placeholder literal, then the name path).
+ * The archive and every FK-backed surface keep `getTeamCode`: a row is in hand
+ * there, and an empty stored code must stay visible rather than be papered over
+ * by the alias table. It lives here, not in `nba-utils.ts`, because this module
+ * reads `import.meta.env` and `nba-utils.ts` is also imported by the pipeline
+ * program (`tests/pipeline/nba-com.test.ts`), which has no Vite types — the
+ * import runs one way, from here to there.
+ */
+export const getTypedTeamCode = (name: string, ...rows: Array<Team | null | undefined>): string => {
+  const trimmed = (name ?? '').trim();
+  const needle = trimmed.toLowerCase();
+  const match = rows.find((row) => row?.full_name?.toLowerCase() === needle && row.abbreviation);
+  if (match) return match.abbreviation;
+  return getAliasTeamCode(trimmed) ?? getTeamCode(trimmed);
+};
 
 /**
  * Side-effect-free "is this a recognized team?" check over the same alias map

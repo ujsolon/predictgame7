@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamCode } from '@/lib/nba-utils';
-import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
+import { getTeamLogo, getTypedTeamCode, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
 import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
@@ -424,10 +424,11 @@ export default function PredictPage() {
   // exactly this way prints that row's stored code instead of a bare initialism
   // (`Boston Celtics` → `BOS`, not `BC`). Lower-cased `full_name` → row, first
   // hit wins, and only rows with a non-empty `abbreviation` are indexed.
-  // `full_name` only and exact-after-normalize: no nickname, city or fuzzy arm
-  // beside `HistoricalPage`'s substring search, so a non-match keeps today's
-  // name-path behavior (`Celtics` → `CEL`, mid-typing `Utah J` → `UJ`) rather
-  // than inventing a second matching rule.
+  // Owner decision U16 (2026-10-05) adds the logo alias table behind the row:
+  // a typed name the rows do not spell exactly (`Jazz`, `UtahJazz`, `Sixers`)
+  // prints the code of the team whose logo it shows, through `getTypedTeamCode`
+  // — one matching rule for the logo and the code on this form. A name no alias
+  // knows (`Utah J` mid-typing, `Nowhere FC`) still falls to the name path.
   const teamRowByName = useMemo(() => {
     const index = new Map<string, Team>();
     for (const game of games) {
@@ -446,12 +447,11 @@ export default function PredictPage() {
   const getSeriesLabel = () => {
     if (!selectedSeries) return 'Not selected';
     if (selectedSeries.source === 'custom') {
-      // U15: the typed name consults the rows the page already holds, then the
-      // placeholder literal, then the name path — the same order every other
-      // converted site uses. Blank input still falls through to the caller's
-      // `|| 'TBD'` unchanged.
-      const teamA = getTeamCode(customInput.team_a, rowFor(customInput.team_a)) || 'TBD';
-      const teamB = getTeamCode(customInput.team_b, rowFor(customInput.team_b)) || 'TBD';
+      // U15 + U16: the typed name consults the rows the page already holds, then
+      // the logo alias table, then the placeholder literal, then the name path.
+      // Blank input still falls through to the caller's `|| 'TBD'` unchanged.
+      const teamA = getTypedTeamCode(customInput.team_a, rowFor(customInput.team_a)) || 'TBD';
+      const teamB = getTypedTeamCode(customInput.team_b, rowFor(customInput.team_b)) || 'TBD';
       return `${teamA} vs ${teamB}`;
     }
     if (selectedSeries.data) {
@@ -1202,9 +1202,12 @@ export default function PredictPage() {
                 // beside a picker reading the stored code.
                 const rowA = selectedSeries?.data?.team_a ?? rowFor(teamAName);
                 const rowB = selectedSeries?.data?.team_b ?? rowFor(teamBName);
-                const codeA = getTeamCode(teamAName, rowA);
-                const codeB = getTeamCode(teamBName, rowB);
-                const winnerCode = getTeamCode(prediction.predicted_winner, rowA, rowB);
+                // U16: a custom matchup's names are typed text, so they resolve
+                // the way its label and logo do; a series keeps its FK rows.
+                const codeFor = selectedSeries?.source === 'custom' ? getTypedTeamCode : getTeamCode;
+                const codeA = codeFor(teamAName, rowA);
+                const codeB = codeFor(teamBName, rowB);
+                const winnerCode = codeFor(prediction.predicted_winner, rowA, rowB);
                 const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
                 const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
                 return (
@@ -1293,9 +1296,10 @@ export default function PredictPage() {
         // custom matchup, whose row comes from U15's index rather than a series FK.
         const rowA = selectedSeries?.data?.team_a ?? rowFor(teamAName);
         const rowB = selectedSeries?.data?.team_b ?? rowFor(teamBName);
-        const codeA = getTeamCode(teamAName, rowA);
-        const codeB = getTeamCode(teamBName, rowB);
-        const winnerCode = getTeamCode(prediction.predicted_winner, rowA, rowB);
+        const codeFor = selectedSeries?.source === 'custom' ? getTypedTeamCode : getTeamCode;
+        const codeA = codeFor(teamAName, rowA);
+        const codeB = codeFor(teamBName, rowB);
+        const winnerCode = codeFor(prediction.predicted_winner, rowA, rowB);
         const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
         const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
         const mathsAnchor = METHOD_MATHS_ANCHORS[prediction.method_used];

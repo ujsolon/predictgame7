@@ -9,6 +9,7 @@ import {
   getTeamAbbreviation,
   getTeamCode,
 } from "@/lib/nba-utils";
+import { getTypedTeamCode } from "@/lib/team-logos";
 import type { Team } from "@/types/types";
 
 // Row fixtures standing for the `teams` FK embed both pages already read
@@ -109,6 +110,50 @@ describe("getTeamCode — the stored row wins", () => {
     const exports = nbaUtils as unknown as Record<string, unknown>;
     expect(exports.TEAM_ABBREVIATIONS).toBeUndefined();
     expect(exports.getTeamAbbreviation).toBeTypeOf("function");
+  });
+});
+
+describe("getTypedTeamCode — a typed name prints its logo's team code (U16)", () => {
+  it("keeps the loaded row first, exactly as getTeamCode does", () => {
+    expect(getTypedTeamCode("Seattle SuperSonics", sonicsRow)).toBe("SEA");
+    expect(getTypedTeamCode("boston celtics", celticsRow)).toBe("BOS");
+  });
+
+  it("answers a nickname or a spelling variant through the logo alias table", () => {
+    // No row names these, so `getTeamCode` would print the truncation.
+    expect(getTeamCode("Jazz")).toBe("JAZ");
+    expect(getTypedTeamCode("Jazz")).toBe("UTA");
+    expect(getTypedTeamCode("Sixers")).toBe("PHI");
+    expect(getTypedTeamCode("Trail Blazers")).toBe("POR");
+    expect(getTypedTeamCode("UtahJazz")).toBe("UTA");
+    expect(getTypedTeamCode("St Louis Bombers")).toBe("SLB");
+    // Glued, `UtahStars` is still the Stars — the name path would print `UTA`.
+    expect(getTypedTeamCode("UtahStars")).toBe("UTS");
+    expect(getTypedTeamCode("TeamA")).toBe("TMA");
+    // A row naming another team does not override the alias.
+    expect(getTypedTeamCode("Celtics", heatRow)).toBe("BOS");
+  });
+
+  it("gives a shared nickname to the team the alias table (and so the logo) chose", () => {
+    expect(getTypedTeamCode("Bullets")).toBe("BLB");
+    expect(getTypedTeamCode("Royals")).toBe("CNR");
+    expect(getTypedTeamCode("Kings")).toBe("SAC");
+    expect(getTypedTeamCode("Warriors")).toBe("GSW");
+    expect(getTypedTeamCode("Hawks")).toBe("ATL");
+    expect(getTypedTeamCode("Lakers")).toBe("LAL");
+    expect(getTypedTeamCode("Rockets")).toBe("HOU");
+    expect(getTypedTeamCode("Nets")).toBe("BKN");
+    expect(getTypedTeamCode("Hornets")).toBe("CHA");
+    expect(getTypedTeamCode("Pistons")).toBe("DET");
+  });
+
+  it("falls to the placeholder and the name path when no alias matches", () => {
+    expect(getTypedTeamCode("Team A")).toBe("TMA");
+    expect(getTypedTeamCode("Utah J")).toBe("UJ");
+    expect(getTypedTeamCode("Nowhere FC")).toBe("NF");
+    expect(getTypedTeamCode("Celtic")).toBe("CEL");
+    expect(getTypedTeamCode("constructor")).toBe("CON");
+    expect(getTypedTeamCode("") || "TBD").toBe("TBD");
   });
 });
 

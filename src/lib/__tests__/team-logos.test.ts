@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EXPECTED_TEAM_COUNT, parseTeamsSeed } from '../../../supabase/scripts/pipeline/venueBackfill.ts';
-import { getTeamLogo, isRecognizedTeam, resolveTeamLogoUrl } from '@/lib/team-logos';
+import { getAliasTeamCode, getTeamLogo, isRecognizedTeam, resolveTeamLogoUrl } from '@/lib/team-logos';
 
 // Node environment (the vitest.config.ts default): pure logic over the alias
 // map, no DOM. BASE_URL is stubbed to a SENTINEL, not the real config base
@@ -112,6 +112,34 @@ describe('isRecognizedTeam', () => {
     for (const abbreviation of seededAbbreviations) {
       expect(aliasEntries).toContain(abbreviation);
     }
+  });
+
+  // Owner decision U16 (2026-10-05): the custom form prints the code of the
+  // team whose logo the typed text shows, read from each entry's last alias.
+  // That is only safe if the table pairs every seeded name with **its own**
+  // stored code, and if no normalized alias sits under two entries (the Map
+  // would keep the last silently, and the logo and code could then name
+  // different teams). Both are pinned against the seeds, not against this file.
+  const seededTeams = [...teamsSeedText.matchAll(/\(\s*\d+,\s*'((?:[^']|'')+)',\s*'([A-Z]{2,4})'/g)].map(
+    (match) => ({ name: match[1].replace(/''/g, "'"), code: match[2] })
+  );
+
+  it('pairs every seeded full_name with its own stored code (U16)', () => {
+    expect(seededTeams).toHaveLength(EXPECTED_TEAM_COUNT);
+    for (const team of seededTeams) {
+      expect(getAliasTeamCode(team.name)).toBe(team.code);
+      expect(getAliasTeamCode(team.code)).toBe(team.code);
+    }
+    expect(getAliasTeamCode('Team A')).toBe('TMA');
+    expect(getAliasTeamCode('Team B')).toBe('TMB');
+    expect(getAliasTeamCode('Nowhere FC')).toBeUndefined();
+    expect(getAliasTeamCode('')).toBeUndefined();
+  });
+
+  it('files no normalized alias under two entries (U16)', () => {
+    const normalized = aliasEntries.map((alias) => alias.toLowerCase().replace(/[^a-z0-9]+/g, ''));
+    const repeated = normalized.filter((alias, index) => normalized.indexOf(alias) !== index);
+    expect(repeated).toEqual([]);
   });
 
   it('agrees with getTeamLogo on every alias entry, warning nowhere', () => {

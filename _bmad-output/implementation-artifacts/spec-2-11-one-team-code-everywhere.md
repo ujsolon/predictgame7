@@ -33,7 +33,12 @@ context:
 - **U15 (owner, 2026-10-04 — answers this spec's OQ1; the custom-matchup form after the map is deleted).** The typed name is resolved against the team rows the page **already holds in memory** (`games`, loaded once by `fetchAllGames` through `SERIES_SELECT`, which embeds `abbreviation`), and a hit prints that stored `abbreviation`. This renegotiates `epics.md:545`'s claim that `PredictPage.tsx:423,424` "stay on the name path **by construction** (no row, no stored code)" — true of the series FK, false of the app, which has every team row from the picker fetch. Accepted consequences, stated with the decision:
   - Resolution order becomes **matching row → placeholder literal → `getTeamAbbreviation(name)`**, one order on every surface — the story's title holds on all three.
   - The epic's clause "removing the map changes nothing for any modern team on any surface" and U8's "rendering exactly as it does today" are **recorded as falsified** for a typed modern name (24 of the 30 modern franchises fall from `BOS` to `BC`-class initialisms on the bare name path), and U15 is the fix, not the acceptance.
-  - What U15 does **not** claim, and the owner verifies by looking at it: mid-typing transients still exist (`Utah J` has no matching row, so it shows `UJ` until `Utah Jazz` completes and corrects to `UTA`) — the direction of the mutation inverts from right→wrong to wrong→right; nicknames (`Celtics`) stay truncations, since only `full_name` is matched; and `New Orleans Pelicans` is the one seeded franchise with no archived series, so it is absent from `games` and falls to the name path (which yields `NOP` correctly by truncation).
+  - What U15 does **not** claim, and the owner verifies by looking at it: mid-typing transients still exist (`Utah J` has no matching row, so it shows `UJ` until `Utah Jazz` completes and corrects to `UTA`) — the direction of the mutation inverts from right→wrong to wrong→right; nicknames (`Celtics`) stay truncations, since only `full_name` is matched **[Amended by owner decision U16, 2026-10-05 — see U16 above.]**; and `New Orleans Pelicans` is the one seeded franchise with no archived series, so it is absent from `games` and falls to the name path (which yields `NOP` correctly by truncation).
+- **U16 (owner, 2026-10-05 — raised in review pass 2's follow-up: "typing `jazz` would show the Utah Jazz logo, but then the abbreviation is `JAZ`").** On the custom-matchup form the code follows the logo: a typed name resolves through the **same alias table and the same normalization** `getTeamLogo` uses (`src/lib/team-logos.ts` — full name, nickname(s) and code per team; lower-cased with every non-alphanumeric stripped), and prints that entry's stored code (its last alias, pinned against the `00005` + `00007` seeds). Order on the custom form: matching loaded row (U15) → logo alias table (U16) → placeholder literal → name path. Measured before the change: 62 aliases already agreed and 119 did not (49 nicknames such as `Jazz` → `JAZ`, `Sixers` → `SIX`; 70 spacing/punctuation variants such as `UtahJazz` → `UTA`-by-accident and `UtahStars` → the Jazz's `UTA` beside the Stars logo). Recorded with the decision:
+  - **Shared nicknames are the choice the alias table already made.** A nickname several franchises carried resolves to the one team the table files it under, which is the team whose logo the form already shows: `Bullets` → Baltimore (BLB), not Capital/Washington; `Royals` → Cincinnati, not Rochester; `Kings` → Sacramento, not Kansas City; `Warriors` → Golden State, not Philadelphia/San Francisco; `Hawks` → Atlanta, not St. Louis; `Lakers` → LA, not Minneapolis; `Rockets` → Houston, not Denver; `Nets` → Brooklyn, not New Jersey/New York; `Hornets` → Charlotte, not New Orleans; `Pistons` → Detroit, not Fort Wayne. Changing one of these is an alias-table edit, and it moves the logo and the code together.
+  - **The archive is left as is.** `/historical` prints FK rows (code and logo from the same record, never from typed text), and its search stays the U1/U3 substring filter — no alias arm. Known gaps, accepted: `Sixers` finds none of the 76ers' 16 series, and glued or hyphenated spellings (`UtahJazz`, `Golden-State`) find nothing; a shared nickname returning every era (`Bullets` → all three franchises) is the right answer for a search.
+  - Scope: the custom form only — its label, and the result card and detailed sheet when the selection is custom. Series selections and the archive keep `getTeamCode`, so an empty stored `abbreviation` stays visible there rather than being papered over by the alias table.
+  - This renegotiates U15's "nicknames stay truncations", the Never bullet's "no second hardcoded name→code source" (the alias table is not new — it is the table that already picked the logo — and a pin forbids it from disagreeing with the seeds), matrix `:63`'s `Celtics` → `CEL`, AC 3's `Celtics` → `CEL`, and Design Notes' "no nickname arm"; each carries a dated pointer here. It also resolves the PRD UJ-2 nickname deferral in `deferred-work.md` for the custom form.
 
 ## Boundaries & Constraints
 
@@ -46,7 +51,7 @@ context:
 **Never:**
 - No migration, no `supabase/` change, no `db push`/`reset`/`start`, no Edge Function deploy, no read of `.env` or `supabase/.temp/project-ref`.
 - No new PostHog event name; no route list / page count / prerender change; no change to the game tiles or home/away derivation.
-- No `teams` rows for Team A/Team B; no JSON snapshot; no second hardcoded name→code source.
+- No `teams` rows for Team A/Team B; no JSON snapshot; no second hardcoded name→code source. **[Amended by owner decision U16, 2026-10-05: the custom form reads codes from the logo alias table that already existed — the table that picks the logo — with every name↔code pair pinned against the seeds; no new table was written.]**
 - Do not delete or edit the commented-out Matchup block at `PredictPage.tsx:1171-1182` — its two calls stay dead.
 
 ## I/O & Edge-Case Matrix
@@ -60,7 +65,7 @@ context:
 | FK join miss | `team_a` null, name `'Team A'` | placeholder literal `TMA`, no `getTeamAbbreviation` call | fall through |
 | Row present, `abbreviation` empty | `abbreviation: ''` | falls to name path — an empty cell never prints blank | fail visible |
 | Custom matchup, typed name | `Boston Celtics`, `Utah Jazz` — a `games` row carries that `full_name` | the matched row's stored `abbreviation`: `BOS`, `UTA` (U15) | falls through below |
-| Custom matchup, no row match | `Celtics`, `Nowhere FC`, mid-typing `Utah J` | the name path, unchanged from today: `CEL`, `NF`, `UJ` **[owner renegotiation, 2026-10-05 (E7, review pass 2): this cell read `NOW`; two words take the initials arm, so `Nowhere FC` → `NF` — `NOW` is what a single-word `Nowhere` truncates to. Code and `predict-flow-regression.test.tsx` already printed `NF`; the frozen text was the error.]** | n/a |
+| Custom matchup, no row match | `Celtics`, `Nowhere FC`, mid-typing `Utah J` | the name path, unchanged from today: `CEL`, `NF`, `UJ` **[owner decision U16, 2026-10-05: `Celtics` is now a logo alias and prints `BOS`; a single word no alias knows, e.g. `Celtic`, still truncates to `CEL`]** **[owner renegotiation, 2026-10-05 (E7, review pass 2): this cell read `NOW`; two words take the initials arm, so `Nowhere FC` → `NF` — `NOW` is what a single-word `Nowhere` truncates to. Code and `predict-flow-regression.test.tsx` already printed `NF`; the frozen text was the error.]** | n/a |
 | Custom matchup, blank | `''` | the caller's `\|\| 'TBD'`, unchanged | n/a |
 | Predicted winner | `predicted_winner` equals an embedded row's `full_name` | that row's `abbreviation`; else the name path | n/a |
 
@@ -137,7 +142,7 @@ context:
 **Acceptance Criteria:**
 - Given a DB-backed archive row whose stored code differs from its name initialism, when the archive renders, then the cell shows the stored code, and the 39-row change is pinned per row with mutation evidence.
 - Given a fan types a stored code (case-insensitively) into team search, then every series carrying that abbreviation on either FK matches, and the name path returns what it returns today.
-- Given a fan types a team's `full_name` in the custom-matchup form and a loaded `games` row carries that name, then the label prints that row's stored `abbreviation` (`Boston Celtics` → `BOS`, `Seattle SuperSonics` → `SEA`), and a name with no matching row keeps today's truncation/initialism behavior (`Celtics` → `CEL`, `Utah J` → `UJ`) — U15.
+- Given a fan types a team's `full_name` in the custom-matchup form and a loaded `games` row carries that name, then the label prints that row's stored `abbreviation` (`Boston Celtics` → `BOS`, `Seattle SuperSonics` → `SEA`), and a name with no matching row keeps today's truncation/initialism behavior (`Celtics` → `CEL`, `Utah J` → `UJ`) — U15. **[Amended by owner decision U16, 2026-10-05: a name the logo alias table knows prints that team's stored code (`Celtics` → `BOS`, `Jazz` → `UTA`); a name no alias knows keeps the name path (`Utah J` → `UJ`, `Celtic` → `CEL`).]**
 - Given the map is gone, then `Team A`/`Team B` still print `TMA`/`TMB` wherever the code chain falls to the placeholder literal, and blank custom input still prints `TBD`.
 - Given `TEAM_ABBREVIATIONS` no longer exists, then no test imports it, no cross-source guard iterates an empty collection, and `npm run gate` is green.
 
@@ -281,6 +286,25 @@ Code Map's citations are the baseline's, and the two differ only by drift inside
   `epic-2-context.md` (2.11 was still "backlog"). Mutation evidence M15–M17 in Verification.
   `npm run gate`: **exit 0, 24 files, 552 tests** (the count includes Story 2.13's suites, which
   landed after `55de7ee`), code read from the run itself.
+- **2026-10-05, owner decision U16 (after review pass 2) — the custom form's code follows its logo.**
+  The owner observed that typing `Jazz` showed the Jazz logo beside `JAZ`. Measured over every alias in
+  `team-logos.ts`: 62 agreed, 119 did not (49 nicknames, 70 spacing/punctuation variants, including
+  `UtahStars` printing the Jazz's `UTA` beside the Stars logo). Built: `getAliasTeamCode` in
+  `team-logos.ts` (each entry's last alias, through `normalizeTeamAlias` — the same map key the logo
+  uses) and `getTypedTeamCode` beside it (row → alias → `getTeamCode`'s placeholder and name path; it
+  sits in `team-logos.ts` because `nba-utils.ts` is also compiled by the pipeline program, which has no
+  `import.meta.env` types — `tsc -b` failed with TS2339 when it was first placed there). `PredictPage` routes the custom label through it, and the card and the sheet pick it with
+  `codeFor` only when `selectedSeries.source === 'custom'`; series selections and the archive keep
+  `getTeamCode`. Pins: `team-logos.test.ts` gains "pairs every seeded full_name with its own stored
+  code" and "files no normalized alias under two entries"; `nba-utils.test.ts` gains four
+  `getTypedTeamCode` cases (imported from `team-logos.ts`), including all ten shared nicknames; `predict-flow-regression.test.tsx`
+  moves `Celtics` → `BOS` and `SuperSonics` → `SEA` (with `Celtic` → `CEL` keeping the truncation
+  pin) and gains a label case (`UTA vs PHI`, `UTS vs GSW`, `BLB vs SAC`, `NOP`) plus a card + sheet
+  case typed as nicknames (`Sonics` vs `Jazz`). Mutation evidence M18–M21 in Verification. The archive
+  was deliberately left as is (owner call). Frozen-text pointers: U15's nickname clause, the Never
+  bullet, matrix `:63`, AC 3, and Design Notes. `npm run gate`: exit 0, 24 files, 560 tests (the
+  first attempt died with worker heap exhaustion at 758 MB free on the machine, not a test failure;
+  the re-run was clean), and M18–M21 were re-run on the final file layout with the same results.
 - **Frontmatter**: `status` `in-progress` → `review` → `done` at step 05 (2.5's precedent: the spec
   is finished work, the *story* stays at `review` in `sprint-status.yaml` because the owner's preview
   look is the acceptance), `review_loop_iteration` 0 → 1 → 2 (review pass 2, 2026-10-05).
@@ -357,7 +381,7 @@ const rowFor = (name: string) => teamRowByName.get((name ?? '').trim().toLowerCa
 getTeamCode(customInput.team_a, rowFor(customInput.team_a)) || 'TBD'
 ```
 
-`full_name` only, and only exact-after-normalize — no nickname, city or fuzzy arm. That keeps the arm's contract one-line ("a name the database spells this way has this code") and leaves every non-match on today's behavior rather than inventing a second matching rule beside `HistoricalPage`'s substring search.
+`full_name` only, and only exact-after-normalize — no nickname, city or fuzzy arm. **[Superseded on the custom form by owner decision U16, 2026-10-05: `getTypedTeamCode` (`team-logos.ts`, beside `getAliasTeamCode`) adds the logo alias arm after the row; `getTeamCode` keeps this contract for every FK-backed surface.]** That keeps the arm's contract one-line ("a name the database spells this way has this code") and leaves every non-match on today's behavior rather than inventing a second matching rule beside `HistoricalPage`'s substring search.
 
 A literal re-key of `team-logos.test.ts:85` onto `TEAM_LOGO_ENTRIES` would be circular — the extractor at `:77` already reads its list out of that same file, so the loop would assert a file agrees with itself. The DB seed is the other source, which is the agreement the guard exists to protect.
 
@@ -418,6 +442,15 @@ restored byte-exactly (`md5sum` compared before and after):**
 | M15 | Placeholder step back to a bare index (`PLACEHOLDER_ABBREVIATIONS[trimmed]`) | "never reads an Object.prototype member as a placeholder code" alone (16/17 green) |
 | M16 | Archive query loses `.trim()` | "finds a series by the stored abbreviation on either FK, case-insensitively" alone |
 | M17 | `DIVERGENT_FRANCHISES` swaps two real seeded codes (`BLB` ↔ `WSB`) | the census case alone — the seed cross-check stays green on a swap of two real codes, which is the pairing gap the census closes |
+
+**U16 mutations (2026-10-05) — 4/4 reddened, each restored byte-exactly:**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M18 | Custom label's team A back to `getTeamCode` | 4 predict-flow cases: the trigger-label case, the U16 label case, the U15 case (`SuperSonics`), the U16 card case |
+| M19 | Result card ignores U16 (`codeFor = getTeamCode`) | "answers a custom matchup typed as nicknames with the codes its logos show (U16)" alone |
+| M20 | Detailed sheet ignores U16 | the same case alone, on the sheet's counts |
+| M21 | Alias map returns an entry's first alias instead of its code | "pairs every seeded full_name with its own stored code (U16)" alone |
 
 **CDP evidence (review pass 2, owner decision D2, 2026-10-05).** Harness: a scratch CDP script
 (not committed; same approach as `scripts/measure-predict-latency.mjs --probe-evidence` — headless

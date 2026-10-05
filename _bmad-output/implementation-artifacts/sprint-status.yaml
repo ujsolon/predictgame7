@@ -167,6 +167,12 @@ development_status:
   # logged in _bmad-output/specs/spec-2-11-one-team-code-everywhere/.memlog.md.
   # Production still serves 55de7ee: the D3 trim and the own-key placeholder fix are not live
   # until the next release, so a padded-query check belongs on preview, not on the site.
+  # U16 2026-10-05 (owner, after pass 2): on the custom form the code follows the logo — a typed
+  # name resolves through team-logos.ts's alias table and normalization (Jazz -> UTA, Sixers -> PHI,
+  # Celtics -> BOS; was JAZ/SIX/CEL), shared nicknames take the team the table already lists them
+  # under (Bullets BLB, Royals CNR, Kings SAC, Warriors GSW, Hawks ATL, Lakers LAL, Rockets HOU,
+  # Nets BKN, Hornets CHA, Pistons DET). Archive left as is. Resolves the UJ-2 nickname deferral
+  # for the form. Mutations M18-M21 4/4.
   # AT REVIEW — the owner's preview look is the acceptance (U15
   # was accepted sight-unseen: "I have to see it to completely verify").
   # 2026-10-04: the published site already carries this build — the gh-pages tip (1d30317,
