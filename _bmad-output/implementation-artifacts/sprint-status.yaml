@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-05-2026 15:48
+last_updated: 10-05-2026 16:22
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -165,7 +165,9 @@ development_status:
   # spec-2-5-trail.md), built, and review pass 1 (three layers) applied — 2-5 sits at review pending
   # the owner's fresh-context code review, exactly as 2-4 and 2-10 do. F7 CLOSED 2026-10-03: the
   # owner applied `00017`, ran --refresh-insights (117 of 160 held), read /insights back as anon.
-  2-5-insights-cache-refresh: review
+  # 2026-10-05: fresh-context code review (pass 2, findings #22-#29 in the spec) applied; one patch
+  # (a failed automatic refresh now names its --refresh-insights recovery). DONE by owner direction.
+  2-5-insights-cache-refresh: done
   # Carried to this story 2026-10-02 by owner decision (Story 2.10's walkthrough): the two Story 2.8
   # review carry-overs the never-authored spec-2-8b was supposed to hold -- the context-free WAS
   # alias collision in the venue probe's resolver, and game7_home_win_census counting pending series.
@@ -225,7 +227,15 @@ development_status:
   # migration-rehearsal.yml dispatch, and the green non-dry CAP-2 dispatch all go to 2-13's spec.
   # STAYS AT REVIEW: the owner's fresh-context external code review is still owed before done,
   # same gate as 2-4 and 2-5. `supabase functions delete feed-egress-probe` done by owner 2026-10-03.
-  2-6-scheduled-workflows-failure-notification-sm-4: review
+  # 2026-10-05: the owed fresh-context external review ran (pass 2, findings #26-#55 in the spec;
+  # three BMAD layers over 1e96951..630edd4, HEAD checked where 2.13 touched 2.6's files). 13 patches
+  # applied, gate exit 0. The main one: a stall that hit the JOB ceiling ended cancelled, not failed,
+  # so nothing was filed; the stall-prone steps now carry their own ceilings. Both owner questions
+  # answered and executed the same day: #39 the June line ends on the 24th (`1-24 6`) and the inseason
+  # issue body names the manual_csv missed-Game-7 recovery; #40 every "keepalive never touched" clause
+  # names the cron-minute exception. Only #41 (checkout failure -> notify unresolvable) stays deferred.
+  # DONE 2026-10-05 by owner direction, after the pass-2 review and both owner calls.
+  2-6-scheduled-workflows-failure-notification-sm-4: done
   # Added by sprint-change-proposal-2026-10-03.md (approved same day, owner calls C1-C4): the
   # scheduled source changes from stats.nba.com to site.api.espn.com -- new `espn` adapter behind
   # the SeriesDataSource port, both workflows' nba_com defaults/choices re-pointed in the same

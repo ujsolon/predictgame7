@@ -368,7 +368,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
         throw new PipelineRunError(
           `--require-feed: ${sourceName} returned 0 series — an empty feed inside the playoff window is a failure, not a quiet ` +
             'success (Story 2.6 / SM-4). No plan was computed and nothing was written; the report lines above are what the feed ' +
-            'carried. Check the endpoint and the derived season before the next cron slot.',
+            'carried, including the season or date the adapter derived. Check the endpoint and that scope before the next cron slot.',
         );
       }
     }
@@ -419,7 +419,20 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // PostgREST client cannot roll them back).
     const winnerFilled = plan.completions.length > 0 || plan.births.some((birth) => birth.followup !== null);
     if (winnerFilled) {
-      const census = await sink.refreshInsights();
+      let census: InsightsRefreshCensus;
+      try {
+        census = await sink.refreshInsights();
+      } catch (error) {
+        // The trigger is one-shot: the winner-filling writes above have
+        // landed, so the next run plans them as skips and never refreshes on
+        // their account. The exit-2 message is therefore the only signal the
+        // cache is stale, and it has to carry the recovery itself.
+        const message = error instanceof Error ? error.message : String(error);
+        throw new PipelineRunError(
+          `${message} — the series writes above landed, so a re-run will NOT retry this refresh; recover with ` +
+            '`node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights`',
+        );
+      }
       log(insightsRefreshLine(census));
     }
     return 0;

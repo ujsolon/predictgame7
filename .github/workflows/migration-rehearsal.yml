@@ -54,7 +54,10 @@ jobs:
     runs-on: ubuntu-latest
     # The replay itself is seconds; the rest of the ceiling is the `postgres:16`
     # image pull, which is the one step that can stall without failing — and a
-    # stall here means an expired verdict going uncertified.
+    # stall here means an expired verdict going uncertified. The STEP ceiling is
+    # what makes that stall loud (a timed-out step fails, so `if: failure()`
+    # fires); a job that hits its own ceiling is cancelled and files nothing, so
+    # the job ceiling is only the backstop above it.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -68,6 +71,7 @@ jobs:
           node-version: '24.x'
 
       - name: Rehearse the migration replay order
+        timeout-minutes: 25
         run: node scripts/rehearse-migration-00014.mjs
 
       - name: File a loud failure

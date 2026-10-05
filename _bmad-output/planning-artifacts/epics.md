@@ -139,7 +139,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 - NFR1 (S1): all epics — standing constraint on every story
 - NFR2 (S2): Epic 3 — contact retention/PII posture through migration
 - NFR3 (P1): Epic 4 — `share-og` ≈1s measured in spike; Epic 1 — computation-time display preserved
-- NFR4 (R1): Epic 2 — pipeline keeps free-tier constraints; keepalive baseline untouched
+- NFR4 (R1): Epic 2 — pipeline keeps free-tier constraints; keepalive baseline untouched (except its cron minute — Story 2.13, amended 2026-10-05)
 - NFR5 (R2): Epic 1
 - NFR6 (U1): Epic 5 — whole-site verification matrix
 - NFR7 (A1): Epics 1–4 (AA-clean ACs on new/changed UI) + Epic 5 (verify & remediate)
@@ -392,12 +392,12 @@ so that the cadence FR-20/21 requires runs without me remembering to run it.
 
 **Acceptance Criteria:**
 
-**Given** workflows added alongside (never modifying) the existing keepalive workflow
+**Given** workflows added alongside (never modifying) the existing keepalive workflow `[Amended 2026-10-05 by owner call, Story 2.6 review #40: except its cron minute, which Story 2.13 moved to 07:00 UTC so the pipeline runs after the warm-up ping]`
 **When** scheduled runs execute
 **Then** offseason runs at playoff start/end initialize and finalize the postseason bracket idempotently (FR-20); inseason runs daily within the configured window and Predict's Active Series reflect the latest results after each run (FR-21)
 **And** `service_role` is injected from GH Actions secrets only (NFR-S1)
 **And** a non-zero pipeline exit produces a detectable notification (SM-4) — verified by a deliberate dry failure in a test run
-**And** if manual_csv is the inseason source (Story 2.1 both-fail outcome): documented operator cadence — owner edits the CSV daily before 09:00 UTC (aligned with the keepalive cron slot), so Active Series are never more than one day stale during the playoff window
+**And** if manual_csv is the inseason source (Story 2.1 both-fail outcome): documented operator cadence — owner edits the CSV daily before 07:00 UTC (aligned with the keepalive cron slot) `[Amended 2026-10-05 by owner call: was 09:00, moved with the keepalive's Story 2.13 timing change]`, so Active Series are never more than one day stale during the playoff window
 **And** failed runs are visible in Actions history with logs sufficient to diagnose without local repro
 
 ### Story 2.12: Venue probe and census guard follow-up

@@ -36,7 +36,9 @@ described.
 `manual_csv` has no report; a run with it prints none of those lines.
 
 **`feedSeriesCount` is the one member a machine reads** (Story 2.6). It is the
-number of series the feed carried *before* any adapter-side exclusion, so
+number of series the feed carried *before* any adapter-side exclusion (for
+`nba_com`, after the rows dated the run's own UTC day are withheld, since those
+rows are not this run's feed), so
 `--require-feed` can decide on a number rather than on `countsLine`'s wording —
 the wording belongs to the human log and may be rephrased without breaking the
 alarm. `histogramLine` and `notes` stay prose.
@@ -392,6 +394,11 @@ A refresh failure on either path exits 2 naming
 `pipeline_refresh_insights_cache` (the single catch already turns any sink
 throw into exit 2); series writes from a completed write phase stay landed —
 a PostgREST client cannot roll them back — and the run is not a success.
+The automatic trigger is **one-shot**: once those writes have landed, a re-run
+plans them as skips and does not refresh on their account, so a failed
+automatic refresh stays stale until the operator path runs. The exit-2 message
+says so and names the `--refresh-insights` command (review pass 2,
+2026-10-05).
 
 Rehearsal: `scripts/rehearse-migration-00014.mjs` section 6 exercises the
 function in the replayed 00001–00017

@@ -27,19 +27,34 @@ name: Pipeline - inseason daily
 # date-blind (AD-4, Story 2.4 Decision 2 — the reason `deriveSeason` is a
 # fetch-scope rule and never a state rule). The alternative was a second Apr-Jun
 # rule in code that could disagree with the cron it is meant to match. When the
-# bracket moves — a lockout, a shifted Play-In, a Finals running past June 30 —
+# bracket moves — a lockout, a shifted Play-In, a Finals running past June 23 —
 # the edit happens in this file and nowhere else.
 #
 # The known cost of the generous bracket: a false alarm on the leading edge in a
 # year the postseason feed is still empty on April 16. That is one human read,
 # then the line above moves; Story 2.7's drill measures the real first-non-empty
 # date so it stops being assumed.
+#
+# The trailing edge is June 24, not June 30 (owner call 2026-10-05, Story 2.6
+# review #39). `espn` reads ONE previous-ET date per run, so every day after the
+# Finals end returns an empty feed. With a June 30 end that was 10-15 straight
+# reds, all landing in the one deduped issue, where a real failure would read as
+# just another "Still red". The June 24 run reads June 23, which still covers a
+# Finals Game 7 as late as the modern format has played one (June 22, 2025 — from
+# the schedule, not measured here). `pipeline-offseason.yml`'s June 25 run then
+# reads June 24 with no alarm. A shorter Finals still leaves a short tail of
+# reds; that residue is accepted.
+#
+# The same one-date read means a red or cancelled run does not catch up later:
+# the next morning asks a LATER date, so a Game 7 played the day before a failed
+# run never reaches the table on its own. The issue body below names the
+# manual_csv recovery for exactly that case.
 
 on:
   schedule:
     - cron: '30 7 16-30 4 *'
     - cron: '30 7 * 5 *'
-    - cron: '30 7 1-30 6 *'
+    - cron: '30 7 1-24 6 *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -63,7 +78,10 @@ on:
 # One group shared with pipeline-offseason.yml. A hand dispatch queues behind a
 # scheduled run instead of interleaving a completion write with it, and
 # cancel-in-progress is off because killing a run halfway through its write
-# phase is the one outcome worse than waiting.
+# phase is the one outcome worse than waiting. The queue is ONE slot deep:
+# GitHub keeps a single pending run per group, so a third arrival cancels the
+# pending one, and a cancelled run files no issue. Do not dispatch while a run
+# is both running and pending.
 concurrency:
   group: pipeline-writes
   cancel-in-progress: false
@@ -75,12 +93,15 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # A hung run is the one failure this design cannot otherwise hear: the job
-    # never fails, so `if: failure()` never fires, and the shared
-    # `pipeline-writes` group with `cancel-in-progress: false` makes the hang
-    # block every later cron. The ceiling is generous (the runner's own fetch
-    # loop self-limits to 25 s x 3 attempts per leg) so it can only ever cut off
-    # a stall, never a slow-but-healthy season run.
+    # A hung run is the one failure this design cannot otherwise hear, and the
+    # shared `pipeline-writes` group with `cancel-in-progress: false` makes the
+    # hang block every later cron. The ceilings are generous (the runner's own
+    # fetch loop self-limits to 25 s x 3 attempts per leg) so they only ever cut
+    # off a stall. The STEP ceilings are what make a stall loud: a step that
+    # times out FAILS, so `if: failure()` fires. A job that hits its own
+    # `timeout-minutes` is CANCELLED instead, and `failure()` is false, so the
+    # job ceiling below is only the backstop for checkout/setup-node and sits
+    # above the sum of the step ceilings.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -112,8 +133,10 @@ jobs:
       # `@supabase/supabase-js` is a runtime dependency, so the production
       # install is enough to run the pipeline.
       - run: npm ci --omit=dev
+        timeout-minutes: 5
 
       - name: Run the pipeline
+        timeout-minutes: 10
         # Note what is NOT here: `--env-file=.env`, which is how the operator
         # command is written in the docs. A runner has no .env, and Node treats
         # a missing env-file as fatal — so the credentials arrive through the
@@ -148,3 +171,17 @@ jobs:
             postseason really is on a rest day. A day with games but no Game 7
             goes GREEN with an empty plan — that is the shape this adapter is
             allowed to see.
+
+
+            MISSED GAME 7 RECOVERY. The scheduled source reads only the previous
+            US Eastern date and never re-asks a date it missed, so if a Game 7
+            was played on the date this run was reading, the next scheduled run
+            will NOT pick it up. Recover by hand: append that Game 7 row to
+            supabase/scripts/pipeline/data/series_manual.csv (the series' games
+            1-6 are already there from the curated birth), then run
+            `node --env-file=.env supabase/scripts/pipeline/run.ts
+            --source=manual_csv --dry-run` and read the plan; if it shows the
+            one completion, run it again without --dry-run. Equivalently, push
+            the CSV edit and dispatch this workflow with source=manual_csv,
+            dry_run first. The completion is idempotent and refreshes the
+            insights cache.
