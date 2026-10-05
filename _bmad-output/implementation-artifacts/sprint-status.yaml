@@ -310,7 +310,9 @@ development_status:
   # item 3 done). Home gained a pending-series data reach (D2). Review: 3 same-model layers, 36
   # findings -- 18 patched, 1 deferred (F4), the rest rejected with evidence; no loopback. Gate
   # exit 0 (575 tests). OWNER-OWED: F1 first scheduled cron (2027-04-16), F2 first real espn write,
-  # F3 venue-probe re-run (owner-run script), and the usual fresh-context external review.
+  # and the usual fresh-context external review. 2026-10-06: external review (different model)
+  # ran; its one finding (EXT-D1, the venue probe unrun / F3 undated) resolved by the owner running
+  # the probe: 160/160 lines match the curated CSV, F3 closed.
   2-7-epic-verification-simulated-playoff-week: review
   epic-2-retrospective: optional
 

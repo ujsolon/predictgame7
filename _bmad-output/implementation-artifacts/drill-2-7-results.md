@@ -19,7 +19,7 @@ Exit codes were read from the command itself, never off a pipe.
 | 3 — short row | `node scripts/measure-predict-latency.mjs --fake-short` | same | **0** | 13/13 (12/12 before the review made `captureException` a checked assertion) |
 | 4 — failure drill (D3) | `gh issue view 8 / 9`, `gh run view …` (read-only) | GitHub | — | dispatch evidence confirmed; scheduled half owner-owed |
 | gate | `npm run gate` | local | **0** | Biome 130 files; `tsc -b`; Vitest 25 files / 575 tests; build keeps `/predictgame7/` |
-| venue probe | `node scripts/probe-game7-venues.mjs` | nba.com `leaguegamelog`, read-only | owner-run | the repo's pattern is that agents never run this probe (its own header); ECH-1 fixed in it first; see F3 |
+| venue probe | `node scripts/probe-game7-venues.mjs` | nba.com `leaguegamelog`, read-only; run by the owner 2026-10-06 (agents never run it) | completed | 160 lines printed; compared mechanically with `game7_venues_curated.csv`: **160/160 match** (year, unordered pair, Game 7 home), all 160 NBA/BAA rows answered, 0 blank. No winner-inversion or unplaced-winner line (ECH-1's branch had nothing to report); 2017 BOS/WAS resolved directly (Story 2.12's `WAS` fix) |
 
 ## AC clause by clause
 
@@ -60,7 +60,7 @@ None of these changed product code. Each one made a check that was failing for t
 | --- | --- | --- | --- |
 | F1 | First **scheduled** fire of `pipeline-inseason.yml` (and the D-7 glance at Actions history for an un-run cron). A scheduled red must open or comment on the issue within that cron cycle. | Owner, 2027-04-16 07:30 UTC (offseason edge 2027-04-12) | `deferred-work.md` → "Story 2.7 owner-owed" |
 | F2 | First write from the **real** `espn` feed: a certified 3–3 is born by the scheduled run and later completed, and the matrix rows 3/4/8 re-read on production. | Owner, first 3–3 of the 2027 playoffs | `deferred-work.md` → "Story 2.7 owner-owed" |
-| F3 | Re-run the venue probe (the reason Story 2.12 preceded this drill) with ECH-1 fixed: `node scripts/probe-game7-venues.mjs`. Expected: every line matches `game7_venues_curated.csv`, and no unplaced winner. | Owner, any time | `deferred-work.md` → "Story 2.7 owner-owed" |
+| F3 | ~~Re-run the venue probe with ECH-1 fixed.~~ **CLOSED 2026-10-06**: the owner ran it; 160/160 lines match the curated CSV and no unplaced winner (see the venue-probe row above). | Done 2026-10-06 | `deferred-work.md` → "Story 2.7 owner-owed" |
 | F4 | Home's pending block goes live at the first real 3–3 with only its D2 data-reach markup. Story 4.5's AA floor and treatment should land before 2027-04-16. | Story 4.5, before 2027-04-16 | `deferred-work.md` → "Story 2.7 owner-owed" |
 
 ## Notes for the next reader
