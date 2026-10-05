@@ -115,6 +115,8 @@ development_status:
   # rejected, all recorded with verdicts in spec-2-10's Review Findings section. The seven rejections
   # whose fix would edit the spec itself are left with the owner there — headline: AC 5 and the
   # frozen I/O/Always rows still describe the popover trigger the second preview pass deleted.
+  # RESOLVED 2026-10-05 by the owner: AC 5 rewritten to the shipped static gloss; the frozen
+  # I/O row and Always bullet carry dated supersession brackets (spec-2-10, second review).
   2-10-nba-by-default-league-chip-and-in-record-gloss: done
   # Found while building 2-10, on the owner's observation that typing SAS on /historical finds
   # Kansas City, not the Spurs. Measured bigger than it looks: the row displays

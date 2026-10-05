@@ -37,7 +37,7 @@ context:
 
 **Always:**
 - Chip text is the stored `series.league` verbatim where the chip renders; no year-derived value, no `BAA`→`NBA` merge.
-- The gloss trigger is ≥44 px tall (`EXPERIENCE.md` Interaction Primitives) and carries its own visible text as its accessible name — no icon-only button.
+- The gloss trigger is ≥44 px tall (`EXPERIENCE.md` Interaction Primitives) and carries its own visible text as its accessible name — no icon-only button. **[Superseded 2026-10-05 by the owner, closing the AC 5 finding both external reviews raised: D2'' deleted the trigger, so this bullet binds nothing on the shipped surface — the gloss is static text with no control to size or name. The rule it carried survives as "no new icon-only control on this surface". Frozen text left as written and pointed at, per D6'.]**
 - The archive fetches and lists all 178 series; every row stays openable and keeps its prerender page (AD-7).
 - FR-10's two filters keep their behavior exactly as they had it before 2.9: year and team search intersect, changing either resets `visibleCount` to 10, and the existing reset button clears both.
 - The changed result set is re-announced through the existing polite live region; the live region stays the last child of the list section (the 2.9 review-pass placement rule).
@@ -61,7 +61,7 @@ context:
 | Unknown league value | `league` outside the three | chip renders verbatim — a row nobody recognizes shows what it says | fail visible |
 | Default load | no interaction | all series listed, year list covers the whole archive (1972 included), no reset button | n/a |
 | Year × team search | both set, one excludes the other's rows | intersection; empty result reuses "No series found matching your filters." | n/a |
-| Gloss trigger | click / Enter / Space | popover carries the 2.9 D2 sentence verbatim; Escape closes it; no row and no count changes | n/a |
+| Gloss trigger | click / Enter / Space | popover carries the 2.9 D2 sentence verbatim; Escape closes it; no row and no count changes **[Superseded 2026-10-05 by the owner: no trigger exists after D2''. The shipped row is "chipped record expanded → the sentence verbatim at the foot of its card, below the winner; absent until a chipped record is open and from every `NBA` record; no row or count change" — see AC 5.]** | n/a |
 | Any of these interactions | — | no page scroll; `visibleCount` back to 10 on a filter change only | n/a |
 | Analytics | year and team search used | `historical_filter_applied` with `year` / `team_search` only; no `league` value emitted from anywhere | n/a |
 
@@ -97,7 +97,7 @@ context:
 - Given `league` is `BAA` or `ABA`, when it renders, then the chip text is that stored value verbatim.
 - Given the page loads with no user interaction, then every fetched series is in scope — the ABA rows listed, `1972` offered in the year list — and the filter row offers exactly one dropdown.
 - Given any interaction on this surface, when the capture log is read, then no `historical_filter_applied` carries `filter_type: 'league'`, and no event name outside addendum §A.1's ten appears.
-- Given the gloss trigger, when activated by click or keyboard, then the popover text equals Story 2.9 D2's sentence character for character, no row count changes, and Escape closes it; given a touch pointer, it is still reachable (no hover requirement anywhere on the surface).
+- Given a record whose row carries a chip, when it is expanded, then the gloss renders as static text at the foot of that record's card, below the winner readout, equal to Story 2.9 D2's sentence character for character, with no row-count or live-region change; it is absent before any chipped record is opened and from every `NBA` record; and no button, popover or dialog carries it, so it needs no hover and is reachable by touch, pointer and keyboard alike through the record's own expansion. *(Rewritten 2026-10-05 by the owner, closing the finding both external reviews raised. The first-build text required a popover trigger — "when activated by click or keyboard, then the popover text equals … and Escape closes it" — which D2'' deleted and the shipped tests pin the absence of (no `Leagues` button, no `[role="dialog"]`). The new text is what the "gloss inside a chipped record" describe in `historical-page-archive.test.tsx` already asserts.)*
 - Given `league` is required on `Series`, when `npm run typecheck` runs, then it passes with both test fixtures carrying the field.
 - Given the story is done, when `git status` is read, then nothing under `supabase/` changed and no push was made.
 
@@ -156,7 +156,7 @@ _`bmad-code-review`, fresh session, target `9c91056^..9c91056` only (owner's cho
 
 ##### Rejected (second review)
 
-- **Story marked `done` while AC 5 / I/O row `:64` / Always `:40` still require the deleted popover trigger** — true and the most important open item, but the fix edits this spec (rejected by rule). Second review in a row to raise it; it stays with the owner as recorded above. — acceptance-auditor + blind-hunter.
+- **Story marked `done` while AC 5 / I/O row `:64` / Always `:40` still require the deleted popover trigger** — true and the most important open item, but the fix edits this spec (rejected by rule). Second review in a row to raise it; it stays with the owner as recorded above. — acceptance-auditor + blind-hunter. **RESOLVED 2026-10-05 by the owner ("edit the spec with comment"):** AC 5 rewritten to the shipped static gloss, with the original wording quoted in its note; the frozen Always bullet and I/O row keep their text and gain dated supersession brackets, per D6'.
 - **Code Map `:79` still says 24 tests / 7 no-league-control cases** — true (25 and 8 after patch 6); spec edit. — acceptance-auditor.
 - **The "False" rejection of the `showsLeagueChip` guard cites the `*` projection pin that patch 3 deleted** — true premise drift, conclusion still holds via `NOT NULL` + the `string` type; spec edit. — blind-hunter.
 - **AC 5 is described as "outside the frozen block, editable" yet filed under "fix would edit this spec"** — true wording tension; spec edit. — blind-hunter.
