@@ -15,12 +15,15 @@ name: Pipeline - offseason bracket edges
 # drill owns it; a birth from a one-game source is refused by the runner rather
 # than guessed.
 #
-# What this file deliberately lacks is `--require-feed`. These two dates sit
-# OUTSIDE the alarm window on purpose: an empty feed in mid-April before the
-# postseason really starts, and one at the end of June after it has, are both
-# legitimate, and making them red would train the owner to ignore the one alarm
-# that matters (failure mode 1). The absence is the design decision, which is
-# why it is visible in a workflow file and not derived from a date in code.
+# What this file deliberately lacks is `--require-feed`: an empty feed on April
+# 12, before the postseason really starts, is legitimate, and making it red
+# would train the owner to ignore the one alarm that matters (failure mode 1).
+# Only April 12 sits outside the alarm window. June 25 is INSIDE it —
+# `pipeline-inseason.yml`'s `1-30 6` line fires the same morning with the flag
+# on, and the two queue in `pipeline-writes` — so this file's June run is the
+# finalize pass re-run, not a quiet edge. The absence is the design decision,
+# which is why it is visible in a workflow file and not derived from a date in
+# code.
 
 on:
   schedule:
@@ -46,9 +49,10 @@ permissions:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    # Same ceiling as the inseason file, for the same reason: a stall never
-    # fails, so `if: failure()` never fires, and this job shares the
-    # `pipeline-writes` concurrency group that queues rather than cancels.
+    # Same ceilings as the inseason file, for the same reason: the step ceilings
+    # make a stall FAIL (so `if: failure()` fires), while a job that hits its
+    # own ceiling is cancelled and files nothing, so the job ceiling is only the
+    # backstop and sits above the sum of the step ones.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -73,8 +77,10 @@ jobs:
           fi
 
       - run: npm ci --omit=dev
+        timeout-minutes: 5
 
       - name: Run the pipeline
+        timeout-minutes: 10
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

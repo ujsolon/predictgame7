@@ -24,6 +24,7 @@ interface Step {
   uses?: string;
   run?: string;
   shell?: string;
+  'timeout-minutes'?: number;
   env?: Record<string, string>;
   with?: Record<string, unknown>;
 }
@@ -118,6 +119,9 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // or by making the flag unconditional — and both edits silently move the
     // schedule-vs-dispatch rule back into the runner, which the design forbids.
     expect(run?.run).toContain('"$WANT_REQUIRE_FEED"');
+    // …and compare it to the literal "true": a dispatch sends the string
+    // "false", so a `-n` test would alarm on every hand dispatch.
+    expect(run?.run).toContain('[ "$WANT_REQUIRE_FEED" = "true" ]');
   });
 
   it("the SCHEDULED run has a source too — the `|| 'espn'` fallback is the cron's only one", () => {
@@ -163,7 +167,7 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
 });
 
 describe('pipeline-offseason.yml — the bracket edges (FR-20)', () => {
-  it('fires at the two edges, outside the alarm window', () => {
+  it('fires at the two edges (April 12 outside the alarm window, June 25 the finalize re-run inside it)', () => {
     expect(cronsOf(OFFSEASON)).toEqual(['30 7 12 4 *', '30 7 25 6 *']);
   });
 
@@ -245,12 +249,24 @@ describe('the three new jobs — the pins that are not pipeline-specific', () =>
     });
 
     it(`${rel}: a stalled run fails instead of hanging the cadence`, () => {
-      // `if: failure()` is only loud when the job can end. Without a ceiling a
+      // `if: failure()` is only loud when the stall FAILS. Without a ceiling a
       // hung install, pull, or `gh` call sits in GitHub's 360-minute default,
       // files nothing, and (for the pair) blocks every later cron through the
-      // shared `pipeline-writes` group that queues rather than cancels.
+      // shared `pipeline-writes` group. A job that hits its own
+      // `timeout-minutes` is CANCELLED, and `failure()` is false then, so the
+      // stall-prone steps carry their own ceilings (a timed-out step fails)
+      // and the job ceiling is only a backstop above their sum.
       const job = docOf(rel).jobs[rel === REHEARSAL ? 'rehearse' : 'pipeline'];
-      expect(job?.['timeout-minutes'], `${rel} declares a ceiling`).toBeGreaterThan(0);
+      const jobCeiling = job?.['timeout-minutes'] ?? 0;
+      expect(jobCeiling, `${rel} declares a job ceiling`).toBeGreaterThan(0);
+      expect(jobCeiling, `${rel} job ceiling stays well under the 360-minute default`).toBeLessThanOrEqual(60);
+      const stallProne = (job?.steps ?? []).filter((step) => /npm ci|run\.ts|rehearse-migration/.test(step.run ?? ''));
+      expect(stallProne.length, `${rel} has stall-prone steps`).toBeGreaterThan(0);
+      for (const step of stallProne) {
+        expect(step['timeout-minutes'], `${rel}: "${step.name ?? step.run}" carries a step ceiling`).toBeGreaterThan(0);
+      }
+      const stepSum = stallProne.reduce((sum, step) => sum + (step['timeout-minutes'] ?? 0), 0);
+      expect(stepSum, `${rel}: the step ceilings fire before the job ceiling cancels`).toBeLessThan(jobCeiling);
     });
   }
 
@@ -320,7 +336,12 @@ describe('notify-failure — one definition of loud (D-4 = B)', () => {
     expect(bodies.join('\n')).not.toContain('gh issue');
     const run = action.runs.steps[0]?.run ?? '';
     expect(run).toContain('gh issue list');
-    expect(run.match(/gh issue create/g)).toHaveLength(1);
+    // Two create calls: the no-issue branch, and the fall-through when a
+    // comment on the found issue fails (closed, locked, or transferred
+    // between the lookup and the comment) — `bash -e` would otherwise end the
+    // step with nothing filed.
+    expect(run.match(/gh issue create/g)).toHaveLength(2);
+    expect(run).toMatch(/gh issue comment [^\n]*\\\n\s*\|\| gh issue create/);
     expect(run.match(/gh issue comment/g)).toHaveLength(1);
     // Commenting rather than duplicating is what keeps a week-long breakage to
     // one issue, and the comment carries the new SHA so a fresh break is visible.
@@ -381,7 +402,17 @@ describe('the boundaries the AC and NFR-S1 set', () => {
     // `supabase/.temp/project-ref` IS production, and the CLI's apply commands
     // are the owner's. Asserted on the parsed command blocks so an explanatory
     // comment can still name the thing it forbids.
-    const forbidden = ['--env-file', 'project-ref', 'db push', 'db reset', 'db start', 'database migration', 'VITE_'];
+    const forbidden = [
+      '--env-file',
+      'project-ref',
+      'db push',
+      'db reset',
+      'db start',
+      'database migration',
+      'supabase migration',
+      'psql',
+      'VITE_',
+    ];
     const blocks = [
       // ci.yml is the pre-existing gate job; it is scanned by the tests above
       // for what Story 2.6 must not add to it, not for these needles.
@@ -394,6 +425,9 @@ describe('the boundaries the AC and NFR-S1 set', () => {
     for (const needle of forbidden) {
       expect(blocks, `.github run block contains "${needle}"`).not.toContain(needle);
     }
+    // DDL by shape, not by one spelling: the task list names DDL among the
+    // negative invariants, and a `-c "ALTER …"` would carry none of the needles.
+    expect(blocks).not.toMatch(/\b(CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)\s+(TABLE|FUNCTION|POLICY|ROLE|SCHEMA|INDEX|VIEW|ON)\b/i);
   });
 
   it('nothing that looks like a key or a JWT is written into the CI surface', () => {

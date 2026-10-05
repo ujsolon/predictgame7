@@ -36,7 +36,9 @@ described.
 `manual_csv` has no report; a run with it prints none of those lines.
 
 **`feedSeriesCount` is the one member a machine reads** (Story 2.6). It is the
-number of series the feed carried *before* any adapter-side exclusion, so
+number of series the feed carried *before* any adapter-side exclusion (for
+`nba_com`, after the rows dated the run's own UTC day are withheld, since those
+rows are not this run's feed), so
 `--require-feed` can decide on a number rather than on `countsLine`'s wording —
 the wording belongs to the human log and may be rephrased without breaking the
 alarm. `histogramLine` and `notes` stay prose.

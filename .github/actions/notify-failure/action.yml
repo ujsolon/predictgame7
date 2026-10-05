@@ -1,8 +1,11 @@
 name: Notify failure
 
 # Story 2.6, owner decision D-4 — the single definition of "loud". This is the
-# step `nightly-gate.yml` shipped with, moved here behaviour-for-behaviour:
-# open the titled issue when none is open, otherwise comment on the open one.
+# step `nightly-gate.yml` shipped with, with its dedupe rule unchanged: open the
+# titled issue when none is open, otherwise comment on the open one. Two things
+# differ from the inline original, both on purpose: a failed lookup or comment
+# falls through to create (a duplicate beats silence), and the run/commit lines
+# moved to an appended footer.
 # Three workflows asking for the same dedupe rule is the point at which a copy
 # stops being a copy, and the dedupe rule is exactly what SM-4's test reads (a
 # still-broken cadence stays one issue, not a daily pile).
@@ -50,7 +53,11 @@ runs:
         # falls through to create, and a duplicate issue is the cheaper error.
         EXISTING=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq 'map(.number) | .[0] // empty' || true)
         if [ -n "$EXISTING" ]; then
-          gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "Still red: $RUN_URL (\`${GITHUB_SHA:0:7}\`)"
+          # Same reasoning on the other branch: an issue closed, locked or
+          # transferred between the lookup and the comment must not end the
+          # step with nothing filed, so a failed comment falls through to create.
+          gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "Still red: $RUN_URL (\`${GITHUB_SHA:0:7}\`)" \
+            || gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$FULL_BODY"
         else
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$FULL_BODY"
         fi
