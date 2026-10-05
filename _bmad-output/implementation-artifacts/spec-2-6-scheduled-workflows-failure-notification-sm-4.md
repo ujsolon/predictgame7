@@ -2,7 +2,7 @@
 title: 'Story 2.6 — Scheduled pipeline workflows + failure notification (SM-4)'
 type: 'feature'
 created: '2026-10-03'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 1
 context:
