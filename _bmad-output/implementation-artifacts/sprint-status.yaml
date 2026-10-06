@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-06-2026 07:07
+last_updated: 10-06-2026 08:02
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -183,7 +183,8 @@ development_status:
   # md5-identical to the local `dist` of 55de7ee, and that bundle contains the U14 placeholder
   # string which exists in no earlier commit. So the look can be taken on production, not only
   # on `npm run preview`; the row stayed `review` until it was taken (2026-10-05, on preview).
-  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: done
+  2-11-one-team-code-everywhere-archive-rows-and-predict-answer-teams-abbreviation: 
+    done
   # 2026-10-02: unblocked (00016 applied and re-read; the census matches) and gained owner decision
   # U4 — one static sample-set footer on /insights, which forced the spec's Never-no-UI edit.
   # 2026-10-03: spec approved at CHECKPOINT 1 (owner decisions U10-U13; history split out to
@@ -318,7 +319,7 @@ development_status:
   # confirmed rather than discharged. No loopback. Gate exit 0 (576 tests). DONE -- remaining
   # OWNER-OWED: F1 first scheduled cron (2027-04-16) and F2 first real espn write.
   2-7-epic-verification-simulated-playoff-week: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: backlog
   3-1-analytics-isolation-layer-ad-1-port: backlog
@@ -372,9 +373,8 @@ action_items:
       helper -- qa-matrix-1-5.md §6.5, deferred-work.md)"
     status: done
     closed: "2026-10-05 by Story 2.7 -- `--fake-pending` / `--fake-short` landed in
-      scripts/measure-predict-latency.mjs (CDP Fetch, Response stage) and ran green at
-      1440x900 and 390x844; qa-matrix-1-5.md §2.2 D/M [x], §6.5 closed
-      (drill-2-7-results.md)."
+      scripts/measure-predict-latency.mjs (CDP Fetch, Response stage) and ran green
+      at 1440x900 and 390x844; qa-matrix-1-5.md §2.2 D/M [x], §6.5 closed (drill-2-7-results.md)."
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-4-close-the-evidence-integrity-gap-in-the"
     epic: 1
@@ -392,10 +392,10 @@ action_items:
       self-vs-self) with the 400/500 shapes typed in contract.ts. Closes deferred-work
       D1 and D2."
     owner: "agent - Epic 2 (implemented 2026-09-30, story done; both owner actions
-      complete -- predict-game-7 redeployed and
-      `node scripts/probe-predict-contract.mjs --expect=validated` exits 0, and the
-      push's CI run gave the new `deno check` step its first evidence, measured red
-      on the non-hermetic step then green after the esm.sh switch)"
+      complete -- predict-game-7 redeployed and `node scripts/probe-predict-contract.mjs
+      --expect=validated` exits 0, and the push's CI run gave the new `deno check`
+      step its first evidence, measured red on the non-hermetic step then green after
+      the esm.sh switch)"
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-29.md"
   - id: "epic-1-retro-item-6-route-the-remaining-deferrals-annotate-d"
@@ -449,8 +449,8 @@ action_items:
     epic: 2
     action: "Re-scope AD-5's UNIQUE(year, round) before writing Story 2.2's migration:
       the live table holds 19 duplicate (year, round) groups, and round carries 17
-      distinct uncontrolled values across 178 rows. Measured by
-      scripts/spike-2-1/audit-archive.mjs on 2026-09-30."
+      distinct uncontrolled values across 178 rows. Measured by scripts/spike-2-1/audit-archive.mjs
+      on 2026-09-30."
     owner: "agent - Story 2.2"
     status: done
     ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md (approved
@@ -459,18 +459,107 @@ action_items:
   - id: "story-2-1-audit-pin-the-archive-total-in-the-docs-that-still-say-177"
     epic: 4
     action: "Story 2.1's audit pinned the live total at 178 series / 1,246 score rows,
-      every series exactly seven. The 177 figure still stands as a live-table claim in
-      prd.md FR-19 + :72/:224, epics.md :52 and EXPERIENCE.md :40, and AD-7's
-      172+5 split sums to 177. Re-derive the prerender route list from the measured 178
-      plus the owner's flagship list, then correct the wording in those five places --
-      distinguish the source-spreadsheet 177 from the live count rather than overwriting
-      one with the other. Consumed by Story 4.3.
-      [partial 2026-10-01 by sprint-change-proposal-2026-10-01.md: epics.md:52 now
-      reconciles 177 vs 178 as source-sheet vs live-table, and prd.md FR-19 carries a
-      pointer to that reconciliation. What stays open is the route-list re-derivation
-      and the remaining wording sites -- the 178 count is NOT changed by the league
-      filter; only insight denominators become league-filtered, so re-deriving routes
-      from 160 is a bug (AD-7 caveat 2026-10-01). Still Story 4.3's.]"
+      every series exactly seven. The 177 figure still stands as a live-table claim
+      in prd.md FR-19 + :72/:224, epics.md :52 and EXPERIENCE.md :40, and AD-7's 172+5
+      split sums to 177. Re-derive the prerender route list from the measured 178
+      plus the owner's flagship list, then correct the wording in those five places
+      -- distinguish the source-spreadsheet 177 from the live count rather than overwriting
+      one with the other. Consumed by Story 4.3. [partial 2026-10-01 by sprint-change-proposal-2026-10-01.md:
+      epics.md:52 now reconciles 177 vs 178 as source-sheet vs live-table, and prd.md
+      FR-19 carries a pointer to that reconciliation. What stays open is the route-list
+      re-derivation and the remaining wording sites -- the 178 count is NOT changed
+      by the league filter; only insight denominators become league-filtered, so re-deriving
+      routes from 160 is a bug (AD-7 caveat 2026-10-01). Still Story 4.3's.]"
     owner: "agent - Story 4.3"
     status: open
     ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md 4.7(4)"
+  - id: "epic-2-retro-item-14-write-the-2027-birth-runbook-a-series-at"
+    epic: 2
+    action: "Write the 2027 birth runbook (a series at 3-3: curate its six games into
+      series_manual.csv, run --source=manual_csv dry-run first, inside the game-6
+      to game-7 window); correct F2 in drill-2-7-results.md:62 and deferred-work.md:552
+      (births are curated, not scheduled); annotate epics.md:253's goal (completions
+      automated, births curated, owner call 2026-10-04). Before 2027-04-12. [R1]"
+    owner: "owner decides wording; agent drafts"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-15-harden-the-pipeline-write-path-a-a-write"
+    epic: 2
+    action: "Harden the pipeline write path: (a) a write-loop throw after a winner
+      landed refreshes insights or prints the --refresh-insights recovery; (b) refuse
+      any argv token that is not an exact supported flag (-dry-run, dry-run, em-dash
+      variants currently run live); (c) add espn to run.ts's usage header. Add a FakeSink
+      completion-failure hook and tests for (a) and (b). [W1, W3, W4]"
+    owner: "agent (dev loop)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-16-one-fresh-context-review-of-the-whole-wr"
+    epic: 2
+    action: "One fresh-context review of the whole write path (plan.ts, run.ts, writer.ts,
+      00015, 00017) after the hardening item lands; Story 2.3's core never had an
+      independent review (746426a). Before 2027-04-12. [W5]"
+    owner: "owner runs; agent prepares the diff"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-17-00015-birth-conflict-path-on-on-conflict"
+    epic: 2
+    action: "00015 birth conflict path: on ON CONFLICT, assert the stored row is pending
+      with the same six games or raise; add a rehearsal case that re-births a divergent
+      payload. New migration, owner applies. [W2]"
+    owner: "agent, owner applies"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-18-bring-scripts-mjs-under-the-gate-checkjs"
+    epic: 2
+    action: "Bring scripts/*.mjs under the gate (checkJs tsconfig + Biome includes);
+      move the venue probe's per-match logic into venueBackfill.ts with unit tests
+      (incl. ECH-1); retire source-text pins that exist only because of the missing
+      checker. [A1, P5]"
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-19-measured-test-bloat-pass-install-a-cover"
+    epic: 2
+    action: "Measured test-bloat pass: install a coverage provider, run coverage plus
+      an unused-export scan, report dead code with evidence before deleting anything.
+      [A4]"
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-20-annotate-epics-md-417-story-2-12-ac-chec"
+    epic: 2
+    action: "Annotate epics.md:417 (Story 2.12 AC, --check byte-agreement with the
+      applied 00016) with a dated pointer to its recorded-as-built O-2 paragraph.
+      [R2]"
+    owner: "owner applies"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-21-record-the-preview-before-a-ui-ac-freeze"
+    epic: 2
+    action: "Record the preview-before-a-UI-AC-freezes rule where this project's agents
+      read it (AGENTS.md or project memory), carrying over the 2026-08-19 whattheheel
+      lesson. [P1]"
+    owner: "owner decides where"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-22-single-done-step-flip-spec-frontmatter-a"
+    epic: 2
+    action: "Single done step: flip spec frontmatter and the sprint-status.yaml story
+      row in one commit, and only after the review the story depends on. [P3]"
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-23-port-describefetchthrow-into-nbacom-ts-3"
+    epic: 2
+    action: "Port describeFetchThrow into nbaCom.ts:301 (or extract the shared fetch/retry
+      loop from espn.ts and nbaCom.ts). [A2]"
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-2-retro-item-24-check-claude-ai-account-memory-for-the-b"
+    epic: 2
+    action: "Check claude.ai account memory for the 'bmad core view not enabled' line
+      and delete it if found; it is not on this machine. [P2]"
+    owner: "owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
