@@ -594,6 +594,38 @@ so that every pending Game 7 reaches Active Series in the one-to-two-day window 
 **And** this epic's goal sentence (`:253`) carries a dated bracket: completions are automated, births are curated by owner call 2026-10-04 — the frozen sentence stays
 **And** the owner approves the runbook's wording before it is marked done; no code changes
 
+### Story 2.16: Retire the `nba_com` source — adapter, registry entry, hand-run probe and tests
+
+*Created from Epic 2's retrospective by owner decision 2026-10-06, answering the retro's open question ("Is `nba-com.test.ts`'s maintenance cost worth a hand-run-only adapter?", `../implementation-artifacts/epic-2-retro-2026-10-06.md`) and closing findings A2 and A4 with action items 6 and 10. Runs AFTER Story 2.14 so the runner's flag surface is hardened before it shrinks. **This reverses owner call C1** (`port.ts:150-163`, whose recorded reasons are "dropping a recognised name would invite a future session to re-propose the endpoint unexamined" and "it remains the source a residential address can still run"). This story answers the first reason by deleting the name while keeping the egress conclusion and its citations in the docs, and the second is no longer worth a registered source. It also removes the practical blocker: `scripts/probe-game7-venues.mjs:85-86` **imports** the shipped adapter, and that dependency is now released — `supabase/scripts/pipeline/data/game7_venues_curated.csv` was measured on 2026-10-06 to hold 178 data rows with all 160 NBA/BAA `game7_home_team` cells filled, the only 18 blanks being the ABA rows that are blank-legal by Call 2, and Story 2.12's close (`sprint-status.yaml:316-320`) records the owner running that probe against the CSV slot for slot, F3 closed.*
+
+As the owner,
+I want the hand-run-only `nba_com` source and its test file gone together, not one without the other,
+so that Epic 3 does not carry ~1,900 lines of adapter, probe and tests that no scheduled path can reach and no gate program can see.
+
+**Acceptance Criteria:**
+
+**Given** the adapter's only non-test consumer is `scripts/probe-game7-venues.mjs:85-86`, which imports `createNbaComAdapter` and `validateSeasonOverride` rather than copying them, and that probe's remaining purpose was filling the 160 now-filled venue cells
+**When** the retirement lands
+**Then** `supabase/scripts/pipeline/adapters/nbaCom.ts` (607 lines), `scripts/probe-nba-com-adapter.mjs` (292), `scripts/probe-game7-venues.mjs` and `tests/pipeline/nba-com.test.ts` (1,059) are deleted in one commit, and the registry entry at `port.ts:166` goes with them
+**And** `scripts/spike-2-1/**` is untouched — it is recorded provenance for Stories 2.1 and 2.4, not a live surface
+**And** the venue-curation route that survives is the hand-entry worksheet (`venueBackfill.ts:1140-1148`), which needs no feed, and the docs say what to do if a cell ever goes blank again
+
+**Given** action item 6's rule — coverage plus an unused-export scan, evidence recorded **before** any deletion
+**When** the story runs
+**Then** that scan's output is in the story record, and `rounds.ts` is left holding only what still has a consumer: `labelForDepth` and `formatHistogram` stay (both already pinned through the live `espn` adapter at `espn-adapter.test.ts:410-415`, `:684`), while `walkChainDepth`, `histogramFromPlacements` and their types go with their only consumer (`nbaCom.ts:71,463,465`) — `nba-com.test.ts:356` is their sole pin today, so they are deleted as dead exports, not re-pinned
+**And** every deletion from `nba-com.test.ts` is triaged per-describe with the numbers in the record: `:225`/`:286`/`:441`/`:567` go as adapter-only; the 15 runner cases at `:815` are split — each guarantee that is about the **runner** rather than the feed (report prints before planning, exclusion notes reach stdout, `--season=` reaches the wire, a duplicate `--season=` refuses) is re-parented into `tests/pipeline/run.test.ts` **before** its original is deleted, and only the `nba_com`-specific shapes are dropped; the single `manual_csv` case at `:1051` moves to `manual-csv.test.ts`
+**And** no case is deleted while it is the sole pin of live code, and the record names where each surviving guarantee lands
+**And** the source-text pins at `tests/pipeline/venue-backfill.test.ts:712-731` — which regex-match the deleted probe's call sites only because `scripts/**` sits in no gate program (finding A1) — are deleted with it; action item 5's other half (bringing `scripts/*.mjs` under a checker) is NOT claimed here
+
+**Given** `--source=nba_com` today selects an implemented adapter
+**When** the entry is removed
+**Then** the name becomes an unrecognised source that refuses the start, and `run.ts`'s 7 references plus `run.test.ts`'s 22 re-point to that behaviour; `workflows.test.ts` keeps its 2 references pinning that no workflow offers the source
+**And** Story 2.6's egress conclusion is preserved as evidence, not re-litigated: the finding that nba.com refuses every cloud keeps its citations in the docs and the spec record after its probe is gone, so nobody re-proposes the endpoint
+**And** action item 10 closes **by deletion** rather than by porting `describeFetchThrow`, and it points back at the dated waiver Story 2.14 records on its `nbaCom.ts:301` AC for the period before this story landed
+
+**And** `docs/seriesdatasource-port.md`'s registry line, `docs/CURRENT_DATA_MODEL.md` if it names the source, and `epics.md` Stories 2.4 and 2.6 carry dated retirement annotations with their frozen text intact, and this story's C1 reversal is written into `port.ts`'s comment where C1 was recorded
+**And** no migration, RPC, workflow cron, Edge Function or `plan.ts` decision changes; no live fetch by the agent; per-AC mutation evidence for every re-parented case; `npm run gate` passes with the exit code read from the command itself
+
 ## Epic 3: Owner Operations — analytics you can trust, contacts you never miss, gate numbers you can read
 
 Covers FR-17 (contact delivery, issue #2 phases 2–3), FR-24/NFR-V1 (analytics isolation, AD-1), FR-25 (Traffic Gate reporting). This is the observability backbone SM-1 measurement depends on — every later epic's events flow through what lands here. Owner note (2026-09-25): analytics acceptance is "seeing it in action" — Story 3.5 requires the owner personally observing live events in PostHog, not a proxy report.
