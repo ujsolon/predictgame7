@@ -13,7 +13,12 @@ name: Pipeline - offseason bracket edges
 # of the AC is served by `--source=manual_csv` run by hand (this file offers no
 # `source` dispatch input, and `pipeline-inseason.yml` does), and Story 2.7's
 # drill owns it; a birth from a one-game source is refused by the runner rather
-# than guessed.
+# than guessed. [2026-10-06, Story 2.18: `espn` now also births a series at a
+# feed-observed 3-3 (a bounded single-date backfill plus a re-read of the
+# previous date), so either edge can initialize as well as finalize from the
+# feed. A birth the run cannot certify prints `BIRTH NEEDED:` and files the
+# separate, dated "Pipeline birth needed <date>" issue through the last two
+# steps, exactly as the inseason file does; the exit code is unchanged by it.]
 #
 # What this file deliberately lacks is `--require-feed`: an empty feed on April
 # 12, before the postseason really starts, is legitimate, and making it red
@@ -86,10 +91,11 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           WANT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
+          set -o pipefail
           flags=()
           if [ "$WANT_DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
           echo "adapter=espn flags=${flags[*]} (no empty-feed alarm on this schedule, by design)"
-          node supabase/scripts/pipeline/run.ts --source=espn "${flags[@]}"
+          node supabase/scripts/pipeline/run.ts --source=espn "${flags[@]}" 2>&1 | tee "$RUNNER_TEMP/pipeline.log"
 
       - name: File a loud failure
         if: failure()
@@ -103,3 +109,40 @@ jobs:
             series the archive guard rejected, or a missing repository secret.
             The log above names which, and it carried no credential value into
             the command line to do it.
+
+      # Story 2.18: the same two steps as pipeline-inseason.yml, same dated
+      # title ("Pipeline birth needed <UTC date>"), so a day's alerts land in one
+      # issue whichever cadence ran (the two schedules never share a date).
+      - name: Collect birth-needed alerts
+        id: alerts
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/pipeline.log"
+          if [ -f "$log" ] && grep -q '^BIRTH NEEDED:' "$log"; then
+            {
+              echo 'found=true'
+              echo "date=$(date -u +%F)"
+              echo 'lines<<BIRTH_NEEDED_EOF'
+              grep '^BIRTH NEEDED:' "$log"
+              echo 'BIRTH_NEEDED_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File a birth-needed alert
+        if: always() && steps.alerts.outputs.found == 'true'
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Pipeline birth needed ${{ steps.alerts.outputs.date }}
+          body: >-
+            The bracket-edge run saw a playoff series that should now be in
+            Active Series (a Game 6 at 3-3, or a Game 7 for a series never born)
+            and could NOT birth it from the feed, or could not read a date it
+            needed. This is not a failed run; its exit code is unchanged. Follow
+            docs/PLAYOFF_RUNBOOK.md (the fallback procedure) for each line
+            below, before that series' Game 7 tips off. Each day's alerts open
+            their own issue, dated in the title; a re-run on the same day
+            comments here with a run link only, so read that run's log for its
+            lines.
+
+
+            ${{ steps.alerts.outputs.lines }}

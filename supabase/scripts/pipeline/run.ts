@@ -45,6 +45,12 @@
  * carries no run report, because `manual_csv`'s rows are a file the operator
  * edited rather than a feed that can come back empty.
  *
+ * Story 2.18 additions: the stored series rows are read BEFORE the adapter is
+ * built (and reused for planning — still one read), so the `espn` adapter can
+ * skip backfilling a pair already on the table; and the adapter's `alerts`
+ * print after its report lines, each prefixed `BIRTH NEEDED:` for the
+ * workflows to grep. An alert never changes the exit code.
+ *
  * `.env` must supply SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (the same
  * names the handle-contact function uses; NFR-S1 — never a `VITE_*` name,
  * never a committed value).
@@ -70,6 +76,13 @@ export const ENV_SUPABASE_URL = 'SUPABASE_URL';
 export const ENV_SERVICE_ROLE_KEY = 'SUPABASE_SERVICE_ROLE_KEY';
 
 export class PipelineRunError extends Error {}
+
+/**
+ * Story 2.18 — the prefix every adapter alert prints with. The workflows grep
+ * the run log for it (line start) to file the "Pipeline birth needed" issue,
+ * and `tests/pipeline/workflows.test.ts` pins that grep against this constant.
+ */
+export const BIRTH_NEEDED_PREFIX = 'BIRTH NEEDED:';
 
 /** The operator recovery both refresh-failure messages print — one copy, so they cannot drift. */
 const REFRESH_RECOVERY_COMMAND = '`node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights`';
@@ -99,6 +112,9 @@ export interface RunDeps {
   fetch?: FeedFetch;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
+  /** Story 2.18 test seams for the espn extra-date budget (production uses the adapter's defaults). */
+  extraFetchBudget?: AdapterDeps['extraFetchBudget'];
+  monotonicNow?: () => number;
 }
 
 /**
@@ -369,6 +385,10 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const espnTeamIds = new Map<string, number>(
       teams.filter((team) => team.espn_code != null).map((team) => [team.espn_code as string, team.id]),
     );
+    // Story 2.18: the table is read BEFORE the adapter is built, so `espn` can
+    // skip backfilling a pair that is already stored (in either slot order),
+    // and the same rows are reused for planning below — one read per run.
+    const current: CurrentSeriesRow[] = await sink.readCurrent();
     const adapterDeps: AdapterDeps = {
       csvPath,
       readFile,
@@ -377,6 +397,14 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       fetch: deps.fetch,
       now: deps.now,
       sleep: deps.sleep,
+      extraFetchBudget: deps.extraFetchBudget,
+      monotonicNow: deps.monotonicNow,
+      isPairStored: (year, left, right) =>
+        current.some(
+          (row) =>
+            row.year === year &&
+            ((row.team_a_id === left && row.team_b_id === right) || (row.team_a_id === right && row.team_b_id === left)),
+        ),
     };
 
     const adapter = createAdapterSource(sourceName, adapterDeps);
@@ -393,6 +421,12 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       log(report.histogramLine);
       for (const note of report.notes) {
         log(note);
+      }
+      // Story 2.18: alerts print after the report lines with a stable prefix
+      // the workflows grep for, and BEFORE anything below can refuse, so a red
+      // run still shows them. They never change the exit code.
+      for (const alert of report.alerts) {
+        log(`${BIRTH_NEEDED_PREFIX} ${alert}`);
       }
       // The alarm reads the report's own number, never the wording of the line
       // printed above it — a copy edit to `countsLine` must not be able to turn
@@ -413,7 +447,6 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     }
 
     const source = groupSourceRows(statuses, gameScores);
-    const current: CurrentSeriesRow[] = await sink.readCurrent();
     const plan = planPipeline(source, current);
 
     log(`pipeline adapter=${sourceName}${dryRun ? ' (dry-run — no writes will be issued)' : ''}`);

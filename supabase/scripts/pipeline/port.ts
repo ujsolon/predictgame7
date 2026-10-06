@@ -64,6 +64,14 @@ export interface AdapterRunReport {
   feedSeriesCount: number;
   /** Named exclusions (e.g. a chain depth the walk cannot explain). */
   notes: string[];
+  /**
+   * Story 2.18 — things the owner must act on, separate from `notes`: a 3–3
+   * the run could not certify into a birth, a re-read or backfill date that
+   * could not be read, a Game 7 for a series that was never born. The runner
+   * prints each with the stable `BIRTH NEEDED:` prefix the workflows grep for.
+   * An alert never changes the exit code — it is not a failure of the run.
+   */
+  alerts: string[];
 }
 
 /** The port AD-5 names. The two method names are frozen; every adapter implements them. */
@@ -121,6 +129,18 @@ export interface AdapterDeps {
   now?: () => Date;
   /** HTTP-adapter seam: retry backoff wait; defaults to `setTimeout`. Tests inject a recorder. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Story 2.18 — whether `(year, pair)` is already a `series` row, in EITHER
+   * slot order. The runner answers it from the one `readCurrent` it reuses
+   * for planning, so the `espn` adapter never backfills a pair already on the
+   * table. Absent means "unknown": the adapter then backfills every 3–3 it
+   * sees and leaves every Game 7 to the planner, as Story 2.13 did.
+   */
+  isPairStored?: (year: number, teamIdA: number, teamIdB: number) => boolean;
+  /** Story 2.18 test seam: the per-run budget for extra (re-read + backfill) dates. Defaults to 25 dates / 180 s. */
+  extraFetchBudget?: { requests: number; wallClockMs: number };
+  /** Story 2.18 test seam: a monotonic millisecond clock for the wall-clock budget. Defaults to `performance.now`. */
+  monotonicNow?: () => number;
 }
 
 interface AdapterEntry {

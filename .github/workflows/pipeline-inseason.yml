@@ -50,7 +50,27 @@ name: Pipeline - inseason daily
 # The same one-date read means a red or cancelled run does not catch up later:
 # the next morning asks a LATER date, so a Game 7 played the day before a failed
 # run never reaches the table on its own. The issue body below names the
-# manual_csv recovery for exactly that case.
+# manual_csv recovery for exactly that case. [2026-10-06, Story 2.18: each run
+# also re-reads the PREVIOUS date, but for births only (Game 6s at 3-3). Its
+# Game 7s are ignored (owner decision, Story 2.18 review), so this paragraph
+# still holds for completions. The re-read never counts toward
+# `--require-feed`.]
+#
+# Story 2.18 — births. A Final Game 6 at 3-3 whose pair is not stored is
+# backfilled (games 1-5 by single dates, <=21 back, <=25 extra requests and ~3
+# minutes per run) and born by the run itself. When a backfill cannot certify the
+# 3-3, the runner prints a `BIRTH NEEDED:` line and still exits on the merits of
+# the rest of the run. The two steps after the failure step grep the run's log
+# for that prefix and file a SEPARATE issue, "Pipeline birth needed <date>", so a
+# needed birth never reads as a failed run and a failed run never hides a needed
+# birth. Mechanism choice: a log grep over `tee`, rather than a non-zero exit code
+# or a second workflow, because the alert must not change the exit code
+# (completions and the insights refresh are not blocked by it) and must land
+# within the same cron cycle; the `notify-failure` action is reused as is. The
+# title carries the run's UTC date (Story 2.18 review, owner decision 2026-10-06):
+# on an open issue `notify-failure` comments only a run link, so a stable title
+# would bury a later day's series behind "Still red". One issue per day keeps
+# every alert line in an issue body; a same-day re-run comments on that day's.
 
 on:
   schedule:
@@ -148,12 +168,15 @@ jobs:
           PIPELINE_SOURCE: ${{ inputs.source || 'espn' }}
           WANT_REQUIRE_FEED: ${{ github.event_name == 'schedule' || inputs.require_feed }}
           WANT_DRY_RUN: ${{ inputs.dry_run }}
+        # `pipefail` keeps the runner's exit code the step's exit code through
+        # the `tee` that keeps a copy of the log for the birth-needed grep.
         run: |
+          set -o pipefail
           flags=()
           if [ "$WANT_REQUIRE_FEED" = "true" ]; then flags+=(--require-feed); fi
           if [ "$WANT_DRY_RUN" = "true" ]; then flags+=(--dry-run); fi
           echo "adapter=$PIPELINE_SOURCE flags=${flags[*]}"
-          node supabase/scripts/pipeline/run.ts "--source=$PIPELINE_SOURCE" "${flags[@]}"
+          node supabase/scripts/pipeline/run.ts "--source=$PIPELINE_SOURCE" "${flags[@]}" 2>&1 | tee "$RUNNER_TEMP/pipeline.log"
 
       - name: File a loud failure
         if: failure()
@@ -170,14 +193,17 @@ jobs:
             carried no game at all on the date it derived: that is the alarm
             working inside the declared window, and the question is whether the
             postseason really is on a rest day. A day with games but no Game 7
-            goes GREEN with an empty plan — that is the shape this adapter is
-            allowed to see.
+            and no Game 6 at 3-3 goes GREEN with an empty plan. A needed birth
+            the run could not certify is NOT this issue: it files "Pipeline
+            birth needed" and leaves the exit code alone.
 
 
-            MISSED GAME 7 RECOVERY. The scheduled source reads only the previous
-            US Eastern date and never re-asks a date it missed, so if a Game 7
-            was played on the date this run was reading, the next scheduled run
-            will NOT pick it up. Recover by hand: append that Game 7 row to
+            MISSED GAME 7 RECOVERY. The scheduled source completes a series
+            only from the previous US Eastern date and never re-asks a date it
+            missed for a Game 7 (its re-read of the date before looks for Game
+            6 births only), so if a Game 7 was played on the date this run was
+            reading, the next scheduled run will NOT pick it up. Recover by
+            hand: append that Game 7 row to
             supabase/scripts/pipeline/data/series_manual.csv (the series' games
             1-6 are already there from the curated birth), then run
             `node --env-file=.env supabase/scripts/pipeline/run.ts
@@ -186,3 +212,41 @@ jobs:
             the CSV edit and dispatch this workflow with source=manual_csv,
             dry_run first. The completion is idempotent and refreshes the
             insights cache.
+
+      # Story 2.18: after the failure step on purpose (so it stays the first
+      # `notify-failure` step), and on `always()` so a red run that also printed
+      # an alert files both issues. The log only exists if the run step started.
+      - name: Collect birth-needed alerts
+        id: alerts
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/pipeline.log"
+          if [ -f "$log" ] && grep -q '^BIRTH NEEDED:' "$log"; then
+            {
+              echo 'found=true'
+              echo "date=$(date -u +%F)"
+              echo 'lines<<BIRTH_NEEDED_EOF'
+              grep '^BIRTH NEEDED:' "$log"
+              echo 'BIRTH_NEEDED_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: File a birth-needed alert
+        if: always() && steps.alerts.outputs.found == 'true'
+        uses: ./.github/actions/notify-failure
+        with:
+          title: Pipeline birth needed ${{ steps.alerts.outputs.date }}
+          body: >-
+            The scheduled run saw a playoff series that should now be in Active
+            Series (a Game 6 at 3-3, or a Game 7 for a series never born) and
+            could NOT birth it from the feed, or could not read a date it needed.
+            This is not a failed run: completions and the insights refresh went
+            ahead, and the run's exit code is unchanged. Follow
+            docs/PLAYOFF_RUNBOOK.md (the fallback procedure) for each line
+            below, before that series' Game 7 tips off. Each day's alerts open
+            their own issue, dated in the title; a re-run on the same day
+            comments here with a run link only, so read that run's log for its
+            lines.
+
+
+            ${{ steps.alerts.outputs.lines }}

@@ -50,6 +50,22 @@ rows are not this run's feed), so
 the wording belongs to the human log and may be rephrased without breaking the
 alarm. `histogramLine` and `notes` stay prose.
 
+**`alerts` is the report's action channel** (Story 2.18, 2026-10-06), separate
+from `notes`: things the owner must act on, such as a 3–3 the run could not
+certify into a birth, a re-read or backfill date that could not be read, or a
+Game 7 for a series that was never born. The runner prints each one after the
+report lines, prefixed `BIRTH NEEDED:` (`run.ts` `BIRTH_NEEDED_PREFIX`), and
+the two pipeline workflows grep their log for that prefix to file the
+"Pipeline birth needed <UTC date>" issue (dated, so each day's lines open an
+issue of their own). An alert never changes the exit code.
+
+**`isPairStored` on `AdapterDeps`** (Story 2.18) answers "is `(year, pair)`
+already a `series` row, in either slot order?". The runner reads the table
+**before** it builds the adapter and answers from that one read, which it
+then reuses for planning. Absent means "unknown": the `espn` adapter then
+backfills every 3–3 it sees and leaves every Game 7 to the planner
+(`port.ts`), which is what the live probe does.
+
 **`hasRunReport` on the registry entry** (`port.ts`) is what lets the runner
 answer "does this adapter have a report?" *before* the sink exists, so
 `--require-feed` handed to `manual_csv` refuses the run up front instead of
@@ -240,7 +256,9 @@ stays registered and hand-runnable (owner call C1).
   form answers `400` with a body carrying no `events` (measured, and re-checked
   by the probe's range control), so a backfill is a bounded loop of single-date
   runs and this adapter builds only the single-date form — `scoreboardUrl()`
-  throws on anything that is not eight digits.
+  throws on anything that is not eight digits. **[2026-10-06, Story 2.18: still
+  single-date, but no longer one per run: the re-read and the backfill below
+  add requests. `feedSeriesCount` counts the run's own date only.]**
 - **The date is derived, never passed.** The PREVIOUS `America/New_York`
   calendar day of the run instant (`deriveRequestDate`), because ESPN filters
   `dates` by US local date (measured: `dates=20260605` returned the game stamped
@@ -270,14 +288,76 @@ stays registered and hand-runnable (owner call C1).
   model is series-granular, so this adapter's live job is Game 7 of a series the
   curated path already stored as pending. `plan.ts` admits that one shape and
   refuses to birth a series from a partial source; games 1–6 still arrive only
-  through `manual_csv`. Admission requires `status.type.state === 'post'` with
+  through `manual_csv`. **[2026-10-06, Story 2.18: this still decides what a
+  date admits as a game-7-only source, but games 1–6 now also arrive from the
+  feed, through the backfill below. `plan.ts` is unchanged: the backfill hands
+  it an ordinary six-game source.]** Admission requires `status.type.state === 'post'` with
   `description === 'Final'` — `in`, `pre` and any unrecognised string are
   excluded and named, never defaulted to "finished", because the host is
   undocumented Disney-side infrastructure with no SLA.
 - **Failure posture:** 25 s `AbortSignal.timeout`, three attempts,
   `[1000, 4000]` ms backoff on 429/5xx or a body that is not the scoreboard
   shape; non-retryable statuses fail at once, and every terminal message names
-  the URL and states that no `manual_csv` fallback was taken.
+  the URL and states that no `manual_csv` fallback was taken. **[Story 2.18:
+  this holds for the run's own date. A re-read or backfill date that fails
+  the same way becomes an alert and the run carries on.]**
+
+### Births at a feed-observed 3–3 (Story 2.18, 2026-10-06)
+
+`sprint-change-proposal-2026-10-06.md` (owner decision, option B) reversed the
+2026-10-04 "the feed completes; it does not seed" call. It was measured first on
+two 2025 first-round series; the payloads are committed under
+`tests/pipeline/fixtures/espn-backfill-2025/` with their provenance.
+
+- **The re-read.** Every run also reads the date **before** its own (one
+  more single-date request), **for births only**: Final Game 6s at 3–3 not yet
+  stored. A Game 6 that one red or late run missed is caught by the next. It
+  is idempotent: a pair stored yesterday is skipped. Game 7s on the re-read
+  page are ignored and only counted in its report line (owner decision
+  2026-10-06 at the Story 2.18 review, amending the change proposal's option (i)): a completion
+  comes from the run's own date only, so yesterday's finished series is never
+  re-planned and a red run always points at the run's own date.
+- **Detection.** A Final event is a Game 6 when its headline says so, or, if
+  the headline is unreadable, when `competitions[0].series` stands 3–3 and not
+  completed. Wins are read **per team**: `series.competitors[].id` is joined to
+  the event's `competitors[].team.id` (ESPN's numeric team id, used for this
+  join only, never as an identity), and never read by position. The spike
+  measured GS–HOU reading `[0,1]` after Game 1. A pair stored in either slot
+  order is skipped with no request. A Game 6 the series ended (4–2) is silent.
+  A Game 6 whose `series` is missing or malformed, or whose headline and
+  standing disagree, is an alert.
+- **The backfill.** It walks back single dates from Game 6's date, at most
+  **21 dates** counting Game 6's own, and stops once games 1–5 are found.
+  Each game must be Final, between the same pair, and headline-numbered 1–5.
+  Dates are fetched **at most once per run** and shared by the walks, which
+  run one after another, and the re-read. A walked page contributes **only** the target pair's games
+  1–5; every other event on it is never admitted, completed, backfilled from,
+  or counted.
+- **Certification before the planner.** The six games must share one round
+  and one year, carry no tie, and split 3–3. Each game's own `series` standing
+  must equal the running wins computed from the scores of games 1..N; any
+  mismatch refuses the birth with an alert naming the series and the game.
+- **The source.** An ordinary six-game source, seven when the pair's Game 7
+  is also seen this run. It uses the single `team_a` = Game 1 home orientation
+  for every row, because `groupSourceRows` keys on the ordered pair. It goes
+  through the unchanged `plan.ts` and the `pipeline_birth_series` RPC, so every
+  AD-4/AD-5 check still runs.
+- **A Game 7 whose pair is known to be unborn**, with no birth assembled for it
+  this run, is left out of the plan and alerted. Before Story 2.18 it reached
+  the planner, which refused it and turned the whole run red. The adapter does
+  this only when the runner told it what is stored (`isPairStored`).
+- **Budget and isolation.** The re-read plus the backfills are bounded per run
+  at **25 extra dates and 180 s** of wall clock, checked before each new date
+  (one date's own retries can run past the line, worst case about 80 s, still
+  well under the 10-minute step). A spent budget stops the walk and alerts the
+  unfinished series. Any fetch error, drift or timeout on an extra date is an
+  alert, never a thrown run. With the 21-date bound and two detection dates,
+  the request budget cannot be reached by detection alone: the union of the
+  two walks is at most 21 extra dates, the re-read included. The request
+  budget is a backstop, and the wall-clock budget is the one that can bind.
+- **`feedSeriesCount`** is the run's own date only, so `--require-feed`'s
+  independence (Story 2.6 D-3) holds: an empty run date with games on the
+  previous date is still red.
 
 `scripts/probe-espn-adapter.mjs` is the committed live leg (owner-run, in the
 Story 2.4 precedent): one leg drives the SHIPPED adapter over a named date and
@@ -616,7 +696,12 @@ Two things a reader must not get wrong from that file:
   and a date-granular feed carries a Game 7 but never a series' first six games.
   So the April edge's "initialize the bracket" half is served by `--source=manual_csv`
   — Story 2.7's curated drill — while the June edge's "finalize" half is exactly
-  what the feed does. The re-point is in the same commit as the adapter by
+  what the feed does. **[2026-10-06, Story 2.18: the feed now births at a 3–3
+  too (above), so both halves run from the feed, with `manual_csv` as the
+  fallback. Both workflows `tee` the run log, and after their failure step two
+  more steps grep it for `BIRTH NEEDED:` and file a separate "Pipeline birth
+  needed" issue through the same `notify-failure` action. That issue is not a
+  failure, and the exit code is unchanged by it.]** The re-point is in the same commit as the adapter by
   design: a cadence defaulting to a source that cannot be reached from a runner
   is the failure Story 2.6's egress evidence was about.
 - **`--env-file` is absent on purpose.** Node treats a missing env-file as

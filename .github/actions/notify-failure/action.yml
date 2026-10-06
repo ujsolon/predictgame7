@@ -25,7 +25,10 @@ inputs:
     description: >-
       Exact issue title. It is the dedupe key, so it must be stable across
       runs — changing it strands the open issue and lets a new breakage look
-      like a different problem.
+      like a different problem. One deliberate exception: the Story 2.18
+      "Pipeline birth needed <UTC date>" title changes daily on purpose, so
+      each day's alert lines open an issue of their own instead of a
+      run-link-only comment.
     required: true
   body:
     description: >-

@@ -20,7 +20,13 @@
  *   error body carrying no `.events` key (measured), so a backfill would be a
  *   bounded loop of single-date requests — and this story builds the single-date
  *   form and nothing else. `seasontype`/`playoffType` are out of scope: never
- *   probed.
+ *   probed. [2026-10-06, Story 2.18 (`sprint-change-proposal-2026-10-06.md`):
+ *   still single-date, but no longer one per run. Each run also re-reads the
+ *   PREVIOUS date, and a Final Game 6 at 3–3 whose pair is not stored triggers a
+ *   bounded walk back (≤21 dates, shared within the run, ≤25 extra requests and
+ *   ~3 minutes per run) for that pair's games 1–5. `feedSeriesCount` still
+ *   counts the run's own date only, and every extra date is isolated: its
+ *   errors become `alerts`, never a thrown run. See "Story 2.18" below.]
  * - The date is DERIVED, never a parameter: the PREVIOUS `America/New_York`
  *   calendar day of the run instant. ESPN filters `dates` by US local date
  *   (measured: `dates=20260605` returned the game stamped `2026-06-06T00:30Z`),
@@ -56,7 +62,14 @@
  *   `status.type.description === 'Final'`: `in`, `pre`, and any unrecognised
  *   string are excluded, never defaulted to "finished" — `site.api.espn.com` is
  *   undocumented Disney-side infrastructure with no SLA, so a drifted payload
- *   must exit non-zero rather than invent a row.
+ *   must exit non-zero rather than invent a row. [2026-10-06, Story 2.18: the
+ *   rule above still decides what the run's OWN date admits as a game-7-only
+ *   source. Births are added beside it: a Final Game 6 whose
+ *   `competitions[0].series` stands 3–3 (wins read PER TEAM, joined on
+ *   `series.competitors[].id` = `competitors[].team.id`, never by position) and
+ *   whose pair is not stored is backfilled into an ordinary six-game source —
+ *   seven when that pair's Game 7 is also seen — so `plan.ts` births it through
+ *   the unchanged RPC and AD-4/AD-5 checks.]
  * - Failure posture (the discipline Story 2.4's retired stats.nba.com adapter set): 25 s
  *   `AbortSignal.timeout`, three attempts, `[1000, 4000]` ms backoff on
  *   429/5xx or a body that is not the expected scoreboard shape; non-retryable
@@ -139,8 +152,21 @@ const CONFERENCE_PREFIX_PATTERN = /^(East|West)\s+(.+)$/i;
 /** What one event's headline yields when it can be read at all. */
 type HeadlineParse = { depth: number; round: string; gameNumber: number } | { reason: string };
 
+/**
+ * Story 2.18 — `competitions[0].series` as the parse read it. Wins are joined
+ * PER TEAM: `series.competitors[].id` against the event's
+ * `competitors[].team.id` (measured: ESPN's numeric team id, e.g. `"7"`), never
+ * by array position — the spike measured GS–HOU reading `[0,1]` after Game 1,
+ * where the 1 belongs to the AWAY side. The read never throws: a field missing
+ * or malformed matters only on a Final Game 6, where the caller names it.
+ */
+export type SeriesRead =
+  | { kind: 'absent' }
+  | { kind: 'malformed'; reason: string }
+  | { kind: 'read'; homeWins: number; awayWins: number; completed: boolean; type: string | null };
+
 /** One event as the parse saw it, before admission. Scores stay raw: an unfinished game legitimately carries none. */
-interface ParsedEvent {
+export interface ParsedEvent {
   /** Diagnosis label used by every message this event can produce. */
   describe: string;
   /** Identity year: the LOCAL (`America/New_York`) calendar year of `events[].date`. */
@@ -160,12 +186,18 @@ interface ParsedEvent {
   awayCode: string;
   homeScoreRaw: unknown;
   awayScoreRaw: unknown;
+  /** Story 2.18: the series standing, joined per team. Read only for Game 6 detection and backfill certification. */
+  series: SeriesRead;
 }
 
 export interface EspnFeedResult {
   statuses: SeriesStatusRow[];
   scores: GameScoreRow[];
   report: AdapterRunReport;
+  /** Story 2.18: every event of the request date as parsed, so Game 6 detection reads the same parse the admission did. */
+  parsed?: ParsedEvent[];
+  /** Story 2.18: the admitted Game 7 events, index-parallel to `statuses` and `scores`. */
+  admittedEvents?: ParsedEvent[];
 }
 
 function pad(value: number, width = 2): string {
@@ -338,7 +370,7 @@ function readEvent(event: unknown, index: number): ParsedEvent {
         'entries — exactly two sides are required to name a game, and a one-sided event cannot be guessed into a row',
     );
   }
-  const seen: { side: string; code: string; score: unknown }[] = competitors.map((entry) => {
+  const seen: { side: string; code: string; score: unknown; espnId: string | null }[] = competitors.map((entry) => {
     const competitor = entry as Record<string, unknown>;
     const side = readString(competitor.homeAway, `event ${index} ${dateText}: competitions[].homeAway`);
     if (side !== 'home' && side !== 'away') {
@@ -354,7 +386,10 @@ function readEvent(event: unknown, index: number): ParsedEvent {
           'display name, a city, or any substring match (`teams.espn_code` is the only join key, Story 2.13)',
       );
     }
-    return { side, code, score: competitor.score };
+    // `team.id` is read for ONE purpose: joining the series standing's
+    // per-team wins (Story 2.18). It is never an identity — that is
+    // `teams.espn_code` through the abbreviation above, and nothing else.
+    return { side, code, score: competitor.score, espnId: idText((competitor.team as Record<string, unknown> | undefined)?.id) };
   });
   const home = seen.find((entry) => entry.side === 'home');
   const away = seen.find((entry) => entry.side === 'away');
@@ -385,7 +420,63 @@ function readEvent(event: unknown, index: number): ParsedEvent {
     awayCode: away.code,
     homeScoreRaw: home.score,
     awayScoreRaw: away.score,
+    series: readSeries(competition.series, home.espnId, away.espnId),
   };
+}
+
+/** An id as ESPN prints it — a digit string, or a number — normalised to text; anything else is no id. */
+function idText(value: unknown): string | null {
+  if (typeof value === 'string' && value !== '') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+/**
+ * Story 2.18 — `competitions[0].series` into per-team wins. The join is
+ * `series.competitors[].id` = `competitors[].team.id`; each side must match
+ * exactly one entry. Position is never read: ESPN orders `series.competitors`
+ * by its own rule, and the spike measured an order that does not follow
+ * who won (GS–HOU `[0,1]` after Game 1).
+ */
+export function readSeries(value: unknown, homeId: string | null, awayId: string | null): SeriesRead {
+  if (value === undefined || value === null) {
+    return { kind: 'absent' };
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { kind: 'malformed', reason: `competitions[0].series is ${JSON.stringify(value)}, not an object` };
+  }
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.completed !== 'boolean') {
+    return { kind: 'malformed', reason: `competitions[0].series.completed is ${JSON.stringify(raw.completed)}, not a boolean` };
+  }
+  const entries = raw.competitors;
+  if (!Array.isArray(entries) || entries.length !== 2) {
+    return {
+      kind: 'malformed',
+      reason: `competitions[0].series.competitors holds ${Array.isArray(entries) ? entries.length : '(not an array)'} entries, not two`,
+    };
+  }
+  if (homeId === null || awayId === null) {
+    return { kind: 'malformed', reason: 'competitors[].team.id is missing, so series.competitors[].id has nothing to join to' };
+  }
+  const winsOf = (teamId: string): number | string => {
+    const matches = entries.filter((entry) => idText((entry as Record<string, unknown> | null)?.id) === teamId);
+    if (matches.length !== 1) {
+      return `series.competitors carries ${matches.length} entries for team.id "${teamId}" (ids ${entries
+        .map((entry) => JSON.stringify((entry as Record<string, unknown> | null)?.id))
+        .join(', ')})`;
+    }
+    const wins = (matches[0] as Record<string, unknown>).wins;
+    if (typeof wins !== 'number' || !Number.isInteger(wins) || wins < 0 || wins > 4) {
+      return `series.competitors wins ${JSON.stringify(wins)} for team.id "${teamId}" is not an integer 0..4`;
+    }
+    return wins;
+  };
+  const homeWins = winsOf(homeId);
+  const awayWins = winsOf(awayId);
+  if (typeof homeWins === 'string') return { kind: 'malformed', reason: homeWins };
+  if (typeof awayWins === 'string') return { kind: 'malformed', reason: awayWins };
+  return { kind: 'read', homeWins, awayWins, completed: raw.completed, type: typeof raw.type === 'string' ? raw.type : null };
 }
 
 function isRetryableStatus(status: number): boolean {
@@ -433,6 +524,7 @@ function selectEvents(events: ParsedEvent[], deps: AdapterDeps, dates: string, u
 
   const statuses: SeriesStatusRow[] = [];
   const scores: GameScoreRow[] = [];
+  const admittedEvents: ParsedEvent[] = [];
   const notes: string[] = [];
   const depthCounts = new Map<number, number>();
   let excludedNonFinal = 0;
@@ -488,7 +580,7 @@ function selectEvents(events: ParsedEvent[], deps: AdapterDeps, dates: string, u
       excludedNotGameSeven += 1;
       notes.push(
         `espn: excluded ${event.describe} — game ${event.gameNumber} of 7. This feed is date-granular, so only a series' game 7 can be ` +
-          'carried alone; games 1-6 arrive through the curated path (Story 2.7)',
+          'carried alone; a Game 6 at 3–3 is detected separately and births through the bounded backfill (Story 2.18)',
       );
       continue;
     }
@@ -520,14 +612,15 @@ function selectEvents(events: ParsedEvent[], deps: AdapterDeps, dates: string, u
       home_score: homeScore,
       away_score: awayScore,
     });
+    admittedEvents.push(event);
   }
 
   const countsLine =
     `espn: ${feedSeriesCount} series in feed (dates=${dates}), ${statuses.length} Game-7 candidate(s) — excluded: ` +
     `${excludedNonFinal} not final, ${excludedNotGameSeven} final but not game 7, ${excludedHeadline} unreadable headline`;
   const histogramLine = `espn depth histogram ${formatHistogram(depthCounts)}`;
-  const report: AdapterRunReport = { countsLine, histogramLine, feedSeriesCount, notes };
-  return { statuses, scores, report };
+  const report: AdapterRunReport = { countsLine, histogramLine, feedSeriesCount, notes, alerts: [] };
+  return { statuses, scores, report, parsed: events, admittedEvents };
 }
 
 /**
@@ -537,6 +630,18 @@ function selectEvents(events: ParsedEvent[], deps: AdapterDeps, dates: string, u
  * fetch — no agent and no test ever does.
  */
 export async function buildFeed(url: string, dates: string, deps: AdapterDeps): Promise<EspnFeedResult> {
+  const events = await fetchScoreboardEvents(url, deps);
+  const parsed = events.map((event, index) => readEvent(event, index));
+  return selectEvents(parsed, deps, dates, url);
+}
+
+/**
+ * The single-date request with the shipped retry posture, returning the raw
+ * `events` array. Throws the terminal `EspnError` after the last attempt; the
+ * run's own date lets that throw end the run (today's posture), while Story
+ * 2.18's re-read and backfill dates catch it and turn it into an alert.
+ */
+async function fetchScoreboardEvents(url: string, deps: AdapterDeps): Promise<unknown[]> {
   const fetchImpl: FeedFetch = deps.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolveSleep) => setTimeout(resolveSleep, ms)));
 
@@ -569,19 +674,501 @@ export async function buildFeed(url: string, dates: string, deps: AdapterDeps): 
       lastReason = `response body is not JSON: ${error instanceof Error ? error.message : String(error)}`;
       continue;
     }
-    let events: unknown[];
     try {
-      events = eventsOf(body);
+      return eventsOf(body);
     } catch (error) {
       // A body that is not the scoreboard shape is drift, and drift is retried
       // as Story 2.4's retired adapter treated it — the terminal message still names the URL.
       lastReason = `response ${error instanceof Error ? error.message : String(error)}`;
-      continue;
     }
-    const parsed = events.map((event, index) => readEvent(event, index));
-    return selectEvents(parsed, deps, dates, url);
   }
   throw terminalFetchError(url, lastReason, MAX_FEED_ATTEMPTS);
+}
+
+// ---------------------------------------------------------------------------
+// Story 2.18 — the scheduled run births a series at 3–3
+// (`sprint-change-proposal-2026-10-06.md`, owner decision option B).
+//
+// Every request below is the same single-date form through the same retry
+// posture as the run's own date. What differs is the failure posture: the run's
+// own date still ends the run when it cannot be read, while a re-read or
+// backfill date that throws, drifts or times out becomes an ALERT and the run
+// carries on — completions and the insights refresh must never wait on a
+// backfill. `feedSeriesCount` is never touched here: it is the run's own date
+// only (Story 2.6 D-3), so `--require-feed` cannot be satisfied by yesterday.
+// ---------------------------------------------------------------------------
+
+/** Games 1–5 are looked for on at most this many dates, Game 6's own date counted as the first (the spike's bound; it measured 13). */
+export const BACKFILL_DATE_BOUND = 21;
+/** Extra dates (re-read plus backfill) one run may request; retries of the same date are not counted separately. */
+export const EXTRA_REQUEST_BUDGET = 25;
+/** Wall-clock budget for the extra dates, checked before each new one starts — well under the workflow's 10-minute step. */
+export const EXTRA_WALL_CLOCK_BUDGET_MS = 180_000;
+/** Where every alert sends the owner. */
+export const RUNBOOK_PATH = 'docs/PLAYOFF_RUNBOOK.md';
+
+/** `YYYYMMDD` moved by whole calendar days, by `Date.UTC` arithmetic (month and year underflow included). */
+export function shiftDates(dates: string, days: number): string {
+  const shifted = new Date(Date.UTC(Number(dates.slice(0, 4)), Number(dates.slice(4, 6)) - 1, Number(dates.slice(6, 8)) + days));
+  return `${shifted.getUTCFullYear()}${pad(shifted.getUTCMonth() + 1)}${pad(shifted.getUTCDate())}`;
+}
+
+type ExtraPage =
+  | { ok: true; events: ParsedEvent[]; unreadable: string[] }
+  | { ok: false; reason: string; budgetSpent: boolean };
+
+interface ExtraPages {
+  read(dates: string, purpose: string): Promise<ExtraPage>;
+  /** Extra dates actually requested this run, in order — each at most once. */
+  requested: string[];
+  limit: number;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The per-run date cache plus the budget. A date is fetched at most once per
+ * run whoever asks for it (the re-read, or the backfills, which run in turn),
+ * and the run's own date is served from the primary parse without a request.
+ * A failed date is cached as failed: it is alerted once and not re-asked.
+ */
+function createExtraPages(deps: AdapterDeps, primaryDates: string, primaryEvents: ParsedEvent[], alerts: string[]): ExtraPages {
+  const budget = deps.extraFetchBudget ?? { requests: EXTRA_REQUEST_BUDGET, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS };
+  const clock = deps.monotonicNow ?? (() => performance.now());
+  const startedAt = clock();
+  const cache = new Map<string, ExtraPage>([[primaryDates, { ok: true, events: primaryEvents, unreadable: [] }]]);
+  const requested: string[] = [];
+  return {
+    requested,
+    limit: budget.requests,
+    async read(dates, purpose) {
+      const cached = cache.get(dates);
+      if (cached) return cached;
+      if (requested.length >= budget.requests) {
+        return { ok: false, budgetSpent: true, reason: `the per-run budget of ${budget.requests} extra request(s) is spent` };
+      }
+      if (clock() - startedAt >= budget.wallClockMs) {
+        return {
+          ok: false,
+          budgetSpent: true,
+          reason: `the per-run wall-clock budget of ${Math.round(budget.wallClockMs / 1000)} s for extra requests is spent`,
+        };
+      }
+      requested.push(dates);
+      let page: ExtraPage;
+      try {
+        const raw = await fetchScoreboardEvents(scoreboardUrl(dates), deps);
+        const events: ParsedEvent[] = [];
+        const unreadable: string[] = [];
+        raw.forEach((event, index) => {
+          try {
+            events.push(readEvent(event, index));
+          } catch (error) {
+            unreadable.push(messageOf(error));
+          }
+        });
+        page = { ok: true, events, unreadable };
+      } catch (error) {
+        page = { ok: false, budgetSpent: false, reason: messageOf(error) };
+        alerts.push(
+          `espn: dates=${dates} (${purpose}) could not be read — ${messageOf(error)}. It is not counted in feedSeriesCount and the run ` +
+            `carried on, but a Game 6 at 3–3 or a Game 7 on that date may have been missed; check it per ${RUNBOOK_PATH}`,
+        );
+      }
+      cache.set(dates, page);
+      return page;
+    },
+  };
+}
+
+/** What a Final event says about a birth: nothing, a silent non-candidate, a 3–3 Game 6, or a disagreement that must be loud. */
+export type GameSixVerdict = { kind: 'none' } | { kind: 'silent'; why: string } | { kind: 'candidate' } | { kind: 'alert'; reason: string };
+
+/**
+ * Game 6 detection. The headline names the game when it can be read; when it
+ * cannot, a Final event whose `series` stands 3–3 and not completed still
+ * counts as a Game 6 (only a Game 6 can leave a best-of-seven there). Where
+ * the two sources both speak and disagree, the verdict is an alert — never a
+ * quiet pick of one.
+ */
+export function classifyGameSix(event: ParsedEvent): GameSixVerdict {
+  if (event.state !== 'post' || event.description !== 'Final') {
+    return { kind: 'none' };
+  }
+  const series = event.series;
+  const tied = series.kind === 'read' && !series.completed && series.homeWins === 3 && series.awayWins === 3;
+  const headlineGame = event.gameNumber;
+  if (headlineGame !== null && headlineGame !== 6) {
+    return tied
+      ? {
+          kind: 'alert',
+          reason: `its headline names game ${headlineGame}, but competitions[0].series stands 3–3 and not completed, which only a Game 6 can`,
+        }
+      : { kind: 'none' };
+  }
+  if (headlineGame === 6) {
+    if (series.kind === 'absent') {
+      return { kind: 'alert', reason: 'competitions[0].series is absent, so the 3–3 cannot be read' };
+    }
+    if (series.kind === 'malformed') {
+      return { kind: 'alert', reason: `${series.reason}, so the 3–3 cannot be read` };
+    }
+    const total = series.homeWins + series.awayWins;
+    if (total !== 6) {
+      return {
+        kind: 'alert',
+        reason: `its headline names game 6, but competitions[0].series wins total ${total} (home ${series.homeWins}, away ${series.awayWins})`,
+      };
+    }
+    if (tied) return { kind: 'candidate' };
+    if (series.completed && series.homeWins !== 3) {
+      return { kind: 'silent', why: `the series was decided ${series.homeWins}-${series.awayWins} at game 6` };
+    }
+    return {
+      kind: 'alert',
+      reason: `competitions[0].series reads ${series.homeWins}-${series.awayWins} with completed=${series.completed}, which no Game 6 can`,
+    };
+  }
+  if (tied && series.kind === 'read' && (series.type === null || series.type === 'playoff')) {
+    return { kind: 'candidate' };
+  }
+  return { kind: 'none' };
+}
+
+interface BirthTarget {
+  origin: string;
+  pageDates: string;
+  event: ParsedEvent;
+  homeId: number;
+  awayId: number;
+  label: string;
+}
+
+interface AssembledBirth {
+  status: SeriesStatusRow;
+  scores: GameScoreRow[];
+  label: string;
+}
+
+function pairLabel(year: number, left: string, right: string): string {
+  return `${year} ${[left, right].sort().join('–')}`;
+}
+
+function pairKey(year: number, left: number, right: number): string {
+  return `${year}|${Math.min(left, right)}|${Math.max(left, right)}`;
+}
+
+type BackfillOutcome = { ok: true; birth: AssembledBirth; note: string } | { ok: false; alert: string };
+
+/**
+ * Walk back from Game 6's date, one date at a time, for the target pair's
+ * games 1–5, then certify the six. Only the target pair's games 1–5 are read
+ * off a walked page — every other event there is ignored: never admitted,
+ * completed, backfilled from or counted.
+ */
+async function backfillBirth(target: BirthTarget, pages: ExtraPages): Promise<BackfillOutcome> {
+  const head = `${target.label} (Game 6 on dates=${target.pageDates}, ${target.origin}) stands 3–3 with no stored row, but`;
+  const fail = (reason: string): BackfillOutcome => ({
+    ok: false,
+    alert: `espn: ${head} ${reason}. Nothing was born for it; curate it per ${RUNBOOK_PATH}`,
+  });
+  const pairCodes = new Set([target.event.homeCode, target.event.awayCode]);
+  const found = new Map<number, { event: ParsedEvent; dates: string }>();
+  const problems: string[] = [];
+  const walked: string[] = [];
+  let stoppedBy: string | null = null;
+
+  for (let offset = 1; offset < BACKFILL_DATE_BOUND && found.size < 5; offset++) {
+    const dates = shiftDates(target.pageDates, -offset);
+    const page = await pages.read(dates, `backfill for ${target.label}`);
+    if (!page.ok && page.budgetSpent) {
+      stoppedBy = page.reason;
+      break;
+    }
+    walked.push(dates);
+    if (!page.ok) {
+      problems.push(`dates=${dates} could not be read`);
+      continue;
+    }
+    if (page.unreadable.length > 0) {
+      problems.push(`dates=${dates} carried ${page.unreadable.length} event(s) the parse refused (${page.unreadable.join('; ')})`);
+    }
+    for (const event of page.events) {
+      if (!pairCodes.has(event.homeCode) || !pairCodes.has(event.awayCode)) continue;
+      const number = event.gameNumber;
+      if (number === null) {
+        problems.push(`${event.describe} has no readable game number (${event.headlineReason ?? 'no headline'})`);
+        continue;
+      }
+      if (number < 1 || number > 5) {
+        problems.push(`${event.describe} is game ${number}, dated before Game 6`);
+        continue;
+      }
+      if (event.state !== 'post' || event.description !== 'Final') {
+        problems.push(`${event.describe} is not Final`);
+        continue;
+      }
+      const earlier = found.get(number);
+      if (earlier) {
+        return fail(`game ${number} appears twice in the walk (${earlier.event.describe}; ${event.describe})`);
+      }
+      found.set(number, { event, dates });
+    }
+  }
+
+  const missing = [1, 2, 3, 4, 5].filter((number) => !found.has(number));
+  if (missing.length > 0) {
+    const span = walked.length > 0 ? `walked ${walked[0]}..${walked[walked.length - 1]}` : 'walked no date';
+    const extra = [stoppedBy ? `stopped early: ${stoppedBy}` : null, ...problems].filter(Boolean).join('; ');
+    return fail(
+      `game(s) ${missing.join(', ')} were not found as Final, headline-numbered games of this pair within ${BACKFILL_DATE_BOUND} dates ` +
+        `(${span}${extra ? `; ${extra}` : ''})`,
+    );
+  }
+
+  // Certification. Games 1..6 in order: the walk's five plus Game 6 itself.
+  const games = [1, 2, 3, 4, 5].map((number) => (found.get(number) as { event: ParsedEvent }).event).concat(target.event);
+  const rounds = [...new Set(games.flatMap((event) => (event.round === null ? [] : [event.round])))];
+  if (rounds.length !== 1) {
+    return fail(`its games name ${rounds.length === 0 ? 'no round' : `different rounds (${rounds.join(', ')})`}`);
+  }
+  const offYear = games.find((event) => event.year !== target.event.year);
+  if (offYear) {
+    return fail(`${offYear.describe} falls in ${offYear.year}, not the Game 6 year ${target.event.year}`);
+  }
+  const wins = new Map<string, number>([...pairCodes].map((code) => [code, 0]));
+  const scored: { event: ParsedEvent; homeScore: number; awayScore: number }[] = [];
+  for (const [index, event] of games.entries()) {
+    const number = index + 1;
+    let homeScore: number;
+    let awayScore: number;
+    try {
+      homeScore = readScore(event.homeScoreRaw, event.describe, 'home');
+      awayScore = readScore(event.awayScoreRaw, event.describe, 'away');
+    } catch (error) {
+      return fail(`game ${number}: ${messageOf(error)}`);
+    }
+    if (homeScore === awayScore) {
+      return fail(`game ${number} (${event.describe}) is tied ${homeScore}-${awayScore}`);
+    }
+    const winner = homeScore > awayScore ? event.homeCode : event.awayCode;
+    wins.set(winner, (wins.get(winner) ?? 0) + 1);
+    const standing = event.series;
+    if (standing.kind !== 'read') {
+      const why = standing.kind === 'absent' ? 'competitions[0].series is absent' : standing.reason;
+      return fail(`game ${number} (${event.describe}): ${why}, so its own standing cannot cross-check the scores`);
+    }
+    // The progression cross-check: the event's own standing, joined per team,
+    // must equal the running wins the SCORES of games 1..N give.
+    const expectedHome = wins.get(event.homeCode) ?? 0;
+    const expectedAway = wins.get(event.awayCode) ?? 0;
+    if (standing.homeWins !== expectedHome || standing.awayWins !== expectedAway) {
+      return fail(
+        `game ${number} (${event.describe}): its own series standing reads ${event.homeCode} ${standing.homeWins}–${standing.awayWins} ` +
+          `${event.awayCode}, but the scores of games 1–${number} give ${event.homeCode} ${expectedHome}–${expectedAway} ${event.awayCode}`,
+      );
+    }
+    scored.push({ event, homeScore, awayScore });
+  }
+  if ([...wins.values()].some((count) => count !== 3)) {
+    return fail(`its six scores split ${[...wins.entries()].map(([code, count]) => `${code} ${count}`).join(', ')} rather than 3–3`);
+  }
+
+  // `team_a` = Game 1's home team (AD-5), and every row of the pair uses that
+  // one orientation, because `groupSourceRows` keys on the ordered pair.
+  const idOf = (code: string) => (code === target.event.homeCode ? target.homeId : target.awayId);
+  const gameOne = games[0];
+  const teamA = idOf(gameOne.homeCode);
+  const teamB = idOf(gameOne.awayCode);
+  const year = target.event.year;
+  const birth: AssembledBirth = {
+    label: target.label,
+    status: { year, round: rounds[0], team_a_id: teamA, team_b_id: teamB, winner_team_id: null },
+    scores: scored.map(({ event, homeScore, awayScore }, index) => ({
+      year,
+      team_a_id: teamA,
+      team_b_id: teamB,
+      game_number: index + 1,
+      home_team_id: idOf(event.homeCode),
+      away_team_id: idOf(event.awayCode),
+      home_score: homeScore,
+      away_score: awayScore,
+    })),
+  };
+  const foundOn = [1, 2, 3, 4, 5].map((number) => `G${number} ${(found.get(number) as { dates: string }).dates}`).join(', ');
+  return {
+    ok: true,
+    birth,
+    note:
+      `espn: birth source assembled — ${target.label} ${rounds[0]}: games 1–6 certified (${foundOn}, G6 ${target.pageDates}; ` +
+      `Game 1 home ${gameOne.homeCode} → team_a), every game's own series standing matches the running score wins`,
+  };
+}
+
+interface SeenGameSeven {
+  status: SeriesStatusRow;
+  score: GameScoreRow;
+  event: ParsedEvent;
+  origin: string;
+  pageDates: string;
+}
+
+/**
+ * The run beyond its own date: re-read the previous date for Game 6s at 3–3
+ * (never for Game 7s), backfill and certify them, fold the run date's Game 7
+ * into its birth, and drop (loudly) a run-date Game 7 whose pair is known to
+ * be unborn. The primary result's
+ * `feedSeriesCount`, counts line and histogram pass through untouched.
+ */
+async function extendWithBirths(primary: EspnFeedResult, dates: string, deps: AdapterDeps): Promise<EspnFeedResult> {
+  const resolver = deps.teamIdByEspnCode as (code: string) => number | undefined;
+  const stored = (year: number, left: number, right: number): boolean | undefined =>
+    deps.isPairStored ? deps.isPairStored(year, left, right) : undefined;
+  const notes: string[] = [];
+  const alerts: string[] = [];
+  const pages = createExtraPages(deps, dates, primary.parsed ?? [], alerts);
+
+  const targets: BirthTarget[] = [];
+  const consider = (event: ParsedEvent, origin: string, pageDates: string, homeId: number, awayId: number) => {
+    const verdict = classifyGameSix(event);
+    if (verdict.kind === 'none') return;
+    const label = pairLabel(event.year, event.homeCode, event.awayCode);
+    if (stored(event.year, homeId, awayId) === true) {
+      notes.push(`espn: ${label} Game 6 (${event.describe}) — the pair is already stored; no backfill`);
+      return;
+    }
+    if (verdict.kind === 'silent') {
+      notes.push(`espn: ${label} Game 6 (${event.describe}) — ${verdict.why}; no birth`);
+      return;
+    }
+    if (verdict.kind === 'alert') {
+      alerts.push(
+        `espn: ${label} (${event.describe}, dates=${pageDates}, ${origin}) — ${verdict.reason}. Nothing was born for it; check it per ${RUNBOOK_PATH}`,
+      );
+      return;
+    }
+    const key = pairKey(event.year, homeId, awayId);
+    if (targets.some((target) => pairKey(target.event.year, target.homeId, target.awayId) === key)) return;
+    targets.push({ origin, pageDates, event, homeId, awayId, label });
+  };
+
+  // The run's own date: `selectEvents` already resolved every code or threw.
+  for (const event of primary.parsed ?? []) {
+    consider(event, 'the run date', dates, resolver(event.homeCode) as number, resolver(event.awayCode) as number);
+  }
+
+  const sevens: SeenGameSeven[] = (primary.admittedEvents ?? []).map((event, index) => ({
+    status: primary.statuses[index],
+    score: primary.scores[index],
+    event,
+    origin: 'the run date',
+    pageDates: dates,
+  }));
+
+  // The previous date, for births only: Game 6s at 3–3. Its Game 7s are NOT
+  // read for completions (owner decision 2026-10-06, Story 2.18 review): a
+  // completion comes from the run's own date only, so a red run always means
+  // the run's own date, and yesterday's finished series is never re-planned.
+  const rereadDates = shiftDates(dates, -1);
+  const reread = await pages.read(rereadDates, 're-read of the previous date');
+  if (reread.ok) {
+    let gameSixSignals = 0;
+    let gameSevensIgnored = 0;
+    if (reread.unreadable.length > 0) {
+      alerts.push(
+        `espn: dates=${rereadDates} (re-read of the previous date) carried ${reread.unreadable.length} event(s) the parse refused ` +
+          `(${reread.unreadable.join('; ')}) — a Game 6 at 3–3 there may have been missed; check it per ${RUNBOOK_PATH}`,
+      );
+    }
+    for (const event of reread.events) {
+      if (event.gameNumber === 7) {
+        gameSevensIgnored += 1;
+        continue;
+      }
+      if (classifyGameSix(event).kind === 'none') continue;
+      const homeId = resolver(event.homeCode);
+      const awayId = resolver(event.awayCode);
+      if (homeId === undefined || awayId === undefined) {
+        alerts.push(
+          `espn: ${event.describe} (dates=${rereadDates}, re-read) carries an ESPN code no teams.espn_code holds ` +
+            `("${homeId === undefined ? event.homeCode : event.awayCode}"); it was skipped — check it per ${RUNBOOK_PATH}`,
+        );
+        continue;
+      }
+      gameSixSignals += 1;
+      consider(event, 're-read', rereadDates, homeId, awayId);
+    }
+    // Printed only when the re-read carried games: an empty previous date (a
+    // rest day, the whole offseason) adds no line to the report.
+    if (reread.events.length > 0) {
+      notes.push(
+        `espn re-read dates=${rereadDates} (the previous date, births only; never counted in feedSeriesCount): ` +
+          `${reread.events.length} event(s), ${gameSixSignals} Game-6 signal(s), ${gameSevensIgnored} Game 7(s) ignored`,
+      );
+    }
+  } else {
+    notes.push(`espn re-read dates=${rereadDates} (the previous date) could not be read: ${reread.reason}`);
+    if (reread.budgetSpent) {
+      alerts.push(`espn: the re-read of dates=${rereadDates} never ran — ${reread.reason}; check that date per ${RUNBOOK_PATH}`);
+    }
+  }
+
+  // Backfill each target in turn; the date cache shares pages between them.
+  const births = new Map<string, AssembledBirth>();
+  for (const target of targets) {
+    notes.push(`espn: ${target.label} Game 6 at 3–3 (${target.event.describe}, ${target.origin}) — no stored row; backfilling games 1–5`);
+    const outcome = await backfillBirth(target, pages);
+    if (outcome.ok) {
+      births.set(pairKey(target.event.year, target.homeId, target.awayId), outcome.birth);
+      notes.push(outcome.note);
+    } else {
+      alerts.push(outcome.alert);
+    }
+  }
+
+  // Assemble: kept Game 7s in feed order, then the births.
+  const statuses: SeriesStatusRow[] = [];
+  const scores: GameScoreRow[] = [];
+  for (const seven of sevens) {
+    const birth = births.get(pairKey(seven.status.year, seven.status.team_a_id, seven.status.team_b_id));
+    if (birth) {
+      // Seven games seen in one run: birth plus follow-up, every row in the
+      // birth's `team_a` = Game 1 home orientation.
+      birth.scores.push({ ...seven.score, team_a_id: birth.status.team_a_id, team_b_id: birth.status.team_b_id });
+      birth.status.winner_team_id = seven.status.winner_team_id;
+      notes.push(`espn: ${birth.label} Game 7 (${seven.event.describe}, ${seven.origin}) folded into its birth — seven games, birth plus completion`);
+      continue;
+    }
+    if (stored(seven.status.year, seven.status.team_a_id, seven.status.team_b_id) === false) {
+      alerts.push(
+        `espn: ${pairLabel(seven.status.year, seven.event.homeCode, seven.event.awayCode)} Game 7 (${seven.event.describe}, ` +
+          `dates=${seven.pageDates}, ${seven.origin}) has no stored row and no birth was assembled for it this run — the series was ` +
+          `never born, so this Game 7 cannot complete it and was left out of the plan. Birth it with games 1–7 per ${RUNBOOK_PATH}`,
+      );
+      continue;
+    }
+    statuses.push(seven.status);
+    scores.push(seven.score);
+  }
+  for (const birth of births.values()) {
+    statuses.push(birth.status);
+    scores.push(...birth.scores);
+  }
+
+  if (targets.length > 0) {
+    notes.push(
+      `espn extra requests: ${pages.requested.length} of a ${pages.limit}-date budget (dates ${pages.requested.join(', ')}) — none ` +
+        'counted in feedSeriesCount',
+    );
+  }
+  const report: AdapterRunReport = {
+    ...primary.report,
+    notes: [...primary.report.notes, ...notes],
+    alerts: [...primary.report.alerts, ...alerts],
+  };
+  return { statuses, scores, report, parsed: primary.parsed, admittedEvents: [] };
 }
 
 /**
@@ -598,10 +1185,14 @@ export function createEspnAdapter(deps: AdapterDeps): SeriesDataSource {
   let settled: EspnFeedResult | null = null;
   function feed(): Promise<EspnFeedResult> {
     if (!feedPromise) {
-      feedPromise = buildFeed(url, dates, deps).then((result) => {
-        settled = result;
-        return result;
-      });
+      // The run's own date first, with today's failure posture (a throw ends
+      // the run); only then the isolated extra dates of Story 2.18.
+      feedPromise = buildFeed(url, dates, deps)
+        .then((primary) => extendWithBirths(primary, dates, deps))
+        .then((result) => {
+          settled = result;
+          return result;
+        });
     }
     return feedPromise;
   }

@@ -1,0 +1,72 @@
+// Story 2.18 spike (owner-released one-time fetch, 2026-10-06): can a Game 6 at 3-3 be
+// detected from the scoreboard and games 1-5 backfilled by single-date requests?
+import { writeFileSync } from 'node:fs';
+import https from 'node:https';
+import dns from 'node:dns';
+// The local router refuses site.api.espn.com (RCODE_REFUSED, recorded in spec-2-13 run-sheet.md);
+// resolve through a public resolver for this probe only.
+const resolver = new dns.Resolver(); resolver.setServers(['1.1.1.1']);
+const lookup = (host, opts, cb) => resolver.resolve4(host, (err, addrs) => {
+  if (err) return cb(err);
+  if (opts && opts.all) return cb(null, addrs.map((address) => ({ address, family: 4 })));
+  cb(null, addrs[0], 4);
+});
+const getJson = (url) => new Promise((resolve, reject) => {
+  https.get(url, { lookup, headers: { Accept: 'application/json' } }, (res) => {
+    let data = ''; res.on('data', (c) => (data += c));
+    res.on('end', () => resolve({ ok: res.statusCode === 200, status: res.statusCode, json: async () => JSON.parse(data) }));
+  }).on('error', reject);
+});
+const OUT = process.argv[2];
+const PAIR = new Set(['DEN', 'LAC']);
+const BOUND = 21;
+const base = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=';
+const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, '');
+let requests = 0;
+const nonOk = [];
+const timings = [];
+async function day(d) {
+  const ds = fmt(d);
+  const t0 = Date.now();
+  const res = await getJson(base + ds);
+  requests++;
+  timings.push(Date.now() - t0);
+  if (!res.ok) { nonOk.push(`${ds}:${res.status}`); return { ds, events: [] }; }
+  const body = await res.json();
+  writeFileSync(`${OUT}/scoreboard-${ds}.json`, JSON.stringify(body));
+  return { ds, events: body.events ?? [] };
+}
+function readPairGame(ev) {
+  const c = ev.competitions?.[0];
+  const teams = (c?.competitors ?? []).map((t) => t.team?.abbreviation);
+  if (!teams.every((t) => PAIR.has(t)) || teams.length !== 2) return null;
+  const headline = c?.notes?.[0]?.headline ?? '';
+  const m = /Game (\d)/.exec(headline);
+  const home = c.competitors.find((t) => t.homeAway === 'home');
+  const away = c.competitors.find((t) => t.homeAway === 'away');
+  return {
+    game: m ? Number(m[1]) : null, headline, status: c.status?.type?.description ?? ev.status?.type?.description,
+    home: home.team.abbreviation, away: away.team.abbreviation, hs: Number(home.score), as: Number(away.score),
+    series: c.series ? { summary: c.series.summary, completed: c.series.completed, wins: c.series.competitors?.map((x) => x.wins) } : null,
+    date: ev.date,
+  };
+}
+const found = new Map();
+const g6date = new Date(Date.UTC(2025, 4, 1));
+const otherHeadlines = new Set();
+for (let i = 0; i < BOUND && found.size < 6; i++) {
+  const d = new Date(g6date.getTime() - i * 86400000);
+  const { ds, events } = await day(d);
+  for (const ev of events) {
+    const g = readPairGame(ev);
+    if (g && g.game) found.set(g.game, { ...g, queried: ds });
+    else otherHeadlines.add(ev.competitions?.[0]?.notes?.[0]?.headline ?? '(no headline)');
+  }
+  await new Promise((r) => setTimeout(r, 250));
+}
+const games = [...found.values()].sort((a, b) => a.game - b.game);
+for (const g of games) console.log(`G${g.game} q=${g.queried} ${g.status} ${g.home} ${g.hs}-${g.as} ${g.away} | ${g.headline} | series=${JSON.stringify(g.series)}`);
+const winsOf = (t) => games.filter((g) => g.game <= 6).filter((g) => (g.hs > g.as ? g.home : g.away) === t).length;
+console.log(`games found: ${games.map((g) => g.game).join(',')}; DEN wins 1-6: ${winsOf('DEN')}, LAC: ${winsOf('LAC')}; game1 home: ${games.find((g) => g.game === 1)?.home}`);
+console.log(`requests: ${requests}; non-OK: ${nonOk.join(' ') || 'none'}; latency ms min/max: ${Math.min(...timings)}/${Math.max(...timings)}`);
+console.log(`other headlines seen: ${[...otherHeadlines].slice(0, 12).join(' | ')}`);

@@ -10,6 +10,12 @@
 //      coverage CAP-8 exists to measure: `notes[0].headline`, `status.type`,
 //      `competitors[].team.abbreviation`, `.homeAway`, `.score`. A PASS here
 //      certifies the parse the pipeline runs, on a payload nobody trimmed.
+//      [2026-10-06, Story 2.18: the shipped adapter also re-reads the previous
+//      date, and backfills when it sees a Game 6 at 3-3, so leg A makes more
+//      than one request; coverage is still measured on the named date only.
+//      The probe passes no `isPairStored`, so a Game 6 at 3-3 on the named or
+//      previous date is always backfilled: up to 20 more live dates, within
+//      the adapter's 25-request / ~3-minute budget.]
 //   B. The 30-franchise ESPN code table. `payload-contract.md` first measured
 //      five codes (`CLE`, `TOR`, `DEN`, `NY`, `SA`) and ASSUMED the other 25
 //      agreed with `teams.abbreviation`; this leg's 2026-10-04 run measured all
@@ -140,7 +146,7 @@ async function runProbe(datesArg) {
   // The shipped code — imported, never copied. If this import fails the probe
   // must not quietly fall back to its own parse; the catch above exits 2.
   const shipped = await import('../supabase/scripts/pipeline/adapters/espn.ts');
-  const { createEspnAdapter, deriveRequestDate, scoreboardUrl, parseHeadline, etCalendarDay, SCOREBOARD_ENDPOINT, ESPN_HEADERS, describeFetchThrow } =
+  const { createEspnAdapter, deriveRequestDate, scoreboardUrl, parseHeadline, etCalendarDay, SCOREBOARD_ENDPOINT, ESPN_HEADERS, describeFetchThrow, shiftDates } =
     shipped;
 
   const runDate = new Date();
@@ -189,7 +195,10 @@ async function runProbe(datesArg) {
       } catch {
         body = undefined;
       }
-      if (response.ok && body) captured = body;
+      // Story 2.18: the adapter now also asks the previous date (and, at a
+      // 3-3 Game 6, a bounded backfill). Field coverage is measured on the
+      // date named here, so only that date's body is captured.
+      if (response.ok && body && url === scoreboardUrl(datesArg)) captured = body;
       return { ok: response.ok, status: response.status, json: async () => body };
     };
 
@@ -225,20 +234,28 @@ async function runProbe(datesArg) {
       throw new Error(`the shipped adapter aborted: ${error instanceof Error ? error.message : String(error)}`);
     }
 
+    // [Story 2.18: no longer one request per run. The named date comes first;
+    // every later request must be another single-date scoreboard URL (the
+    // previous date's re-read, or a backfill).]
     const distinctUrls = new Set(feedUrls);
-    if (distinctUrls.size > 1) {
-      throw new Error(`one-request-per-run violated: ${distinctUrls.size} distinct feed URLs in one run — ${[...distinctUrls].join(' | ')}`);
-    }
     if (feedUrls[0] !== scoreboardUrl(datesArg)) {
-      throw new Error(`the adapter asked ${feedUrls[0]} — expected exactly ${scoreboardUrl(datesArg)}`);
+      throw new Error(`the adapter asked ${feedUrls[0]} first — expected exactly ${scoreboardUrl(datesArg)}`);
+    }
+    const strays = [...distinctUrls].filter((url) => !/^https:\/\/site\.api\.espn\.com\/apis\/site\/v2\/sports\/basketball\/nba\/scoreboard\?dates=\d{8}$/.test(url));
+    if (strays.length > 0) {
+      throw new Error(`the adapter asked a URL that is not the single-date form: ${strays.join(' | ')}`);
+    }
+    if (feedUrls.indexOf(scoreboardUrl(shiftDates(datesArg, -1))) === -1) {
+      throw new Error(`the adapter never re-read the previous date ${shiftDates(datesArg, -1)} (Story 2.18)`);
     }
 
     console.log(report.countsLine);
     console.log(report.histogramLine);
     for (const note of report.notes) console.log(note);
-    console.log(`feed requests made by the adapter: ${feedUrls.length} call(s), ${distinctUrls.size} distinct URL`);
+    for (const alert of report.alerts) console.log(`BIRTH NEEDED: ${alert}`);
+    console.log(`feed requests made by the adapter: ${feedUrls.length} call(s), ${distinctUrls.size} distinct URL(s)`);
     console.log(`URL: ${feedUrls[0]}`);
-    console.log(`port rows: ${statuses.length} series status(es), ${scores.length} game score(s) — non-Game-7 dates yield zero rows BY RULE`);
+    console.log(`port rows: ${statuses.length} series status(es), ${scores.length} game score(s) — a date with neither a Game 7 nor a certified 3–3 Game 6 (named or re-read) yields zero rows BY RULE`);
 
     if (!captured) throw new Error('the adapter succeeded but the raw capture is empty — probe wiring bug');
     const events = captured.events;

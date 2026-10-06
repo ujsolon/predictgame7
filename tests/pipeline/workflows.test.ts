@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
+import { BIRTH_NEEDED_PREFIX } from '../../supabase/scripts/pipeline/run.ts';
 
 interface Step {
   name?: string;
@@ -167,6 +168,8 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // `espn` never re-asks a date, so a red run the morning after a Game 7
     // loses that game from the automated path (owner call 2026-10-05, review
     // #39). The issue body is where the operator reads the recovery.
+    // [Story 2.18: the re-read of the previous date is for births only and
+    // ignores Game 7s (owner decision, Story 2.18 review), so this holds.]
     const body = String(notifyStepOf(INSEASON)?.with?.body ?? '');
     expect(body).toContain('MISSED GAME 7 RECOVERY');
     expect(body).toContain('supabase/scripts/pipeline/data/series_manual.csv');
@@ -253,6 +256,64 @@ describe('both pipeline workflows — the shared mechanics', () => {
       const notify = notifyStepOf(rel);
       expect(notify?.uses).toBe('./.github/actions/notify-failure');
       expect(notify?.if).toBe('failure()');
+    });
+  }
+});
+
+// Story 2.18 — a birth the run could not certify is an ALERT, not a failure: the
+// runner prints `BIRTH NEEDED:` lines and keeps its exit code, and each pipeline
+// workflow greps its own log for them and files a distinct issue. These pins are
+// what keep that wire connected end to end: the runner's prefix constant, the
+// grep, the tee that makes a log to grep, and pipefail so the tee does not
+// swallow the runner's exit code (which would silence the failure issue).
+describe('both pipeline workflows — the Story 2.18 birth-needed alert', () => {
+  for (const rel of [INSEASON, OFFSEASON]) {
+    const named = (name: string) => stepsOf(rel).find((step) => step.name === name);
+
+    it(`${rel}: the run step keeps a log copy without losing the runner's exit code`, () => {
+      const run = named('Run the pipeline')?.run ?? '';
+      expect(run).toMatch(/^set -o pipefail$/m);
+      expect(run).toMatch(/supabase\/scripts\/pipeline\/run\.ts .*2>&1 \| tee "\$RUNNER_TEMP\/pipeline\.log"$/m);
+    });
+
+    it(`${rel}: the alert step greps the runner's own prefix, on every outcome`, () => {
+      const collect = named('Collect birth-needed alerts');
+      expect(collect?.if).toBe('always()');
+      expect((collect as Step & { id?: string })?.id).toBe('alerts');
+      expect(BIRTH_NEEDED_PREFIX).toBe('BIRTH NEEDED:');
+      const grepped = (collect?.run ?? '').match(/grep(?: -q)? '\^([^']+)'/g) ?? [];
+      expect(grepped).toHaveLength(2);
+      for (const call of grepped) expect(call).toContain(`'^${BIRTH_NEEDED_PREFIX}'`);
+      expect(collect?.run).toContain('$RUNNER_TEMP/pipeline.log');
+      expect(collect?.run).toContain('>> "$GITHUB_OUTPUT"');
+      // The UTC date the issue title carries (review decision 2026-10-06).
+      expect(collect?.run).toContain('echo "date=$(date -u +%F)"');
+    });
+
+    it(`${rel}: a found alert files its own DATED issue — distinct from the failure issue, one per day`, () => {
+      const file = named('File a birth-needed alert');
+      // Dated, not stable: on an open issue `notify-failure` comments only a
+      // run link, so a stable title would bury a later day's series behind
+      // "Still red". Each day's alert lines open an issue of their own.
+      expect(file).toMatchObject({
+        if: "always() && steps.alerts.outputs.found == 'true'",
+        uses: './.github/actions/notify-failure',
+        with: { title: 'Pipeline birth needed ${{ steps.alerts.outputs.date }}' },
+      });
+      const body = String(file?.with?.body ?? '');
+      expect(body).toContain('docs/PLAYOFF_RUNBOOK.md');
+      expect(body).toContain('${{ steps.alerts.outputs.lines }}');
+      expect(body).toMatch(/not a failed run/);
+      expect(body).toMatch(/Each day's alerts open their own issue/);
+      // The failure step stays the FIRST notify step and keeps its title, so
+      // the alert can never be mistaken for it (or replace it).
+      expect(notifyStepOf(rel)?.if).toBe('failure()');
+      expect(String(notifyStepOf(rel)?.with?.title)).not.toMatch(/^Pipeline birth needed/);
+      const names = stepsOf(rel).map((step) => step.name ?? '');
+      const at = (name: string) => names.indexOf(name);
+      expect(at('Run the pipeline')).toBeLessThan(at('File a loud failure'));
+      expect(at('File a loud failure')).toBeLessThan(at('Collect birth-needed alerts'));
+      expect(at('Collect birth-needed alerts')).toBeLessThan(at('File a birth-needed alert'));
     });
   }
 });

@@ -675,6 +675,7 @@ so that every pending Game 7 appears inside its one-to-two-day window without me
 **When** any scheduled run executes
 **Then** it also re-reads the **previous** date for two things: Final Game 6s at 3–3 not yet stored (births), and Final Game 7s of stored pending series (completions)
 **And** both are idempotent, and neither counts toward `feedSeriesCount`
+**[Amended 2026-10-06, owner decision at the Story 2.18 code review: the re-read is narrowed to births only. Final Game 7s on the previous date are ignored, and completions come from the run's own date only. Re-reading Game 7s re-planned every finished series the next morning, so an overnight score correction or a curated row that disagreed would turn the run red and abort that morning's own completions, and a red run could no longer be told apart from a real problem on the run's date. A Game 7 missed by a red or cancelled morning goes back to the manual recovery (owner call 2026-10-05, review #39). Recorded in `spec-2-18-automated-births-at-three-three.md` (Review Findings, Spec Change Log).]**
 
 **Given** a backfill that cannot assemble a certified 3–3: a game missing within 21 dates, a non-Final game, a pair or headline mismatch, or a missing or malformed `series` field
 **When** the run ends
@@ -689,13 +690,13 @@ so that every pending Game 7 appears inside its one-to-two-day window without me
 - a 3–2 or completed series (silent);
 - a missing `series` field (named, alert);
 - a backfill gap (alert);
-- the previous-date re-read, for a birth and for a completion;
+- the previous-date re-read, for a birth and for a completion; **[Amended 2026-10-06, Story 2.18 review: for a birth, and a re-read Game 7 that is ignored.]**
 - `feedSeriesCount` unaffected by backfill;
 - per-team `wins` ordering.
 
 No agent fetches ESPN.
 **And** the spike payloads are committed under `tests/pipeline/fixtures/espn-backfill-2025/` with a provenance note: owner-released fetch on 2026-10-06, resolved through `1.1.1.1` because the local resolver refuses the name, as Story 2.13's run sheet records
-**And** in the same change as the code, `docs/PLAYOFF_RUNBOOK.md` is reframed as the **fallback** procedure: births and missed Game 7s are automatic, the runbook covers the "birth needed" alert path and the offseason reset, and step 1's cue becomes the alert
+**And** in the same change as the code, `docs/PLAYOFF_RUNBOOK.md` is reframed as the **fallback** procedure: births and missed Game 7s are automatic **[amended 2026-10-06, Story 2.18 review: births only; a missed Game 7 stays a manual recovery]**, the runbook covers the "birth needed" alert path and the offseason reset, and step 1's cue becomes the alert
 **And** in that same change, `seriesdatasource-port.md`'s `espn` section describes the backfill and the re-read
 **And** no change to the RPCs, migrations, crons or Edge Functions; `npm run gate` passes
 

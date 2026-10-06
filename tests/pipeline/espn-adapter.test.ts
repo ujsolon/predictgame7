@@ -17,21 +17,26 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  BACKFILL_DATE_BOUND,
   BACKOFF_MS,
   buildFeed,
   createEspnAdapter,
   deriveRequestDate,
   describeFetchThrow,
   etCalendarDay,
+  EXTRA_REQUEST_BUDGET,
+  EXTRA_WALL_CLOCK_BUDGET_MS,
   FETCH_TIMEOUT_MS,
   MAX_FEED_ATTEMPTS,
   parseHeadline,
+  readSeries,
   SCOREBOARD_ENDPOINT,
   scoreboardUrl,
+  shiftDates,
 } from '../../supabase/scripts/pipeline/adapters/espn.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { AdapterDeps, FeedFetch, FeedRequestInit, FeedResponseLike } from '../../supabase/scripts/pipeline/port.ts';
-import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
+import { BIRTH_NEEDED_PREFIX, runPipeline } from '../../supabase/scripts/pipeline/run.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
 
 /**
@@ -190,10 +195,22 @@ interface Stubbed {
  */
 function stubFeed(plans: Array<{ status: number; body?: unknown; brokenJson?: boolean; throws?: unknown }>): Stubbed {
   const stub: Stubbed = { urls: [], inits: [], sleeps: [], fetch: async () => ({ ok: false, status: 500, json: async () => undefined }) };
+  // Story 2.18: a run now also asks for the PREVIOUS date (and, at a 3–3, a
+  // backfill). The plans below describe the run's OWN date — the first one
+  // requested — and every other date answers an empty scoreboard, so these
+  // Story 2.13 cases keep describing one date and the re-read adds nothing.
+  let ownDate: string | null = null;
+  let ownCalls = 0;
   stub.fetch = async (url: string, init: FeedRequestInit): Promise<FeedResponseLike> => {
     stub.urls.push(url);
     stub.inits.push(init);
-    const plan = plans[stub.urls.length - 1] ?? plans[plans.length - 1];
+    const dates = new URL(url).searchParams.get('dates');
+    ownDate ??= dates;
+    if (dates !== ownDate) {
+      return { ok: true, status: 200, json: async () => feedBody([]) };
+    }
+    ownCalls += 1;
+    const plan = plans[ownCalls - 1] ?? plans[plans.length - 1];
     if (plan.throws !== undefined) {
       throw plan.throws;
     }
@@ -289,12 +306,16 @@ describe('espn — the request date is derived from the run instant (CAP-5)', ()
 
   it('the URL carries dates=YYYYMMDD and no other date parameter', async () => {
     const { stub } = await adapterOver([GAME_SEVEN]);
-    expect(stub.urls).toHaveLength(1);
+    // [Story 2.18: two requests now — the run's own date first, then the
+    // previous date's re-read. Both are the single-date form; the pin on the
+    // first is unchanged.]
+    expect(stub.urls).toHaveLength(2);
     const url = new URL(stub.urls[0]);
     expect(url.origin + url.pathname).toBe(SCOREBOARD_ENDPOINT);
     expect([...url.searchParams.keys()]).toEqual(['dates']);
     expect(url.searchParams.get('dates')).toBe(DATES);
     expect(url.search).toBe(`?dates=${DATES}`);
+    expect(stub.urls[1]).toBe(`${SCOREBOARD_ENDPOINT}?dates=20260604`);
   });
 
   it('the range form is NEVER constructed — the builder refuses anything but one date', () => {
@@ -719,13 +740,20 @@ describe('espn — Final AND game 7 is the whole admission rule (CAP-6, CAP-7)',
     const recovering = stubFeed([{ status: 503 }, { status: 200, body: { surprise: true } }, { status: 200, body: feedBody([espnEvent(GAME_SEVEN)]) }]);
     const statuses = await createEspnAdapter(depsFor(recovering)).fetch_series_statuses();
     expect(statuses).toHaveLength(1);
-    expect(recovering.urls).toHaveLength(3);
+    // [Story 2.18: the three attempts are the run's own date; the fourth request
+    // is the previous date's re-read, which answered at once.]
+    expect(recovering.urls.filter((url) => url.endsWith(`dates=${DATES}`))).toHaveLength(3);
+    expect(recovering.urls).toHaveLength(4);
     expect(recovering.sleeps).toEqual([1000, 4000]);
   });
 
-  it('one run is ONE request even though the port is called twice', async () => {
+  it('one run is ONE request per date even though the port is called twice', async () => {
+    // [Story 2.18: renamed from "one run is ONE request" — a run now asks its own
+    // date and the previous one. The memoisation this pins is unchanged: a
+    // second port call adds no request.]
     const { stub, statuses, scores } = await adapterOver([GAME_SEVEN]);
-    expect(stub.urls).toHaveLength(1);
+    expect(stub.urls).toHaveLength(2);
+    expect(new Set(stub.urls).size).toBe(2);
     expect(statuses).toHaveLength(1);
     expect(scores).toHaveLength(1);
   });
@@ -771,11 +799,14 @@ class FeedSink implements PipelineSink {
     // — a birth planned by a widened `plan.ts` would have been written silently
     // into `sink.births` and only noticed by an assertion nobody wrote. It is a
     // tripwire instead: if the shape ever widens, every run here goes red naming
-    // the rule that broke.
+    // the rule that broke. [Story 2.18: the espn source CAN now birth — from a
+    // certified six-game backfill, never from a game-7-only source. No fixture
+    // in THIS block carries a Game 6 at 3–3, so the tripwire still holds here;
+    // the birthing runs use `BackfillSink` at the bottom of this file.]
     this.calls.push('birth');
     throw new Error(
-      `fake sink: birth reached for (${birthOp.year}, team ${birthOp.team_a_id} vs ${birthOp.team_b_id}) — the espn source shape is ` +
-        'game-7-only and plan.ts must refuse to birth from it (Story 2.13); births belong to --source=manual_csv',
+      `fake sink: birth reached for (${birthOp.year}, team ${birthOp.team_a_id} vs ${birthOp.team_b_id}) — no fixture in this block ` +
+        'carries a Game 6 at 3–3, and plan.ts must refuse to birth from a game-7-only source (Story 2.13)',
     );
   }
   async complete(completion: PlannedCompletion): Promise<void> {
@@ -901,14 +932,22 @@ describe('espn through runPipeline', () => {
 
   it('the report prints before planning, so an abort during planning still shows the parse', async () => {
     const sink = new FeedSink();
-    // A game 7 for a pair that is NOT on the table: the plan refuses (no birth
-    // from a partial source), and the feed report must still be on screen.
+    // [Story 2.18: the abort used to come from a game 7 for a pair NOT on the
+    // table. Through the runner that shape is now an alert and an exit 0 (the
+    // adapter knows the pair is unborn and leaves the Game 7 out rather than
+    // blocking every other completion), so the planning abort here comes from
+    // a stored pending row the plan refuses to extend — the property pinned is
+    // unchanged: the feed report is on screen when planning aborts.]
+    const skewed = storedPendingPair();
+    skewed.scores = skewed.scores.map((score) => (score.game_number === 6 ? { ...score, home_score: 100, away_score: 110 } : score));
+    sink.current.push(skewed);
     const harness = runnerHarness(feedBody([espnEvent(GAME_SEVEN)]), sink, []);
     expect(await harness.promise).toBe(2);
     expect(sink.calls).not.toContain('birth');
+    expect(sink.calls).not.toContain('complete');
     const text = harness.lines.join('\n');
     expect(text).toMatch(/espn: 1 series in feed \(dates=20260605\), 1 Game-7 candidate\(s\)/);
-    expect(harness.errors.join('\n')).toMatch(/has no stored pending row/);
+    expect(harness.errors.join('\n')).toMatch(/is pending on the table but its stored games 1–6 split 4-2/);
   });
 
   it('the second identical run changes nothing — the archive branch skips it', async () => {
@@ -948,7 +987,9 @@ describe('espn through runPipeline', () => {
     // after printing it, and nothing prints after the throw), and the red came
     // before planning and writing — no readCurrent, no write.
     expect(alarmed.lines.join('\n')).toMatch(/^espn: 0 series in feed \(dates=\d{8}\)/m);
-    expect(alarmedSink.calls).toEqual(['readTeams']);
+    // [Story 2.18: `readCurrent` now runs BEFORE the adapter (the stored-pair
+    // check the backfill needs), so it precedes the alarm. Still no write.]
+    expect(alarmedSink.calls).toEqual(['readTeams', 'readCurrent']);
 
     const quietSink = new FeedSink();
     const quiet = runnerHarness(emptyBody(), quietSink, []);
@@ -969,7 +1010,8 @@ describe('espn through runPipeline', () => {
     const harness = runnerHarness(feedBody([espnEvent({ ...GAME_SEVEN, away: 'UTA' })]), sink, []);
     expect(await harness.promise).toBe(2);
     expect(harness.errors.join('\n')).toMatch(/unknown ESPN team code "UTA"/);
-    expect(sink.calls).toEqual(['readTeams']);
+    // [Story 2.18: `readCurrent` now precedes the adapter; still no write.]
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent']);
   });
 
   it('the scheduled source refuses a missing credential before it reaches the network', async () => {
@@ -1198,5 +1240,631 @@ describe('espn — the committed captures replay offline against the 00018 seed'
     expect(report.notes[0]).toContain(
       'espn: excluded 2025-05-04 CLE/IND — post/Final, headline "East Semifinals - Game 1" — game 1 of 7.',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 2.18 — the scheduled run births a series at 3–3. Every case below
+// replays the 2026-10-06 spike payloads committed under
+// `tests/pipeline/fixtures/espn-backfill-2025/` (plus the two Story 2.13
+// captures for the Game 7 dates) through an injected fetch keyed on `dates=`.
+// A date with no committed payload answers an empty scoreboard, the shape a
+// rest day has. No case reaches the network.
+//
+// Fixture facts used below (all read off the payloads): DEN–LAC 2025 West 1st
+// Round, games 1–6 on 0419/0421/0424/0426/0429/0501, Game 1 at DEN; GS–HOU,
+// games 1–6 on 0420/0423/0426/0428/0430/0502, Game 1 at HOU; their Game 7s on
+// 0503 (DEN 120–101) and 0504 (HOU 89–103 GS). Seed ids: DEN 8, LAC 13,
+// GS 10, HOU 11.
+// ---------------------------------------------------------------------------
+
+type ScoreboardBody = { events: Record<string, unknown>[] } & Record<string, unknown>;
+type PageEdit = (body: ScoreboardBody) => ScoreboardBody | 'throw';
+
+const DEN = 8;
+const LAC = 13;
+const GS = 10;
+const HOU = 11;
+
+/** A committed payload for one date, freshly parsed (so an edit never leaks between cases); `null` when none is committed. */
+function payloadFor(dates: string): ScoreboardBody | null {
+  const file =
+    dates === '20250503'
+      ? 'espn-scoreboard-20250503-game7.json'
+      : dates === '20250504'
+        ? 'espn-scoreboard-20250504-mixed.json'
+        : `espn-backfill-2025/scoreboard-${dates}.json`;
+  try {
+    return JSON.parse(readRepoFile(`./fixtures/${file}`)) as ScoreboardBody;
+  } catch {
+    return null;
+  }
+}
+
+/** The injected fetch: `dates=` → the committed payload, through an optional per-date edit; every asked date is logged. */
+function fixtureFeed(edits: Record<string, PageEdit> = {}) {
+  const asked: string[] = [];
+  const fetch: FeedFetch = async (url) => {
+    const dates = new URL(url).searchParams.get('dates') ?? '';
+    asked.push(dates);
+    let body: ScoreboardBody = payloadFor(dates) ?? { events: [] };
+    const edit = edits[dates];
+    if (edit) {
+      const edited = edit(body);
+      if (edited === 'throw') {
+        throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' }) });
+      }
+      body = edited;
+    }
+    return { ok: true, status: 200, json: async () => body };
+  };
+  return { asked, fetch };
+}
+
+function codesOf(event: Record<string, unknown>): string[] {
+  const competition = (event.competitions as Record<string, unknown>[])[0];
+  return (competition.competitors as { team: { abbreviation: string } }[]).map((side) => side.team.abbreviation).sort();
+}
+
+/** The one event of a pair on a payload — the edits below reach into it by codes, never by index. */
+function pairEvent(body: ScoreboardBody, left: string, right: string): Record<string, unknown> {
+  const event = body.events.find((candidate) => codesOf(candidate).join('|') === [left, right].sort().join('|'));
+  if (!event) throw new Error(`fixture: no ${left}/${right} event on this payload`);
+  return event;
+}
+
+function competitionOf(event: Record<string, unknown>): Record<string, unknown> {
+  return (event.competitions as Record<string, unknown>[])[0];
+}
+
+/** The days of a walk: `from` back to `to`, inclusive, as `YYYYMMDD`. */
+function datesBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let current = from; current >= to; current = shiftDates(current, -1)) out.push(current);
+  return out;
+}
+
+/** Games 1–6 as the payloads print them, in `team_a` = Game 1 home orientation. */
+const DEN_LAC_GAMES: CurrentSeriesRow['scores'] = [
+  { game_number: 1, home_team_id: DEN, away_team_id: LAC, home_score: 112, away_score: 110 },
+  { game_number: 2, home_team_id: DEN, away_team_id: LAC, home_score: 102, away_score: 105 },
+  { game_number: 3, home_team_id: LAC, away_team_id: DEN, home_score: 117, away_score: 83 },
+  { game_number: 4, home_team_id: LAC, away_team_id: DEN, home_score: 99, away_score: 101 },
+  { game_number: 5, home_team_id: DEN, away_team_id: LAC, home_score: 131, away_score: 115 },
+  { game_number: 6, home_team_id: LAC, away_team_id: DEN, home_score: 111, away_score: 105 },
+];
+const GS_HOU_GAMES: CurrentSeriesRow['scores'] = [
+  { game_number: 1, home_team_id: HOU, away_team_id: GS, home_score: 85, away_score: 95 },
+  { game_number: 2, home_team_id: HOU, away_team_id: GS, home_score: 109, away_score: 94 },
+  { game_number: 3, home_team_id: GS, away_team_id: HOU, home_score: 104, away_score: 93 },
+  { game_number: 4, home_team_id: GS, away_team_id: HOU, home_score: 109, away_score: 106 },
+  { game_number: 5, home_team_id: HOU, away_team_id: GS, home_score: 131, away_score: 116 },
+  { game_number: 6, home_team_id: GS, away_team_id: HOU, home_score: 107, away_score: 115 },
+];
+
+function pendingRow(id: string, teamA: number, teamB: number, games: CurrentSeriesRow['scores']): CurrentSeriesRow {
+  return { id, year: 2025, team_a_id: teamA, team_b_id: teamB, winner_team_id: null, scores: games.map((game) => ({ ...game })) };
+}
+
+function withoutWinner(scores: PlannedBirth['scores'] | undefined) {
+  return (scores ?? []).map(({ winner_team_id: _winner, ...score }) => score);
+}
+
+/**
+ * The fake sink for the birthing runs: the seeded 30-franchise table, and the
+ * guards `pipeline_birth_series` / `pipeline_complete_series` assert server-side
+ * (00015), so no case here can plan a write the database would reject.
+ */
+class BackfillSink implements PipelineSink {
+  current: CurrentSeriesRow[] = [];
+  births: PlannedBirth[] = [];
+  completions: PlannedCompletion[] = [];
+  calls: string[] = [];
+
+  async readTeams(): Promise<TeamRow[]> {
+    this.calls.push('readTeams');
+    return SEEDED_TEAMS;
+  }
+  async readCurrent(): Promise<CurrentSeriesRow[]> {
+    this.calls.push('readCurrent');
+    return this.current.map((row) => ({ ...row, scores: row.scores.map((score) => ({ ...score })) }));
+  }
+  async birth(birthOp: PlannedBirth): Promise<string> {
+    this.calls.push('birth');
+    const numbers = birthOp.scores.map((score) => score.game_number).sort();
+    if (numbers.join(',') !== '1,2,3,4,5,6') throw new Error(`pipeline_birth_series: games ${numbers.join(',')} are not exactly 1..6`);
+    const gameOne = birthOp.scores.find((score) => score.game_number === 1);
+    if (gameOne?.home_team_id !== birthOp.team_a_id) throw new Error('pipeline_birth_series: team_a is not game 1 home');
+    const teamAWins = birthOp.scores.filter((score) => score.winner_team_id === birthOp.team_a_id).length;
+    if (teamAWins !== 3) throw new Error(`pipeline_birth_series: not 3-3 (team_a ${teamAWins})`);
+    const clash = this.current.some(
+      (row) => row.year === birthOp.year && new Set([row.team_a_id, row.team_b_id, birthOp.team_a_id, birthOp.team_b_id]).size === 2,
+    );
+    if (clash) throw new Error('pipeline_birth_series: the pair is already stored');
+    const id = `born-${this.births.length + 1}`;
+    this.births.push(birthOp);
+    this.current.push({
+      id,
+      year: birthOp.year,
+      team_a_id: birthOp.team_a_id,
+      team_b_id: birthOp.team_b_id,
+      winner_team_id: null,
+      scores: withoutWinner(birthOp.scores),
+    });
+    return id;
+  }
+  async complete(completion: PlannedCompletion): Promise<void> {
+    this.calls.push('complete');
+    const row = this.current.find((candidate) => candidate.id === completion.series_id);
+    if (!row) throw new Error(`fake sink: completion for unknown series ${completion.series_id}`);
+    if (row.winner_team_id !== null) throw new Error('pipeline_complete_series: series is archived');
+    if (completion.game.game_number !== 7) throw new Error('pipeline_complete_series: a completion appends game 7');
+    const teamAWins = row.scores.filter(
+      (score) => (score.home_score > score.away_score ? score.home_team_id : score.away_team_id) === row.team_a_id,
+    ).length;
+    if (row.scores.length !== 6 || teamAWins !== 3) throw new Error('pipeline_complete_series: not a certified 3-3 pending row');
+    this.completions.push(completion);
+    row.scores.push({ ...completion.game });
+    row.winner_team_id = completion.winner_team_id;
+  }
+  async refreshInsights(): Promise<InsightsRefreshCensus> {
+    this.calls.push('refreshInsights');
+    return { total_game_sevens: 161, home_team_wins: 118, game_6_winners_won: 60, average_margin: 10.9 };
+  }
+}
+
+interface BackfillRunOptions {
+  sink?: BackfillSink;
+  edits?: Record<string, PageEdit>;
+  budget?: AdapterDeps['extraFetchBudget'];
+  clock?: () => number;
+}
+
+async function runBackfill(now: string, argv: string[] = [], opts: BackfillRunOptions = {}) {
+  const sink = opts.sink ?? new BackfillSink();
+  const feed = fixtureFeed(opts.edits);
+  const lines: string[] = [];
+  const errors: string[] = [];
+  const code = await runPipeline({
+    env: VALID_ENV,
+    argv: ['--source=espn', ...argv],
+    createSink: () => sink,
+    fetch: feed.fetch,
+    sleep: async () => {},
+    now: () => new Date(now),
+    extraFetchBudget: opts.budget,
+    monotonicNow: opts.clock,
+    log: (line: string) => lines.push(line),
+    logError: (line: string) => errors.push(line),
+    readFile: () => {
+      throw new Error('espn runner tests must not read files');
+    },
+  });
+  return {
+    code,
+    sink,
+    lines,
+    text: lines.join('\n'),
+    errors: errors.join('\n'),
+    asked: feed.asked,
+    alerts: lines.filter((line) => line.startsWith(BIRTH_NEEDED_PREFIX)),
+  };
+}
+
+/** Runs at 07:30 UTC, the cron's instant: each reads the previous America/New_York day. */
+const RUN_0502 = '2025-05-02T07:30:00Z'; // run date 20250501 (DEN–LAC G6), re-read 20250430
+const RUN_0503 = '2025-05-03T07:30:00Z'; // run date 20250502 (GS–HOU G6), re-read 20250501 (DEN–LAC G6)
+const RUN_0504 = '2025-05-04T07:30:00Z'; // run date 20250503 (DEN–LAC G7), re-read 20250502 (GS–HOU G6)
+const RUN_0505 = '2025-05-05T07:30:00Z'; // run date 20250504 (GS–HOU G7 + CLE–IND G1), re-read 20250503 (DEN–LAC G7)
+
+/** The DEN–LAC walk: its Game 6 date, then back to Game 1's date — 13 dates in all, as the spike measured. */
+const DEN_LAC_WALK = datesBetween('20250501', '20250419');
+
+describe('Story 2.18 — the scheduled run births a series at 3–3', () => {
+  it("the bounds are the spec's: 21 dates per walk, 25 extra requests and 3 minutes per run", () => {
+    expect(BACKFILL_DATE_BOUND).toBe(21);
+    expect(EXTRA_REQUEST_BUDGET).toBe(25);
+    expect(EXTRA_WALL_CLOCK_BUDGET_MS).toBe(180_000);
+    expect(shiftDates('20250301', -1)).toBe('20250228');
+    expect(shiftDates('20250101', -1)).toBe('20241231');
+  });
+
+  it('Birth: a DEN–LAC Game 6 at 3–3 with nothing stored births one six-game series, team_a = DEN', async () => {
+    const run = await runBackfill(RUN_0502);
+    expect(run.code).toBe(0);
+    expect(run.errors).toBe('');
+    expect(run.alerts).toEqual([]);
+    expect(run.sink.births).toHaveLength(1);
+    const birth = run.sink.births[0];
+    expect(birth).toMatchObject({ year: 2025, round: 'First Round', team_a_id: DEN, team_b_id: LAC, followup: null });
+    expect(withoutWinner(birth.scores)).toEqual(DEN_LAC_GAMES);
+    // The report names the birth, in codes and in the plan line.
+    expect(run.text).toMatch(/espn: birth source assembled — 2025 DEN–LAC First Round: games 1–6 certified .*Game 1 home DEN → team_a/);
+    expect(run.text).toMatch(/^BIRTH {5}\(2025, team 8 vs 13\): one series row \+ 6 score rows$/m);
+    expect(run.text).toMatch(/wrote birth \(2025, team 8 vs 13\) as series born-1/);
+    // The walk is the spike's: Game 6's date (the run's own), then back to Game 1.
+    expect(run.asked).toEqual(DEN_LAC_WALK);
+    // A birth fills no winner, so no refresh.
+    expect(run.sink.calls).not.toContain('refreshInsights');
+  });
+
+  it('Shared backfill + re-read: two births in one run, and no date is requested twice', async () => {
+    const run = await runBackfill(RUN_0503);
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    expect(run.sink.births).toHaveLength(2);
+    expect(run.sink.births.map((birth) => [birth.team_a_id, birth.team_b_id]).sort((left, right) => left[0] - right[0])).toEqual([
+      [DEN, LAC],
+      [HOU, GS],
+    ]);
+    expect(withoutWinner(run.sink.births.find((birth) => birth.team_a_id === HOU)?.scores)).toEqual(GS_HOU_GAMES);
+    expect(withoutWinner(run.sink.births.find((birth) => birth.team_a_id === DEN)?.scores)).toEqual(DEN_LAC_GAMES);
+    // The fetch log: every date once, and exactly the union of the two walks.
+    expect(new Set(run.asked).size).toBe(run.asked.length);
+    expect([...run.asked].sort()).toEqual(datesBetween('20250502', '20250419').sort());
+    expect(run.asked.length - 1).toBeLessThanOrEqual(EXTRA_REQUEST_BUDGET);
+    expect(run.text).toMatch(/espn extra requests: 13 of a 25-date budget/);
+  });
+
+  it('Already stored: a pending DEN–LAC row, in either slot order, means no backfill request for the pair', async () => {
+    for (const [teamA, teamB] of [
+      [DEN, LAC],
+      [LAC, DEN],
+    ]) {
+      const sink = new BackfillSink();
+      sink.current.push(pendingRow('den-lac', teamA, teamB, DEN_LAC_GAMES));
+      const run = await runBackfill(RUN_0502, [], { sink });
+      expect(run.code).toBe(0);
+      // The run's own date and the re-read — nothing walked.
+      expect(run.asked).toEqual(['20250501', '20250430']);
+      expect(run.sink.births).toHaveLength(0);
+      expect(run.alerts).toEqual([]);
+      expect(run.text).toMatch(/2025 DEN–LAC Game 6 .* the pair is already stored; no backfill/);
+    }
+  });
+
+  it('Already stored is per YEAR: an archived DEN–LAC row from 2020 does not stop the 2025 birth', async () => {
+    // `readCurrent` returns every season's rows, so a pair that met in an
+    // earlier Game 7 is on the table. Dropping the year from `isPairStored`
+    // would skip this birth with only a note (review finding, 2026-10-06).
+    const sink = new BackfillSink();
+    sink.current.push({
+      ...pendingRow('den-lac-2020', DEN, LAC, DEN_LAC_GAMES),
+      year: 2020,
+      winner_team_id: DEN,
+    });
+    const run = await runBackfill(RUN_0502, [], { sink });
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    expect(run.text).not.toMatch(/already stored/);
+    expect(run.asked).toEqual(DEN_LAC_WALK);
+    expect(run.sink.births).toHaveLength(1);
+    expect(run.sink.births[0]).toMatchObject({ year: 2025, team_a_id: DEN, team_b_id: LAC });
+  });
+
+  it('the next morning: a re-read Game 6 of a pair the previous run birthed is a note — no walk, no alert', async () => {
+    // The common path: DEN–LAC was born from 20250501 yesterday, and today's
+    // run re-reads that date. Only GS–HOU (the run's own Game 6) is walked.
+    const sink = new BackfillSink();
+    sink.current.push(pendingRow('den-lac', DEN, LAC, DEN_LAC_GAMES));
+    const run = await runBackfill(RUN_0503, [], { sink });
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    expect(run.text).toMatch(/2025 DEN–LAC Game 6 .* the pair is already stored; no backfill/);
+    expect(run.sink.births.map((birth) => [birth.team_a_id, birth.team_b_id])).toEqual([[HOU, GS]]);
+    // GS–HOU's walk ends at its Game 1 (20250420); DEN–LAC's Game 1 date is never asked.
+    expect([...run.asked].sort()).toEqual(datesBetween('20250502', '20250420').sort());
+    expect(new Set(run.asked).size).toBe(run.asked.length);
+  });
+
+  it('a red run still prints its BIRTH NEEDED lines: the alerts precede the --require-feed refusal', async () => {
+    // Empty run date (alarm red) plus a re-read 3–3 whose backfill has a gap.
+    // The workflow collector runs on always(), so both issues get filed only
+    // if the alert line reaches the log before the throw.
+    const run = await runBackfill(RUN_0503, ['--require-feed'], {
+      edits: { '20250502': () => ({ events: [] }), '20250424': () => ({ events: [] }) },
+    });
+    expect(run.code).toBe(2);
+    expect(run.errors).toMatch(/--require-feed: espn returned 0 series/);
+    expect(run.alerts).toHaveLength(1);
+    expect(run.alerts[0]).toMatch(/^BIRTH NEEDED: espn: 2025 DEN–LAC \(Game 6 on dates=20250501, re-read\)/);
+    expect(run.alerts[0]).toMatch(/game\(s\) 3 were not found/);
+    expect(run.sink.births).toHaveLength(0);
+  });
+
+  it('Not 3–3: a Game 6 that ended the series 4–2, or a Game 5, starts no backfill and raises no alert', async () => {
+    // 20250501 without DEN–LAC leaves NY–DET's Game 6, which NY won 4–2.
+    const decided = await runBackfill(RUN_0502, [], {
+      edits: { '20250501': (body) => ({ ...body, events: body.events.filter((event) => !codesOf(event).includes('DEN')) }) },
+    });
+    expect(decided.code).toBe(0);
+    expect(decided.asked).toEqual(['20250501', '20250430']);
+    expect(decided.alerts).toEqual([]);
+    expect(decided.sink.births).toHaveLength(0);
+    expect(decided.text).toMatch(/2025 DET–NY Game 6 .* the series was decided 2-4 at game 6; no birth/);
+
+    // 20250429 is a Game 5 night (DEN–LAC 3–2 among them).
+    const gameFive = await runBackfill('2025-04-30T07:30:00Z');
+    expect(gameFive.code).toBe(0);
+    expect(gameFive.asked).toEqual(['20250429', '20250428']);
+    expect(gameFive.alerts).toEqual([]);
+    expect(gameFive.sink.births).toHaveLength(0);
+  });
+
+  it('Backfill gap: Game 3 unreachable within 21 dates — no birth, a "birth needed" alert naming DEN–LAC, exit 0', async () => {
+    const run = await runBackfill(RUN_0502, [], { edits: { '20250424': () => ({ events: [] }) } });
+    expect(run.code).toBe(0);
+    expect(run.sink.births).toHaveLength(0);
+    expect(run.alerts).toHaveLength(1);
+    expect(run.alerts[0]).toMatch(
+      /^BIRTH NEEDED: espn: 2025 DEN–LAC \(Game 6 on dates=20250501, the run date\) stands 3–3 with no stored row/,
+    );
+    expect(run.alerts[0]).toMatch(/game\(s\) 3 were not found as Final, headline-numbered games of this pair within 21 dates/);
+    expect(run.alerts[0]).toMatch(/docs\/PLAYOFF_RUNBOOK\.md/);
+    // The walk ran its whole bound — Game 6's date plus 20 more — and stopped.
+    expect(run.asked).toEqual(datesBetween('20250501', '20250411'));
+    expect(run.asked).toHaveLength(BACKFILL_DATE_BOUND);
+    // Other work proceeds: the plan ran and the run applied it.
+    expect(run.text).toMatch(/^applied: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)$/m);
+  });
+
+  it('Missing `series`: a Final Game 6 without competitions[0].series is no birth, and the alert names the field', async () => {
+    const run = await runBackfill(RUN_0502, [], {
+      edits: {
+        '20250501': (body) => {
+          delete competitionOf(pairEvent(body, 'DEN', 'LAC')).series;
+          return body;
+        },
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(run.sink.births).toHaveLength(0);
+    expect(run.asked).toEqual(['20250501', '20250430']);
+    expect(run.alerts).toHaveLength(1);
+    expect(run.alerts[0]).toMatch(/2025 DEN–LAC .* competitions\[0\]\.series is absent, so the 3–3 cannot be read/);
+  });
+
+  it('Previous-date G7: a Game 7 on the re-read date is ignored — completions come from the run date only', async () => {
+    // Owner decision 2026-10-06 (Story 2.18 review): the re-read is for births
+    // only, so yesterday's Game 7 never reaches the planner again and a red run
+    // always means the run's own date. Here DEN–LAC's Game 7 (20250503) is on
+    // the re-read page and stays pending; GS–HOU's (20250504) is the run date's.
+    const sink = new BackfillSink();
+    sink.current.push(pendingRow('den-lac', DEN, LAC, DEN_LAC_GAMES), pendingRow('gs-hou', HOU, GS, GS_HOU_GAMES));
+    const run = await runBackfill(RUN_0505, [], { sink });
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    expect(run.sink.completions.map((completion) => [completion.series_id, completion.winner_team_id])).toEqual([['gs-hou', GS]]);
+    expect(run.text).toMatch(/espn re-read dates=20250503 \(the previous date, births only; .*\): 1 event\(s\), 0 Game-6 signal\(s\), 1 Game 7\(s\) ignored/);
+    expect(run.text).toMatch(/plan: 0 birth\(s\), 1 completion\(s\), 0 skip\(s\)/);
+    // The same run again: the run date's Game 7 skips, and DEN–LAC is still not planned.
+    const replay = await runBackfill(RUN_0505, [], { sink });
+    expect(replay.code).toBe(0);
+    expect(replay.sink.completions).toHaveLength(1);
+    expect(replay.text).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 1 skip\(s\)/);
+  });
+
+  it('a re-read Game 7 that would disagree with its archived row cannot redden the run', async () => {
+    // The risk the narrowing removes: DEN–LAC archived with a Game 7 score the
+    // feed does not carry (an overnight correction, or a curated row). Read on
+    // its own date this is red by design; read as yesterday it is ignored.
+    const sink = new BackfillSink();
+    sink.current.push({
+      ...pendingRow('den-lac', DEN, LAC, [
+        ...DEN_LAC_GAMES,
+        { game_number: 7, home_team_id: DEN, away_team_id: LAC, home_score: 120, away_score: 99 },
+      ]),
+      winner_team_id: DEN,
+    });
+    const run = await runBackfill(RUN_0505, [], { sink });
+    expect(run.code).toBe(0);
+    expect(run.errors).toBe('');
+    expect(run.text).not.toMatch(/source disagrees/);
+  });
+
+  it('a Game 7 whose pair was never born is an alert, not a red run — the other completion still lands', async () => {
+    // RUN_0504: the run date (20250503) carries DEN–LAC's Game 7 (stored) and
+    // the re-read (20250502) GS–HOU's Game 6, which births; so the never-born
+    // case is built from RUN_0505 with only DEN–LAC stored and its Game 7
+    // carried onto the run date's page beside GS–HOU's.
+    const sink = new BackfillSink();
+    sink.current.push(pendingRow('den-lac', DEN, LAC, DEN_LAC_GAMES));
+    const run = await runBackfill(RUN_0505, [], {
+      sink,
+      edits: {
+        '20250504': (body) => {
+          const seven = (payloadFor('20250503') as ScoreboardBody).events[0];
+          return { ...body, events: [...body.events, seven] };
+        },
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(run.sink.completions.map((completion) => completion.series_id)).toEqual(['den-lac']);
+    expect(run.alerts).toHaveLength(1);
+    expect(run.alerts[0]).toMatch(/2025 GS–HOU Game 7 .* has no stored row and no birth was assembled for it this run/);
+  });
+
+  it('a Game 7 seen beside its re-read 3–3 Game 6 births seven games: birth plus follow-up, one orientation', async () => {
+    // DEN–LAC's Game 7 carried onto the 20250502 page, so the run that re-reads
+    // its Game 6 (20250501) also sees its Game 7.
+    const run = await runBackfill(RUN_0503, [], {
+      edits: {
+        '20250502': (body) => {
+          const seven = (payloadFor('20250503') as ScoreboardBody).events[0];
+          return { ...body, events: [...body.events, seven] };
+        },
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    const denLac = run.sink.births.find((birth) => birth.team_a_id === DEN);
+    expect(denLac?.followup?.winner_team_id).toBe(DEN);
+    expect(denLac?.followup?.game).toMatchObject({ game_number: 7, home_team_id: DEN, away_team_id: LAC, home_score: 120, away_score: 101 });
+    expect(run.sink.completions.map((completion) => completion.team_a_id)).toEqual([DEN]);
+    expect(run.text).toMatch(/2025 DEN–LAC Game 7 .* folded into its birth/);
+    expect(run.sink.calls).toContain('refreshInsights');
+  });
+
+  it('Alarm independence: an empty run date with games on the re-read date still counts 0, so --require-feed stays red', async () => {
+    const run = await runBackfill(RUN_0503, ['--require-feed'], { edits: { '20250502': () => ({ events: [] }) } });
+    expect(run.code).toBe(2);
+    expect(run.text).toMatch(/^espn: 0 series in feed \(dates=20250502\)/m);
+    expect(run.errors).toMatch(/--require-feed: espn returned 0 series/);
+    expect(run.sink.births).toHaveLength(0);
+    // The re-read did run (and found DEN–LAC) — it just never counts.
+    expect(run.text).toMatch(/espn re-read dates=20250501 \(the previous date, births only; never counted in feedSeriesCount\)/);
+  });
+
+  it('Dry-run: the same detection, backfill and plan are printed, and nothing is written', async () => {
+    const live = await runBackfill(RUN_0503);
+    const dry = await runBackfill(RUN_0503, ['--dry-run']);
+    expect(dry.code).toBe(0);
+    expect(dry.asked).toEqual(live.asked);
+    expect(dry.sink.calls).toEqual(['readTeams', 'readCurrent']);
+    expect(dry.text.match(/^BIRTH {5}/gm)).toHaveLength(2);
+    expect(dry.text).toMatch(/dry-run: 0 rows written/);
+    expect(dry.text).toMatch(/birth source assembled — 2025 DEN–LAC/);
+    expect(dry.text).toMatch(/birth source assembled — 2025 GS–HOU/);
+  });
+
+  it('Per-team wins (C2): series.competitors is joined on team.id, so reversing its order changes nothing', async () => {
+    // GS–HOU's Game 1 standing, as printed: HOU (home, id "10") 0, GS (away, id "9") 1.
+    const gameOne = pairEvent(payloadFor('20250420') as ScoreboardBody, 'GS', 'HOU');
+    const series = competitionOf(gameOne).series as { competitors: unknown[] };
+    expect(readSeries(series, '10', '9')).toMatchObject({ kind: 'read', homeWins: 0, awayWins: 1, completed: false });
+    expect(readSeries({ ...series, competitors: [...series.competitors].reverse() }, '10', '9')).toMatchObject({ homeWins: 0, awayWins: 1 });
+
+    // End to end: every page's `series.competitors` reversed — a positional
+    // read would now see every standing flipped and refuse both births.
+    const reverseAll: PageEdit = (body) => {
+      for (const event of body.events) {
+        const standing = competitionOf(event).series as { competitors?: unknown[] } | undefined;
+        if (standing?.competitors) standing.competitors = [...standing.competitors].reverse();
+      }
+      return body;
+    };
+    const edits = Object.fromEntries(datesBetween('20250502', '20250419').map((dates) => [dates, reverseAll]));
+    const run = await runBackfill(RUN_0503, [], { edits });
+    expect(run.alerts).toEqual([]);
+    expect(run.sink.births).toHaveLength(2);
+    expect(withoutWinner(run.sink.births.find((birth) => birth.team_a_id === HOU)?.scores)).toEqual(GS_HOU_GAMES);
+  });
+
+  it('Headline unreadable (C3): a 3–3 Game 6 with no headline still births; a headline naming another game alerts', async () => {
+    const noHeadline = await runBackfill(RUN_0502, [], {
+      edits: {
+        '20250501': (body) => {
+          delete competitionOf(pairEvent(body, 'DEN', 'LAC')).notes;
+          return body;
+        },
+      },
+    });
+    expect(noHeadline.code).toBe(0);
+    expect(noHeadline.alerts).toEqual([]);
+    expect(noHeadline.sink.births).toHaveLength(1);
+    // The round comes from games 1–5's headlines.
+    expect(noHeadline.sink.births[0]).toMatchObject({ round: 'First Round', team_a_id: DEN, team_b_id: LAC });
+
+    const wrongGame = await runBackfill(RUN_0502, [], {
+      edits: {
+        '20250501': (body) => {
+          competitionOf(pairEvent(body, 'DEN', 'LAC')).notes = [{ headline: 'West 1st Round - Game 5' }];
+          return body;
+        },
+      },
+    });
+    expect(wrongGame.code).toBe(0);
+    expect(wrongGame.sink.births).toHaveLength(0);
+    expect(wrongGame.asked).toEqual(['20250501', '20250430']);
+    expect(wrongGame.alerts).toHaveLength(1);
+    expect(wrongGame.alerts[0]).toMatch(
+      /2025 DEN–LAC .* its headline names game 5, but competitions\[0\]\.series stands 3–3 and not completed/,
+    );
+  });
+
+  it('Progression mismatch (C4): one backfilled game whose own standing disagrees with the scores refuses the birth', async () => {
+    // DEN–LAC Game 3 (LAC won, so LAC 2–1): print it as DEN 2–1 instead.
+    const run = await runBackfill(RUN_0502, [], {
+      edits: {
+        '20250424': (body) => {
+          const standing = competitionOf(pairEvent(body, 'DEN', 'LAC')).series as { competitors: { id: string; wins: number }[] };
+          for (const entry of standing.competitors) entry.wins = entry.id === '7' ? 2 : 1;
+          return body;
+        },
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(run.sink.births).toHaveLength(0);
+    expect(run.alerts).toHaveLength(1);
+    expect(run.alerts[0]).toMatch(
+      /2025 DEN–LAC .* game 3 \(2025-04-24 LAC\/DEN .*\): its own series standing reads LAC 1–2 DEN, but the scores of games 1–3 give LAC 2–1 DEN/,
+    );
+  });
+
+  it('Budget and isolation (C1): a backfill date that throws costs only that series — the run-date completion lands, exit 0', async () => {
+    const sink = new BackfillSink();
+    sink.current.push(pendingRow('den-lac', DEN, LAC, DEN_LAC_GAMES));
+    // Run date 20250503 completes DEN–LAC; the re-read (20250502) finds GS–HOU
+    // at 3–3, whose Game 5 date (20250430) throws on every attempt.
+    const run = await runBackfill(RUN_0504, [], { sink, edits: { '20250430': () => 'throw' } });
+    expect(run.code).toBe(0);
+    expect(run.sink.completions.map((completion) => completion.series_id)).toEqual(['den-lac']);
+    expect(run.sink.births).toHaveLength(0);
+    expect(run.sink.calls).toContain('refreshInsights');
+    expect(run.alerts).toHaveLength(2);
+    expect(run.alerts[0]).toMatch(
+      /dates=20250430 \(backfill for 2025 GS–HOU\) could not be read — GET .* failed after 3 attempt\(s\): request threw: fetch failed \(ETIMEDOUT/,
+    );
+    expect(run.alerts[1]).toMatch(/2025 GS–HOU .* game\(s\) 5 were not found/);
+    // The failed date was asked three times (the retry posture) and never again.
+    expect(run.asked.filter((dates) => dates === '20250430')).toHaveLength(3);
+  });
+
+  it('Budget (C1): a spent request or wall-clock budget stops the walk, alerts the unfinished series, and still completes', async () => {
+    let now = 0;
+    const cases: { budget?: AdapterDeps['extraFetchBudget']; clock?: () => number; reason: RegExp }[] = [
+      { budget: { requests: 4, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS }, reason: /the per-run budget of 4 extra request\(s\) is spent/ },
+      // Each clock read advances 60 s; the default 180 s budget then refuses
+      // a date a few reads in.
+      {
+        clock: () => {
+          now += 60_000;
+          return now;
+        },
+        reason: /wall-clock budget of 180 s for extra requests is spent/,
+      },
+    ];
+    for (const { budget, clock, reason } of cases) {
+      const sink = new BackfillSink();
+      sink.current.push(pendingRow('den-lac', DEN, LAC, DEN_LAC_GAMES));
+      const run = await runBackfill(RUN_0504, [], { sink, budget, clock });
+      expect(run.code).toBe(0);
+      expect(run.sink.completions.map((completion) => completion.series_id)).toEqual(['den-lac']);
+      expect(run.sink.births).toHaveLength(0);
+      expect(run.alerts).toHaveLength(1);
+      expect(run.alerts[0]).toMatch(/2025 GS–HOU .* were not found/);
+      expect(run.alerts[0]).toMatch(reason);
+      expect(run.asked.length).toBeLessThan(13);
+    }
+  });
+
+  it("Backfill page noise (C5): another pair's Game 7 and 3–3 Game 6 on a walked date are ignored entirely", async () => {
+    const run = await runBackfill(RUN_0502, [], {
+      edits: {
+        '20250426': (body) => {
+          const gsHouSeven = pairEvent(payloadFor('20250504') as ScoreboardBody, 'GS', 'HOU');
+          const gsHouSix = pairEvent(payloadFor('20250502') as ScoreboardBody, 'GS', 'HOU');
+          return { ...body, events: [...body.events, gsHouSeven, gsHouSix] };
+        },
+      },
+    });
+    expect(run.code).toBe(0);
+    expect(run.alerts).toEqual([]);
+    // Only DEN–LAC is born; nothing is completed; GS–HOU is never walked.
+    expect(run.sink.births.map((birth) => [birth.team_a_id, birth.team_b_id])).toEqual([[DEN, LAC]]);
+    expect(run.sink.calls).not.toContain('complete');
+    expect(run.asked).toEqual(DEN_LAC_WALK);
+    // …and not counted: the feed is still the run date's two series.
+    expect(run.text).toMatch(/^espn: 2 series in feed \(dates=20250501\)/m);
   });
 });

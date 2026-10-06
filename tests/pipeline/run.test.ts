@@ -975,7 +975,10 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     expect(run.errors).toMatch(/--require-feed: espn returned 0 series/);
     expect(run.lines).toMatch(/^espn: 0 series in feed \(dates=20270501\)/m);
     expect(run.lines).not.toMatch(/dry-run: 0 rows written/);
-    expect(sink.calls).toEqual(['readTeams']);
+    // [Story 2.18: `readCurrent` now runs before the adapter is built (the
+    // stored-pair check the espn backfill needs), so it precedes the red. Still
+    // zero writes.]
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent']);
   });
 
   it('a near-miss typo of the flag is still refused, and the supported list names it', async () => {
@@ -1274,8 +1277,9 @@ describe('runPipeline — Story 2.16 runner guarantees re-parented from the reti
     expect(run.errors).toMatch(/failed after 3 attempt\(s\): HTTP 503/);
     expect(run.errors).toMatch(/no manual_csv fallback was taken/);
     // `readFile` throws in this harness, so a manual_csv fallback could not run
-    // silently either: the only sink call is the team read that precedes the feed.
-    expect(run.sink.calls).toEqual(['readTeams']);
+    // silently either: the only sink calls are the two reads that precede the
+    // feed. [Story 2.18: `readCurrent` moved ahead of the adapter.]
+    expect(run.sink.calls).toEqual(['readTeams', 'readCurrent']);
   });
 
   it('feed shape drift aborts the run through the runner: exit 2, the drift named, zero writes', async () => {
@@ -1284,7 +1288,8 @@ describe('runPipeline — Story 2.16 runner guarantees re-parented from the reti
     // The drift's own wording, reached after the full retry budget — not merely any message naming `events`.
     expect(run.errors).toMatch(/failed after 3 attempt\(s\): response body carries no `events` array — not the scoreboard shape/);
     expect(run.errors).toMatch(/no manual_csv fallback was taken/);
-    expect(run.sink.calls).toEqual(['readTeams']);
+    // [Story 2.18: `readCurrent` moved ahead of the adapter; still no write.]
+    expect(run.sink.calls).toEqual(['readTeams', 'readCurrent']);
   });
 
   it('SERIES_SOURCE selects a feed adapter end to end, not just past the registry check', async () => {

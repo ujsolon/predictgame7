@@ -65,7 +65,7 @@ The payloads are kept for the 2.18 build in `tests/pipeline/fixtures/espn-backfi
 - **Backfill:** games 1–5 by walking back single dates from Game 6's date, bounded at 21 dates, stopping once all are found. Each game must be Final, the same pair, and headline-numbered. There is no range parameter, and dates are shared across concurrent backfills.
 - **Birth:** an ordinary six-game source through the planner and `pipeline_birth_series`, with every AD-4/AD-5 check (3–3, `team_a` = Game 1's home). A birth is reported in the run log.
 - **The alarm stays honest:** `feedSeriesCount` is the run's own date only. Neither backfill nor re-read requests count toward it (Story 2.6 D-3).
-- **Overtime gap, option (i):** each run also re-reads the previous date, for Final Game 6s (births) and Final Game 7s (completions) not yet stored. That closes the overtime gap and auto-recovers a missed Game 7. It is idempotent and not counted in `feedSeriesCount`.
+- **Overtime gap, option (i):** each run also re-reads the previous date, for Final Game 6s (births) and Final Game 7s (completions) not yet stored. That closes the overtime gap and auto-recovers a missed Game 7. It is idempotent and not counted in `feedSeriesCount`. **[Amended 2026-10-06, owner decision at the Story 2.18 code review: the completions half is withdrawn. The re-read reads Game 6s for births only and ignores Game 7s; completions come from the run's own date only, and a missed Game 7 goes back to the manual recovery. Reason: re-reading Game 7s re-planned every finished series the next morning, so a red run could come from a date the run does not own. See `epics.md` Story 2.18 and `spec-2-18-automated-births-at-three-three.md`.]**
 - **Fallback, loud:** if a backfill cannot assemble a certified 3–3, nothing is born. A "birth needed" alert names the series and points to the runbook. The alert never blocks completions or the insights refresh, and it is distinguishable from a run failure.
 - **Tests:** fixture-driven, using the committed 2025 spike payloads. Cases:
   - a normal birth;
@@ -73,7 +73,7 @@ The payloads are kept for the 2.18 build in `tests/pipeline/fixtures/espn-backfi
   - 3–2 or completed (silent);
   - a missing `series` field (named);
   - a backfill gap (alert);
-  - the previous-date re-read (birth and completion);
+  - the previous-date re-read (birth and completion); **[amended 2026-10-06: birth only, with a re-read Game 7 ignored]**
   - `feedSeriesCount` unaffected;
   - per-team `wins` ordering.
 
