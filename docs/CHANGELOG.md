@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.7] - 2026-10-07
+
+### Added
+
+- Home lists every pending Game 7 as a link that opens its Predict page with the series already loaded (`/predict?series=<id>`). A failed read is logged, not shown as an empty list (Story 2.7).
+- ESPN is the scheduled pipeline source. The daily run completes a pending series from its Game 7, matching teams on `teams.espn_code` (migration `00018`, applied 2026-10-04). Completions come from the run's own date, the previous US Eastern day (Story 2.13).
+- The scheduled run now births a series by itself when it reaches 3–3. It detects a Final Game 6 tied 3–3, finds games 1–5 by walking back single dates (at most 21 dates, 25 extra requests and about 3 minutes per run), checks every game's own series standing against the scores, and births the series through the existing RPC. It also re-reads the previous date, for births only. When it cannot certify a 3–3, it prints `BIRTH NEEDED:`, opens a dated "Pipeline birth needed <date>" issue, and leaves the exit code alone (Story 2.18, FR-21). Operator tooling only: nothing fires before the April 2027 bracket unless dispatched by hand.
+- `docs/PLAYOFF_RUNBOOK.md`, the 2027 playoff procedure. Since Story 2.18 it is the fallback for a birth the run could not certify, and for a Game 7 missed by a red or cancelled morning (Stories 2.15, 2.18).
+
+### Changed
+
+- The custom-matchup form prints the code of the team its logo shows. A typed name resolves through the same alias table as the logo, so Jazz → UTA, Sixers → PHI and Celtics → BOS (it printed JAZ/SIX/CEL). The archive is unchanged (Story 2.11, owner decision U16, plus the review pass 2 patches).
+- Pipeline runner: every argv token that is not an exact supported flag is refused. A write failure after a winner has landed still refreshes the insights cache, or prints the recovery command (Story 2.14).
+- The committed operator CSV can now hold playoff rows. The gate validates them against the real teams seed instead of requiring the file to be empty, so a curated 3–3 no longer blocks every push (Story 2.17).
+
+### Removed
+
+- The `nba_com` pipeline source: its adapter, probes and tests, and the `--season=` flag. The name now fails at startup as an unrecognised adapter (Story 2.16).
+
 ## [0.2.6] - 2026-10-04
 
 ### Added
