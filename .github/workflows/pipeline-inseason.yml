@@ -24,8 +24,10 @@ name: Pipeline - inseason daily
 #
 # These three lines are the only date expression in the design. `--require-feed`
 # is declared here rather than defaulted in the runner, because the runner stays
-# date-blind (AD-4, Story 2.4 Decision 2 — the reason `deriveSeason` is a
-# fetch-scope rule and never a state rule). The alternative was a second Apr-Jun
+# date-blind (AD-4, Story 2.4 Decision 2 — the reason `deriveSeason` was a
+# fetch-scope rule and never a state rule; [2026-10-06, Story 2.16: `deriveSeason`
+# was deleted with nbaCom.ts, and the live fetch-scope rule is `deriveRequestDate`
+# in adapters/espn.ts, under the same constraint]). The alternative was a second Apr-Jun
 # rule in code that could disagree with the cron it is meant to match. When the
 # bracket moves — a lockout, a shifted Play-In, a Finals running past June 23 —
 # the edit happens in this file and nowhere else.

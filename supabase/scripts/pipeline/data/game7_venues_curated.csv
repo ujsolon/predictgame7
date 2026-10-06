@@ -28,7 +28,7 @@
 #   venue to the wrong series.)
 # Census: 159 NBA + 1 BAA + 18 ABA = 178 rows; 160 NBA/BAA Game 7s = nba.com's published
 #   count. Curation route for game7_home_team (spec-2-8 D1/D7, owner-run): all 160 NBA/BAA
-#   values come from node scripts/probe-game7-venues.mjs over seasons 1946-47 -> 2025-26
+#   values came from scripts/probe-game7-venues.mjs (deleted 2026-10-06, Story 2.16), 1946-47 -> 2025-26
 #   (each line prints the file:line to paste into). Three sweeps answered every overlapping
 #   row identically — 0 conflicts — and the era codes the feed prints resolve through the
 #   owner-approved table game7_feed_aliases.csv under the two-pass matcher, so no row needed

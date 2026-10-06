@@ -1281,7 +1281,8 @@ describe('runPipeline — Story 2.16 runner guarantees re-parented from the reti
   it('feed shape drift aborts the run through the runner: exit 2, the drift named, zero writes', async () => {
     const run = await runEspn(['--source=espn'], { body: { leagues: [] } });
     expect(run.code).toBe(2);
-    expect(run.errors).toMatch(/events/);
+    // The drift's own wording, reached after the full retry budget — not merely any message naming `events`.
+    expect(run.errors).toMatch(/failed after 3 attempt\(s\): response body carries no `events` array — not the scoreboard shape/);
     expect(run.errors).toMatch(/no manual_csv fallback was taken/);
     expect(run.sink.calls).toEqual(['readTeams']);
   });

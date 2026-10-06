@@ -939,12 +939,22 @@ describe('espn through runPipeline', () => {
   });
 
   it('a rest day under --require-feed is red naming the adapter, and green without the flag', async () => {
-    const alarmed = runnerHarness(emptyBody(), new FeedSink(), ['--require-feed']);
+    const alarmedSink = new FeedSink();
+    const alarmed = runnerHarness(emptyBody(), alarmedSink, ['--require-feed']);
     expect(await alarmed.promise).toBe(2);
     expect(alarmed.errors.join('\n')).toMatch(/--require-feed: espn returned 0 series/);
+    // Story 2.16 strengthened this twin to carry what the deleted run.test.ts
+    // originals pinned: the counts line reached the log (the alarm throws right
+    // after printing it, and nothing prints after the throw), and the red came
+    // before planning and writing — no readCurrent, no write.
+    expect(alarmed.lines.join('\n')).toMatch(/^espn: 0 series in feed \(dates=\d{8}\)/m);
+    expect(alarmedSink.calls).toEqual(['readTeams']);
 
-    const quiet = runnerHarness(emptyBody(), new FeedSink(), []);
+    const quietSink = new FeedSink();
+    const quiet = runnerHarness(emptyBody(), quietSink, []);
     expect(await quiet.promise).toBe(0);
+    expect(quietSink.calls).toEqual(['readTeams', 'readCurrent']);
+    expect(quiet.lines.join('\n')).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)/);
   });
 
   it('a feed whose every game is excluded is still a non-zero feed: the alarm passes', async () => {

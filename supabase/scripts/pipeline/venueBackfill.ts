@@ -242,8 +242,9 @@ const TEAM_SEED_ROW = /\((\d+),\s*'[^']+',\s*'([A-Z]{3})',/g;
  * The `teams` seed as an abbreviation → id map — the same 59 rows `00016`
  * resolves abbreviations through, and the only id space this repo's clients
  * speak. Owned here (review pass 2, P2-12) because both `00016`'s generator and
- * the owner-run venue probe read it: two copies of one regex is how a curated
- * abbreviation starts meaning two different things.
+ * the owner-run venue probe read it [2026-10-06, Story 2.16: the probe is deleted;
+ * the generator and the tests are the readers now]: two copies of one regex is how a
+ * curated abbreviation starts meaning two different things.
  *
  * Throws when the count is not exactly 59 — the seed format drifting is a
  * louder event than a venue list built on a partial map.
@@ -419,7 +420,8 @@ function slotPairMatches(row: VenueRow, a: string, b: string): boolean {
  * in exactly one way.
  *
  * The ordering is the safety property, and it is why this lives in the tested module
- * rather than in the probe's print loop:
+ * rather than in the probe's print loop (the venue probe, deleted by Story 2.16 on
+ * 2026-10-06):
  *
  * 1. **Direct pass first, over the whole season.** A pair that matches a curated row
  *    without substitution wins outright and *claims* that row. This is what keeps
@@ -535,7 +537,9 @@ export function resolveFeedCode(
 
 /**
  * The hand-entry worksheet for the rows no feed answers (spec-2-8 D6: the 62
- * NBA/BAA series in 1948–1992, plus anything the venue probe cannot reach).
+ * NBA/BAA series in 1948–1992, plus anything the venue probe could not reach).
+ * [2026-10-06, Story 2.16: the venue probe is deleted, so this worksheet plus a
+ * hand-checked reference is now the only route for a blank cell.]
  *
  * The point of generating it instead of reading the CSV is that **the answer is
  * binary**: the curated home is always one of the row's own two slots, because

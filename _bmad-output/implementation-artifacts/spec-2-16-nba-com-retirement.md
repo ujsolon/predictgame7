@@ -2,7 +2,7 @@
 title: 'Story 2.16 — Retire the nba_com source: adapter, registry entry, hand-run probes and tests'
 type: 'refactor'
 created: '2026-10-06'
-status: 'review'
+status: 'done'
 baseline_commit: 'b4ef872a03cd9c9a83b9ce7019225c1afd437984'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -143,7 +143,9 @@ knip counts test files as consumers and does not treat the dynamic `import()`s i
 
 ### 2. Triage of `tests/pipeline/nba-com.test.ts` (64 cases: 61 `it` + one `it.each` of 3)
 
-Order followed the spec: every re-parent and re-point below landed first, and `npx vitest run tests/pipeline` was green **with the originals still present** — 8 files, 369 tests (365 baseline + 1 moved + 6 re-parented − 3 `--require-feed` originals whose twins are cited below). Only then were the four files deleted. New line numbers are post-change.
+Order followed the spec: every re-parent and re-point below landed first, and `npx vitest run tests/pipeline` was green **with the originals still present** — 8 files, 369 tests (365 baseline + 1 moved + 6 re-parented − 3 `--require-feed` originals whose twins are cited below). Only then were the four files deleted.
+
+**Anchor convention (§2–§4).** Lines in the deleted `nba-com.test.ts`, and the "Original" column, are **pre-change** (HEAD `b4ef872`). Every other anchor — the "Lands at" column, the re-points, the mutation table and the §4 grep list — is **post-change**: the working tree after the review fixes, on top of commit `556008a`.
 
 **Adapter-only, dropped (48 cases).** `:225` port rows and the one-request rule (7), `:286` Decision 3 selection and counts (5), `:356` Decision 10 round derivation (6), `:441` feed shape drift (13), `:567` request posture (14 + the `:643` `it.each` of 3 = 17). Each pins `nbaCom.ts` or the chain walk deleted with it. The one guarantee inside them that outlives the adapter — the four canonical labels score 1/2/3/4 in `getRoundImportance` (`:373`) — already has a twin at `src/lib/__tests__/nba-utils.test.ts:194-206`, which asserts all four labels directly; `rounds.ts`'s header now cites that test instead of the deleted one.
 
@@ -159,22 +161,22 @@ Order followed the spec: every re-parent and re-point below landed first, and `n
 | 6 | `:897` `--season=` onto an archived year that disagrees | retired with `--season=` | the guard itself stays pinned at `plan.test.ts:187`, `:413` |
 | 7 | `:924` `--season=` onto an archived year that agrees | retired with `--season=` | `plan.test.ts:187`, `:394`, `:401` |
 | 8 | `:946` a re-run plans nothing | twin | `espn-adapter.test.ts:914` |
-| 9 | `:957` `--csv=` with the feed adapter refuses | twin | `espn-adapter.test.ts:998`, re-pointed from `--season=` to `--csv=operator.csv` in this story because `--season=` is now refused earlier, as an unrecognised flag |
-| 10 | `:966` `--season=` with `manual_csv` refuses | retired with `--season=` | replaced by the matrix pin `run.test.ts:1324` (unrecognised flag with any source) |
+| 9 | `:957` `--csv=` with the feed adapter refuses | twin | `espn-adapter.test.ts:1008`, re-pointed from `--season=` to `--csv=operator.csv` in this story because `--season=` is now refused earlier, as an unrecognised flag |
+| 10 | `:966` `--season=` with `manual_csv` refuses | retired with `--season=` | replaced by the matrix pin `run.test.ts:1325` (unrecognised flag with any source) |
 | 11 | `:979` `--season=` reaches the wire | retired with `--season=` | not re-parented, per the epic AC |
-| 12 | `:989` a duplicate `--season=` refuses | **re-parented** | `run.test.ts:1297`, as a duplicate `--csv=` (`--source=manual_csv --csv=first.csv --csv=second.csv`); also pins no sink opened, no file read |
-| 13 | `:998` `SERIES_SOURCE` selects the adapter end to end | **re-parented** | `run.test.ts:1289`: `SERIES_SOURCE=espn`, no `--source=`, reaches the feed report and `pipeline adapter=espn`. No twin existed: every `espn` runner case passes `--source=`. |
+| 12 | `:989` a duplicate `--season=` refuses | **re-parented** | `run.test.ts:1298`, as a duplicate `--csv=` (`--source=manual_csv --csv=first.csv --csv=second.csv`); also pins no sink opened, no file read |
+| 13 | `:998` `SERIES_SOURCE` selects the adapter end to end | **re-parented** | `run.test.ts:1290`: `SERIES_SOURCE=espn`, no `--source=`, reaches the feed report and `pipeline adapter=espn`. No twin existed: every `espn` runner case passes `--source=`. |
 | 14 | `:1008` `--dry-run` with the feed adapter writes nothing | twin | `espn-adapter.test.ts:892` |
-| 15 | `:1021` `manual_csv` still works, defaults, and reports nothing extra | **re-parented** | `run.test.ts:1352`. `run.test.ts` had default runs, but none asserted the absence of feed-report lines. |
+| 15 | `:1021` `manual_csv` still works, defaults, and reports nothing extra | **re-parented** | `run.test.ts:1353`. `run.test.ts` had default runs, but none asserted the absence of feed-report lines. |
 
 **`:1050` `manual_csv` deps (1 case): moved** unchanged to `manual-csv.test.ts:146`.
 
 **`run.test.ts` re-points.**
 - Selection `:376` became the matrix's two retired-source rows, `run.test.ts:416` (`it.each` by flag and by env). Each asserts the "not a recognised adapter" refusal listing `espn, fantrax, manual_csv`, no sink opened, no file read and no fetch — never a fallback.
 - Refresh bypass `:679`: its `--source=` row now names `espn` (`:736`). The scoping-flag loop `:705` lost its `--season=` row (`:762`); `run.ts`'s refresh path now checks `--csv=` alone.
-- `--require-feed` block: it rides `espn` bodies now. Its red, green and one-series originals were deleted with their twins cited in the block's own comment (`espn-adapter.test.ts:941` red + green, `:950` one-series). The dry-run alarm had no twin and was **re-parented** onto `espn` (`run.test.ts:964`), asserting the report line and the derived `dates=` print before the red. The typo case re-points to `--source=espn` (`:981`), the registry list is `['espn', 'manual_csv']` (`:1000`), and the empty-body map drops the retired adapter.
-- Matrix "retired flag" row: `run.test.ts:1324`, `--season=2025-26` with no source, `manual_csv`, `espn` and `--refresh-insights`. Each exits 2 naming the token, opens no sink and no longer lists `--season=<YYYY-YY>` in the help.
-- Matrix "scheduled source" row: `espn-adapter.test.ts:941` (red, and green without the flag) plus `run.test.ts:964` (dry-run). "Floor" row: `run.test.ts:1352` and the existing `manual_csv` cases.
+- `--require-feed` block: it rides `espn` bodies now. Its red, green and one-series originals were deleted with their twins cited in the block's own comment (`espn-adapter.test.ts:941` red + green, `:960` one-series). The dry-run alarm had no twin and was **re-parented** onto `espn` (`run.test.ts:964`), asserting the report line and the derived `dates=` print before the red. The typo case re-points to `--source=espn` (`:981`), the registry list is `['espn', 'manual_csv']` (`:1000`), and the empty-body map drops the retired adapter.
+- Matrix "retired flag" row: `run.test.ts:1325`, `--season=2025-26` with no source, `manual_csv`, `espn` and `--refresh-insights`. Each exits 2 naming the token, opens no sink and no longer lists `--season=<YYYY-YY>` in the help.
+- Matrix "scheduled source" row: `espn-adapter.test.ts:941` (red, and green without the flag; strengthened in review to pin sink calls `['readTeams']` / `['readTeams', 'readCurrent']`, the counts line on the red run and the empty plan line on the green one) plus `run.test.ts:964` (dry-run). "Floor" row: `run.test.ts:1353` and the existing `manual_csv` cases.
 
 ### 3. Mutation evidence (each re-parented or new pin)
 
@@ -184,22 +186,43 @@ Script `mutate.py` (session scratchpad): apply one mutation to live code, run on
 |---|---|---|
 | `run.test.ts:1253` notes reach stdout | `run.ts`: the `for (const note of report.notes) log(note)` loop logs nothing | exit 1, 1 failed |
 | `run.test.ts:1264` fetch failure | `run.ts`: `fetch_series_statuses()`/`fetch_game_scores()` gain `.catch(() => [])` (a silent empty fallback) | exit 1, 1 failed |
-| `run.test.ts:1281` drift | same mutation | exit 1, 1 failed |
-| `run.test.ts:1289` `SERIES_SOURCE` selection | `run.ts`: the env read is dropped (`?? DEFAULT_ADAPTER_NAME` only) | exit 1, 1 failed |
-| `run.test.ts:1297` duplicate `--csv=` | `run.ts` `flagValue`: `hits.length > 1` → `> 99` | exit 1, 1 failed |
-| `run.test.ts:1352` `manual_csv` reports nothing extra | `manualCsv.ts`: the source gains a `describeRun` | exit 1, 1 failed |
+| `run.test.ts:1281` drift | `adapters/espn.ts` `eventsOf`: a body with no `events` array returns `[]` instead of throwing (review fix: a drift-specific mutation; the assertion now names the drift message, "failed after 3 attempt(s): response body carries no `events` array — not the scoreboard shape") | exit 1, 1 failed (`mutate_drift.py`) |
+| `run.test.ts:1290` `SERIES_SOURCE` selection | `run.ts`: the env read is dropped (`?? DEFAULT_ADAPTER_NAME` only) | exit 1, 1 failed |
+| `run.test.ts:1298` duplicate `--csv=` | `run.ts` `flagValue`: `hits.length > 1` → `> 99` | exit 1, 1 failed |
+| `run.test.ts:1353` `manual_csv` reports nothing extra | `manualCsv.ts`: the source gains a `describeRun` | exit 1, 1 failed |
 | `manual-csv.test.ts:146` missing `csvPath` | `manualCsv.ts`: the `csvPath === undefined` guard never fires | exit 1, 1 failed |
 | `run.test.ts:964` dry-run alarm on `espn` | `run.ts`: the alarm condition gains `&& !dryRun` | exit 1, 1 failed |
 | `run.test.ts:416` retired source (2 rows) | `port.ts`: an `nba_com` entry re-registered | exit 1, 2 failed |
-| `run.test.ts:1324` retired flag (4 rows) | `run.ts`: `season` re-added to `SUPPORTED_FLAGS` | exit 1, 4 failed |
+| `run.test.ts:1325` retired flag (4 rows) | `run.ts`: `season` re-added to `SUPPORTED_FLAGS` | exit 1, 4 failed |
 
 ### 4. Verification
 
 - `npx vitest run tests/pipeline`: green before the deletions (8 files, 369 tests) and after (7 files, 307 tests). 307 = 369 − 64 (the deleted file) − 1 (the venue-probe source-text pin) − 2 (the two `node --check` rows) − 1 (old selection case) + 2 + 4 (the two matrix `it.each`s).
 - `npm run gate`: **exit 0**, read from the command itself (`GATE EXIT 0`). Biome checked 128 files, `tsc -b` clean, Vitest 24 files / 532 tests, and the build passed with the `/predictgame7/` base-path check. 532 = Story 2.14's recorded 590 − 64 − 1 − 2 − 1 − 3 + 1 + 6 + 2 + 4.
-- AC grep (`grep -rn "nbaCom\|nba-com\|nba_com\|--season" supabase src tests scripts .github --include=*.ts --include=*.mjs --include=*.yml`, `scripts/spike-2-1/**` aside). What remains is dated Story 2.16 annotations (`rounds.ts:14`, `run.ts:25,126`, `espn-adapter.test.ts:999`, `manual-csv.test.ts:144`, `run.test.ts:768,1228`), `run.test.ts`'s refusal pins (`:417-443`, `:1320-1348`), and `workflows.test.ts:134,154`, the "not offered" pin. `.github` has no hit: the workflow's `source` description no longer names the source, and its options and crons are unchanged.
+- AC grep (`grep -rn "nbaCom\|nba-com\|nba_com\|--season" supabase src tests scripts .github --include=*.ts --include=*.mjs --include=*.yml`, `scripts/spike-2-1/**` aside). What remains is dated Story 2.16 annotations (`rounds.ts:14`, `run.ts:25,126`, `run.ts:332`, `espn-adapter.test.ts:1009`, `manual-csv.test.ts:144`, `run.test.ts:768,1228`), `run.test.ts`'s refusal pins (`:417-443`, `:1321-1349`), and `workflows.test.ts:134,154`, the "not offered" pin. `.github` has no hit: the workflow's `source` description no longer names the source, and its options and crons are unchanged.
 - Not done by the agent: no live fetch, no migration, RPC, cron, Edge Function or `plan.ts` change. The CI `deno check` step is unaffected, since no `supabase/functions/**` file changed.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+**Pass 1 (2026-10-06).** Three fresh-context subagents on the same model level read the 228 KB diff `b4ef872..556008a`. Blind Hunter used floor N = 10 and returned 12 findings, Edge Case Hunter 6, and Verification Gap no gaps plus 1 other. There was no intent gap or bad spec, so no loopback. The patches went back to the implementation subagent and are uncommitted until the orchestrator's gate run.
+
+| ID | Finding | Verdict | Route and evidence |
+|---|---|---|---|
+| B1 | `ARCHITECTURE-SPINE.md` AD-5 still lists `nba_com` | low | **patch**. Dated brackets at `:98` and `:202`. |
+| B2 | `epics.md:419`/`:449` cite deleted files | low | **patch**. Dated brackets. |
+| B3 | `--refresh-insights --source=nba_com` is still accepted | false | By design: the refresh path selects no adapter (owner decision U10) and accepts any `--source`, `fantrax` included. The matrix rows describe the run path. |
+| B4 | "Report prints before planning" is not re-parented into `run.test.ts` | false | Its twin `espn-adapter.test.ts:902` runs through `runPipeline` (its `runnerHarness`), so the runner guarantee survives at runner level. |
+| B5 | The drift test asserts only `/events/` and borrows the fetch mutation | low | **patch**. The assertion now matches the drift message, and its own mutation (`eventsOf` → `[]`) shows it red. |
+| B6 | The unreachable `allowed.map` branch has no marker | low | **patch**. Comment at `run.ts:332`. |
+| B7 / E2 / V-other | `CURRENT_DATA_MODEL.md:71`/`:180` describe `--season` and the probe as live | low | **patch**. Dated brackets. |
+| B8 | Five `venueBackfill.ts` feed-matching exports are test-only now | low | **defer** (`deferred-work.md`, last entry; retro item 6). |
+| B9 | Action item 10 was set `done` before the story is done | low | **patch**. Set back to `open`, pending the owner's confirmation. |
+| B10 | `rounds.ts` keeps the chain-walk names and unused `export`s | low | **reject**. Cosmetic: renames and export trims are churn beyond a direct correction. |
+| B11 | The AC grep never scans docs | — | **reject**. The fix edits this spec; the stale docs it missed are B1, B2 and B7. |
+| B12 | Counts and anchors are inconsistent across the comment, spec and tests | low | **patch**. Anchor convention stated, and moved anchors corrected. |
+| E1 | The blank-cell doc misses newly archived series | low (maybe-false) | **reject**. A pipeline-born series gets its Game 7 venue from the feed and has no curated-CSV row to fill. |
+| E3 | `pipeline-inseason.yml:27` cites the deleted `deriveSeason` | low | **patch**. Comment only, re-pointed to `deriveRequestDate`. |
+| E4 | Data-CSV and `venueBackfill.ts` comments call the probe live | low | **patch**. Past tense, or a dated note. `venueBackfill.ts --check` exits 0 after the edit. |
+| E5 / E6 | The ESPN rest-day twins are weaker than the deleted cases | low | **patch**. Red asserts `sink.calls` is `['readTeams']` plus the counts line; green asserts `['readTeams','readCurrent']` plus the empty plan. |

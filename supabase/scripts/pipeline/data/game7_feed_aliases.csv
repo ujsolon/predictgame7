@@ -35,7 +35,7 @@
 #   evidence   — the season, the opposing side, and the curated row it resolves to
 #
 # Audited by the owner on 2026-10-01; each row is derived from that day's probe output
-# (scripts/probe-game7-venues.mjs --season=…), quoted verbatim in the evidence column.
+# (scripts/probe-game7-venues.mjs --season=…, deleted 2026-10-06 by Story 2.16), quoted verbatim in the evidence column.
 # Nothing here is a guess about franchise history: every mapping is the only curated row
 # for that year that the opposing side leaves standing.
 feed_abbr,teams_abbr,evidence

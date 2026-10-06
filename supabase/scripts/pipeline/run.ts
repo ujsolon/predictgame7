@@ -329,6 +329,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     const allowed = ADAPTER_FLAGS[sourceName] ?? [];
     const misplaced = passedFlags.find((name) => !allowed.includes(name));
     if (misplaced) {
+      // The `allowed.map` branch below is unreachable while `csv` is the only scoping flag (Story 2.16); kept for the next one.
       throw new PipelineRunError(
         `--${misplaced}= does not apply to adapter "${sourceName}" — refusing instead of silently discarding the flag. ` +
           `Flags this adapter understands: ${allowed.length > 0 ? allowed.map((name) => `--${name}=`).join(', ') : 'none'}.`,
