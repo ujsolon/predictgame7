@@ -47,7 +47,7 @@ development_status:
   1-5-manual-qa-matrix-epic-verification-pass: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-0-gate-the-server-side-edge-function-type-check-and-input-validation: done
   2-1-q-4-data-source-feasibility-spike: done
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
@@ -345,12 +345,12 @@ development_status:
   # triaged: 6 runner guarantees into run.test.ts + the dry-run alarm onto espn, 1 moved to
   # manual-csv.test.ts, each with a red mutation. C1 reversal in port.ts; dated annotations in epics.md 2.4/2.6/2.13,
   # seriesdatasource-port.md, CURRENT_DATA_MODEL.md. At review: done only after its review.
-  2-16-nba-com-retirement: review
+  2-16-nba-com-retirement: done
   # 2-17 added 2026-10-06 by owner decision during 2-15's build: manual-csv.test.ts:66-74
   # requires the committed operator CSV to be empty, so playoff rows redden the gate and block
   # every push to master. Relax it to "valid against the real teams seed"; runbook caveat goes
   # in the same commit. Due before 2027-04-12.
-  2-17-live-operator-csv-carries-playoff-rows: review
+  2-17-live-operator-csv-carries-playoff-rows: done
   # 2-18 registered 2026-10-06 as detect-and-alert, then RE-SCOPED the same day by
   # sprint-change-proposal-2026-10-06.md (owner option B): the scheduled espn run births a series at
   # a feed-observed 3-3, backfilling games 1-6 by single dates (<=21), re-reading the previous date;
@@ -527,7 +527,8 @@ action_items:
       (births are curated, not scheduled); annotate epics.md:253's goal (completions
       automated, births curated, owner call 2026-10-04). Before 2027-04-12. [R1]"
     owner: "owner decides wording; agent drafts"
-    status: open
+    status: done
+    closed: "2026-10-06 by Story 2.15 (docs/PLAYOFF_RUNBOOK.md; births are now automatic since Story 2.18, the runbook is the fallback)"
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-15-harden-the-pipeline-write-path-a-a-write"
     epic: 2
@@ -537,7 +538,8 @@ action_items:
       variants currently run live); (c) add espn to run.ts's usage header. Add a FakeSink
       completion-failure hook and tests for (a) and (b). [W1, W3, W4]"
     owner: "agent (dev loop)"
-    status: open
+    status: done
+    closed: "2026-10-06 by Story 2.14 (pipeline runner hardening)"
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-16-one-fresh-context-review-of-the-whole-wr"
     epic: 2
