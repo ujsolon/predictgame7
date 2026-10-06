@@ -43,9 +43,7 @@ vi.mock('@/db/supabase', () => ({
   },
 }));
 
-vi.mock('@posthog/react', () => ({
-  usePostHog: () => ({ capture: db.capture, captureException: db.captureException }),
-}));
+vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException: db.captureException } }));
 
 vi.mock('sonner', () => ({ toast: db.toast }));
 
@@ -596,6 +594,60 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     expect((document.getElementById('team_a') as HTMLInputElement).value).toBe('BOS');
     expect((document.getElementById('game_6_score_b') as HTMLInputElement).value).toBe('96');
     expect(db.from).toHaveBeenCalledTimes(2);
+  });
+
+  // Story 4.0: the custom-series, four method, generate, detailed-analysis and
+  // reset call sites now emit through `@/lib/analytics`. Pinned as the whole
+  // capture log, so a renamed event, a changed prop, an extra emission, or a
+  // no-props call that gains an argument all fail here.
+  it('emits each Predict event through the port with its exact name and props', async () => {
+    renderPage();
+    await chooseCustomMatchup();
+    await chooseMethod('Logistic Regression');
+    for (const [current, next] of [
+      ['Logistic Regression', 'Bayes Method'],
+      ['Bayes Method', 'Elo Rating'],
+      ['Elo Rating', 'Exponential Smoothing'],
+    ]) {
+      fireEvent.click(screen.getByText(current));
+      fireEvent.click(await screen.findByRole('button', { name: new RegExp(next) }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    }
+
+    fillCustomForm();
+    db.invoke.mockResolvedValue({ data: { ...conformingResult, method_used: 'exponential_smoothing' }, error: null });
+    submitPrediction();
+    await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('View Detailed Analysis'));
+    await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('New Prediction'));
+
+    expect(db.capture.mock.calls).toEqual([
+      ['custom_series_selected'],
+      ['prediction_method_selected', { method: 'logistic_regression' }],
+      ['prediction_method_selected', { method: 'bayes' }],
+      ['prediction_method_selected', { method: 'elo' }],
+      ['prediction_method_selected', { method: 'exponential_smoothing' }],
+      [
+        'prediction_generated',
+        {
+          method: 'exponential_smoothing',
+          series_source: 'custom',
+          series_id: undefined,
+          series_year: undefined,
+          predicted_winner: 'Boston Celtics',
+          win_probability_a: 61.25,
+          win_probability_b: 38.75,
+          confidence_level: 'Medium',
+        },
+      ],
+      ['detailed_analysis_viewed', { method: 'exponential_smoothing', series_id: undefined }],
+      ['prediction_reset'],
+    ]);
+    // The two no-props emissions reach the SDK with one argument, not (name, undefined).
+    expect(db.capture.mock.calls[0]).toHaveLength(1);
+    expect(db.capture.mock.calls[7]).toHaveLength(1);
+    expect(db.captureException).not.toHaveBeenCalled();
   });
 });
 

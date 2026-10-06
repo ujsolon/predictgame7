@@ -4,7 +4,7 @@
 // its preview page, and that Home renders nothing at all when none is pending
 // or the read fails. Assertions are `textContent` / `href` only — never a
 // computed accessible name (AGENTS.md · Evidence discipline, finding F16).
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,15 +16,16 @@ const db = vi.hoisted(() => ({
   filters: [] as Array<[string, unknown]>,
   orders: [] as string[],
   from: vi.fn(),
+  invoke: vi.fn(),
+  capture: vi.fn(),
+  captureException: vi.fn(),
 }));
 
 vi.mock('@/db/supabase', () => ({
-  supabase: { from: db.from, functions: { invoke: vi.fn() } },
+  supabase: { from: db.from, functions: { invoke: db.invoke } },
 }));
 
-vi.mock('@posthog/react', () => ({
-  usePostHog: () => ({ capture: vi.fn(), captureException: vi.fn() }),
-}));
+vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException: db.captureException } }));
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
@@ -186,5 +187,68 @@ describe('Home pending-Game-7 data reach (Story 2.7, D2)', () => {
     );
     await waitFor(() => expect(container.querySelector('[data-home-pending-series] a')).not.toBeNull());
     expect(container.querySelector('[data-home-pending-series] a')?.getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
+  });
+});
+
+// Story 4.0: Home's three analytics call sites now go through the port
+// (`@/lib/analytics` → the mocked `posthog-js` singleton), so these pin the
+// exact name and props each one sends, as the whole call log.
+describe('Home analytics through the port (Story 4.0)', () => {
+  beforeEach(() => {
+    db.invoke.mockReset();
+    db.capture.mockClear();
+    db.captureException.mockClear();
+  });
+
+  function renderHome() {
+    return render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>
+    );
+  }
+
+  function submitContact(container: HTMLElement) {
+    const form = container.querySelector('form') as HTMLFormElement;
+    fireEvent.change(form.querySelector('#name') as HTMLInputElement, { target: { value: 'Fan Name' } });
+    fireEvent.change(form.querySelector('#email') as HTMLInputElement, { target: { value: 'fan@example.com' } });
+    fireEvent.change(form.querySelector('#message') as HTMLTextAreaElement, { target: { value: 'Hello there' } });
+    fireEvent.submit(form);
+  }
+
+  it('sends banner_hotspot_clicked with the hotspot caption and series id', async () => {
+    const { container } = renderHome();
+    await settled();
+    const hotspot = container.querySelector('a[href="/predict?series=29638c4e-261a-4d09-81aa-5740f76175f5"]') as HTMLAnchorElement;
+    fireEvent.click(hotspot);
+    expect(db.capture.mock.calls).toEqual([
+      ['banner_hotspot_clicked', { caption: 'Raptors vs 76ers, 2019', series_id: '29638c4e-261a-4d09-81aa-5740f76175f5' }],
+    ]);
+    expect(db.captureException).not.toHaveBeenCalled();
+  });
+
+  it('sends contact_form_submitted with no props, one argument, on a successful submit', async () => {
+    db.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    const { container } = renderHome();
+    await settled();
+    submitContact(container);
+    await waitFor(() => expect(db.capture).toHaveBeenCalled());
+    expect(db.invoke.mock.calls[0][0]).toBe('handle-contact');
+    expect(db.capture.mock.calls).toEqual([['contact_form_submitted']]);
+    expect(db.capture.mock.calls[0]).toHaveLength(1);
+    expect(db.captureException).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed submit through captureError alone, with no submitted event', async () => {
+    db.invoke.mockResolvedValue({ data: null, error: { message: 'relay down', context: {} } });
+    const { container } = renderHome();
+    await settled();
+    submitContact(container);
+    await waitFor(() => expect(db.captureException).toHaveBeenCalled());
+    expect(db.captureException.mock.calls).toHaveLength(1);
+    expect(db.captureException.mock.calls[0]).toHaveLength(1);
+    expect(db.captureException.mock.calls[0][0]).toBeInstanceOf(Error);
+    expect((db.captureException.mock.calls[0][0] as Error).message).toBe('relay down');
+    expect(db.capture.mock.calls).toEqual([]);
   });
 });

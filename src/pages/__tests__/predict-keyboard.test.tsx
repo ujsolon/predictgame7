@@ -37,9 +37,7 @@ vi.mock('@/db/supabase', () => ({
   },
 }));
 
-vi.mock('@posthog/react', () => ({
-  usePostHog: () => ({ capture: db.capture, captureException: db.captureException }),
-}));
+vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException: db.captureException } }));
 
 vi.mock('sonner', () => ({ toast: db.toast }));
 

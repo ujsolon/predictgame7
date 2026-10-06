@@ -144,13 +144,19 @@ What checks them:
 
 ## Analytics
 
-PostHog is wired into the frontend for:
+All analytics go through one port, `src/lib/analytics/` (AD-1 / NFR-V1). PostHog is the vendor
+behind it, and that folder is the only place `posthog-js` or `@posthog/react` may be imported —
+Biome's `noRestrictedImports` makes an import anywhere else (subpaths included) a lint error. Feature
+code imports from the `@/lib/analytics` barrel only, which exports:
 
-- prediction flow events
-- homepage interaction events
-- historical archive interaction events
-- auth events
-- frontend exception capture
+- `track(EVENTS.X, props?)` — the typed `EVENTS` registry holds the 10 event names (prediction flow,
+  homepage interaction, historical archive interaction); an unregistered name fails `tsc -b`
+- `captureError(err)` — frontend exception capture
+- `identify(userId)` / `resetUser()`
+
+Bootstrap is separate: `main.tsx` alone imports `AnalyticsProvider` from `@/lib/analytics/provider`
+(SDK init plus the provider/error boundary). It is kept out of the barrel on purpose, because
+importing it boots the SDK.
 
 ## Repo docs
 

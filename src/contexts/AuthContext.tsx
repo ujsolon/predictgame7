@@ -5,7 +5,7 @@ import type { User } from '@supabase/supabase-js';
 // @ts-ignore
 import type { Profile } from '@/types/types';
 import { toast } from 'sonner';
-import posthog from 'posthog-js';
+import { identify, resetUser } from '@/lib/analytics';
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -90,8 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       if (data.user) {
-        posthog.identify(data.user.id, { username });
-        posthog.capture('user_signed_in', { username });
+        identify(data.user.id);
       }
       return { error: null };
     } catch (error) {
@@ -109,8 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       if (data.user) {
-        posthog.identify(data.user.id, { username });
-        posthog.capture('user_signed_up', { username });
+        identify(data.user.id);
       }
       return { error: null };
     } catch (error) {
@@ -120,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    posthog.reset();
+    resetUser();
     setUser(null);
     setProfile(null);
   };

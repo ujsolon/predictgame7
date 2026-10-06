@@ -20,7 +20,7 @@ import type { Series, Team } from '@/types/types';
 import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { usePostHog } from '@posthog/react';
+import { captureError, EVENTS, track } from '@/lib/analytics';
 
 type SeriesSource = 'current' | 'historical' | 'custom';
 
@@ -38,7 +38,6 @@ const asSeries = (rows: unknown): Series[] => (Array.isArray(rows) ? rows : []) 
 const asSeriesRow = (row: unknown): Series => row as Series;
 
 export default function PredictPage() {
-  const posthog = usePostHog();
   const [searchParams] = useSearchParams();
   const [selectedSeries, setSelectedSeries] = useState<SelectedSeries | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<MethodSlug | null>(null);
@@ -149,7 +148,7 @@ export default function PredictPage() {
         if (deriveSeriesPhase(row) === null) {
           const anomaly = new Error(`Series ${row.id} does not reconcile to a derived phase`);
           console.error('Non-reconciling series:', anomaly);
-          posthog?.captureException(anomaly);
+          captureError(anomaly);
         } else {
           reconciled.push(row);
         }
@@ -162,7 +161,7 @@ export default function PredictPage() {
       // an empty list. Only failure state changes here — selections survive.
       console.error('Error fetching series:', err);
       setSeriesListFailed(true);
-      posthog?.captureException(err);
+      captureError(err);
     }
   };
 
@@ -194,7 +193,7 @@ export default function PredictPage() {
       // Query failure (broken link, unreadable id, network miss on mount):
       // the retryable panel treatment, not a dead-end toast.
       console.error('Error loading series:', err);
-      posthog?.captureException(err);
+      captureError(err);
       // A superseded preload still reports to analytics but must not mask
       // whatever the fan has on screen by the time it lands.
       if (seq === seriesLoadSeq.current) setSeriesLoadFailed(true);
@@ -355,7 +354,7 @@ export default function PredictPage() {
           // Failure state only — series, method and scores survive the retry.
           setPredictFailure(failure);
         }
-        posthog?.captureException(
+        captureError(
           error instanceof Error ? error : new Error(failure.message)
         );
         return;
@@ -376,7 +375,7 @@ export default function PredictPage() {
       if (seq === predictSeq.current) {
         setPredictFailure({ kind: 'service', reason: 'transport', message: SERVICE_MESSAGES.transport });
       }
-      posthog?.captureException(err);
+      captureError(err);
       return;
     } finally {
       // Only the newest attempt owns the spinner: a superseded response landing
@@ -389,7 +388,7 @@ export default function PredictPage() {
     // into a "service unreachable" panel.
     try {
       toast.success('Prediction generated successfully');
-      posthog?.capture('prediction_generated', {
+      track(EVENTS.PREDICTION_GENERATED, {
         method: attempt.method,
         series_source: attempt.series.source,
         series_id: attempt.series.data?.id,
@@ -468,7 +467,7 @@ export default function PredictPage() {
     setSelectedDecade(null);
     setSelectedYear(null);
     toast.success('Series selected');
-    posthog?.capture('series_selected', {
+    track(EVENTS.SERIES_SELECTED, {
       series_id: game.id,
       series_year: game.year,
       series_round: game.round,
@@ -902,7 +901,7 @@ export default function PredictPage() {
                                 setSelectedSeries({ source: 'custom' });
                                 setIsSeriesDialogOpen(false);
                                 toast.success('Custom series selected');
-                                posthog?.capture('custom_series_selected');
+                                track(EVENTS.CUSTOM_SERIES_SELECTED);
                               }}
                             >
                               <Settings className="h-5 w-5 text-muted-foreground" />
@@ -995,7 +994,7 @@ export default function PredictPage() {
                         setSelectedMethod('logistic_regression');
                         setIsMethodDialogOpen(false);
                         toast.success('Logistic Regression selected');
-                        posthog?.capture('prediction_method_selected', { method: 'logistic_regression' });
+                        track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'logistic_regression' });
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1018,7 +1017,7 @@ export default function PredictPage() {
                         setSelectedMethod('bayes');
                         setIsMethodDialogOpen(false);
                         toast.success('Bayes Method selected');
-                        posthog?.capture('prediction_method_selected', { method: 'bayes' });
+                        track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'bayes' });
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1041,7 +1040,7 @@ export default function PredictPage() {
                         setSelectedMethod('elo');
                         setIsMethodDialogOpen(false);
                         toast.success('Elo Rating selected');
-                        posthog?.capture('prediction_method_selected', { method: 'elo' });
+                        track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'elo' });
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1064,7 +1063,7 @@ export default function PredictPage() {
                         setSelectedMethod('exponential_smoothing');
                         setIsMethodDialogOpen(false);
                         toast.success('Exponential Smoothing selected');
-                        posthog?.capture('prediction_method_selected', { method: 'exponential_smoothing' });
+                        track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'exponential_smoothing' });
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -1258,7 +1257,7 @@ export default function PredictPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowDetails(true);
-                        posthog?.capture('detailed_analysis_viewed', {
+                        track(EVENTS.DETAILED_ANALYSIS_VIEWED, {
                           method: selectedMethod,
                           series_id: selectedSeries?.data?.id,
                         });
@@ -1398,7 +1397,7 @@ export default function PredictPage() {
                 variant="default"
                 className="flex-1"
                 onClick={() => {
-                  posthog?.capture('prediction_reset');
+                  track(EVENTS.PREDICTION_RESET);
                   setResult(null);
                   setSelectedSeries(null);
                   setSelectedMethod(null);

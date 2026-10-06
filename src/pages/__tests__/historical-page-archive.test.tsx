@@ -30,9 +30,7 @@ vi.mock('@/db/supabase', () => ({
   },
 }));
 
-vi.mock('@posthog/react', () => ({
-  usePostHog: () => ({ capture: db.capture, captureException: vi.fn() }),
-}));
+vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException: vi.fn() } }));
 
 vi.mock('sonner', () => ({ toast: db.toast }));
 
@@ -428,6 +426,27 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     await waitFor(() => expect(renderedRows()).toBe(3));
     expect(document.querySelector('svg.lucide-funnel-x')).toBeNull();
     expect(liveRegion()?.textContent).toBe('Showing 3 of 3 series.');
+  });
+
+  it('counts a reset press once as `historical_filter_applied {filter_type: reset}` (Story 4.0 D1)', async () => {
+    // Owner decision D1 (2026-10-07): a clear is the one new emission the port
+    // story adds, under the frozen §A.1 name. Pinned as the whole call log, so a
+    // second emission per press, a `year: 'all'` side effect of the reset, or a
+    // new event name all fail here.
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    render(<HistoricalPage />);
+    await screen.findByText('1948');
+
+    await chooseYear('1976');
+    fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
+    fireEvent.click(resetButton() as HTMLButtonElement);
+    await waitFor(() => expect(renderedRows()).toBe(3));
+
+    expect(db.capture.mock.calls).toEqual([
+      ['historical_filter_applied', { filter_type: 'year', year: '1976' }],
+      ['historical_filter_applied', { filter_type: 'team_search' }],
+      ['historical_filter_applied', { filter_type: 'reset' }],
+    ]);
   });
 
   it('shows the reset button for a team search alone and clears the search with it', async () => {

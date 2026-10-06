@@ -9,7 +9,7 @@ import { getTeamCode } from '@/lib/nba-utils';
 import { isSeriesPending } from '@/lib/series-phase';
 import { SERIES_SELECT } from '@/lib/series-query';
 import type { Series } from '@/types/types';
-import { usePostHog } from '@posthog/react';
+import { captureError, EVENTS, track } from '@/lib/analytics';
 import {
   Trophy,
   TrendingUp,
@@ -112,7 +112,6 @@ export function PendingGameSevens() {
 }
 
 export default function HomePage() {
-  const posthog = usePostHog();
   const [activeStep, setActiveStep] = React.useState(0);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [contactStartedAt, setContactStartedAt] = React.useState(() => new Date().toISOString());
@@ -231,13 +230,13 @@ export default function HomePage() {
       }
 
       toast.success('Thank you for your message! We will get back to you soon.');
-      posthog?.capture('contact_form_submitted');
+      track(EVENTS.CONTACT_FORM_SUBMITTED);
       form.reset();
       setContactStartedAt(new Date().toISOString());
     } catch (err: any) {
       console.error('Error submitting contact form:', err);
       toast.error(err.message || 'Failed to send message. Please try again.');
-      posthog?.captureException(err);
+      captureError(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -275,7 +274,7 @@ export default function HomePage() {
               to={`/predict?series=${hotspot.seriesId}`}
               className="absolute group"
               style={{ left: hotspot.x, top: hotspot.y, transform: 'translate(-50%, -50%)' }}
-              onClick={() => posthog?.capture('banner_hotspot_clicked', { caption: hotspot.caption, series_id: hotspot.seriesId })}
+              onClick={() => track(EVENTS.BANNER_HOTSPOT_CLICKED, { caption: hotspot.caption, series_id: hotspot.seriesId })}
             >
               {/* Pulsing ring */}
               <span className="absolute inset-0 rounded-full bg-white/40 animate-ping" />

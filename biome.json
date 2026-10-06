@@ -24,7 +24,22 @@
         "noRedeclare": "error"
       },
       "style": {
-        "noCommonJs": "error"
+        "noCommonJs": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "posthog-js": "AD-1 / NFR-V1: import analytics from @/lib/analytics, the only place the vendor SDK may be imported.",
+              "@posthog/react": "AD-1 / NFR-V1: import analytics from @/lib/analytics, the only place the vendor SDK may be imported."
+            },
+            "patterns": [
+              {
+                "group": ["posthog-js/**", "@posthog/**"],
+                "message": "AD-1 / NFR-V1: import analytics from @/lib/analytics, the only place the vendor SDK may be imported."
+              }
+            ]
+          }
+        }
       }
     }
   },
@@ -39,6 +54,18 @@
     }
   },
   "overrides": [
+    {
+      "includes": [
+        "src/lib/analytics/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "tailwind.config.js"
