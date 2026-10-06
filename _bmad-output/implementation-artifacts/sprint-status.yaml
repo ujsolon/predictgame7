@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-06-2026 11:26
+last_updated: 10-06-2026 11:59
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -337,8 +337,8 @@ development_status:
   2-14-pipeline-runner-hardening: done
   # 2-15: built 2026-10-06 (docs only): docs/PLAYOFF_RUNBOOK.md, CSV pointer comment, F2 corrected in
   # drill-2-7-results.md + deferred-work.md, epics.md:253 dated bracket, epic-2-context.md re-check note.
-  # At review: done only after the owner approves the runbook wording (spec AC).
-  2-15-playoff-birth-runbook: review
+  # At review: done only after the owner approves the runbook wording (spec AC). Approved 2026-10-06.
+  2-15-playoff-birth-runbook: done
   2-16-nba-com-retirement: backlog
   # 2-17 added 2026-10-06 by owner decision during 2-15's build: manual-csv.test.ts:66-74
   # requires the committed operator CSV to be empty, so playoff rows redden the gate and block
