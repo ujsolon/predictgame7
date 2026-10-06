@@ -24,7 +24,7 @@ Status: **approved by the owner 2026-10-06** (final approval after the increment
 
 Findings that shape the design:
 - **`wins` is ordered by competitor, not by home/away.** GS–HOU read `[0,1]` after Game 1, so wins must be read per team.
-- **Walk-back dates carry other series' games too,** so concurrent backfills share fetches.
+- **Walk-back dates carry other series' games too,** so concurrent backfills share fetches. **[2026-10-07, Story 2.18 pass-2 review: as built, the walks run in turn and share a per-run date cache; "concurrent" described the intended sharing, not parallel execution.]**
 - **Not yet measured:** later-round headlines, Game 6s ending after midnight Eastern, and more than about 13 requests per run.
 
 The payloads are kept for the 2.18 build in `tests/pipeline/fixtures/espn-backfill-2025/`.
@@ -62,7 +62,7 @@ The payloads are kept for the 2.18 build in `tests/pipeline/fixtures/espn-backfi
 
 - **Title:** "The scheduled run births a series at 3–3". It reverses the 2026-10-04 call and two 2.13 constraints (`SPEC.md:66`, `:80`), for this backfill only.
 - **Detect:** a Final Game 6 on the run's date with `competitions[0].series` `completed: false` and 3–3, **wins read per team**, and no stored row for the pair in either slot order.
-- **Backfill:** games 1–5 by walking back single dates from Game 6's date, bounded at 21 dates, stopping once all are found. Each game must be Final, the same pair, and headline-numbered. There is no range parameter, and dates are shared across concurrent backfills.
+- **Backfill:** games 1–5 by walking back single dates from Game 6's date, bounded at 21 dates, stopping once all are found. Each game must be Final, the same pair, and headline-numbered. There is no range parameter, and dates are shared across concurrent backfills. **[2026-10-07, Story 2.18 pass-2 review: as built, backfills run one after another; the sharing is the per-run date cache.]**
 - **Birth:** an ordinary six-game source through the planner and `pipeline_birth_series`, with every AD-4/AD-5 check (3–3, `team_a` = Game 1's home). A birth is reported in the run log.
 - **The alarm stays honest:** `feedSeriesCount` is the run's own date only. Neither backfill nor re-read requests count toward it (Story 2.6 D-3).
 - **Overtime gap, option (i):** each run also re-reads the previous date, for Final Game 6s (births) and Final Game 7s (completions) not yet stored. That closes the overtime gap and auto-recovers a missed Game 7. It is idempotent and not counted in `feedSeriesCount`. **[Amended 2026-10-06, owner decision at the Story 2.18 code review: the completions half is withdrawn. The re-read reads Game 6s for births only and ignores Game 7s; completions come from the run's own date only, and a missed Game 7 goes back to the manual recovery. Reason: re-reading Game 7s re-planned every finished series the next morning, so a red run could come from a date the run does not own. See `epics.md` Story 2.18 and `spec-2-18-automated-births-at-three-three.md`.]**

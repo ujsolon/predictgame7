@@ -295,8 +295,11 @@ describe('both pipeline workflows — the Story 2.18 birth-needed alert', () => 
       // Dated, not stable: on an open issue `notify-failure` comments only a
       // run link, so a stable title would bury a later day's series behind
       // "Still red". Each day's alert lines open an issue of their own.
+      // `!inputs.dry_run`: a rehearsal dispatch writes nothing, so it files no
+      // issue (owner decision 2026-10-07, Story 2.18 pass-2 review); on a
+      // schedule event `inputs.dry_run` is null and the guard passes.
       expect(file).toMatchObject({
-        if: "always() && steps.alerts.outputs.found == 'true'",
+        if: "always() && steps.alerts.outputs.found == 'true' && !inputs.dry_run",
         uses: './.github/actions/notify-failure',
         with: { title: 'Pipeline birth needed ${{ steps.alerts.outputs.date }}' },
       });

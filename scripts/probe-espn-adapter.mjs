@@ -148,6 +148,10 @@ async function runProbe(datesArg) {
   const shipped = await import('../supabase/scripts/pipeline/adapters/espn.ts');
   const { createEspnAdapter, deriveRequestDate, scoreboardUrl, parseHeadline, etCalendarDay, SCOREBOARD_ENDPOINT, ESPN_HEADERS, describeFetchThrow, shiftDates } =
     shipped;
+  // Imported, never copied (pass-2 review): the alert prefix is the runner's
+  // constant, so the probe cannot print a prefix the workflows no longer grep.
+  // run.ts guards its main behind an argv check, so this import runs nothing.
+  const { BIRTH_NEEDED_PREFIX } = await import('../supabase/scripts/pipeline/run.ts');
 
   const runDate = new Date();
   console.log('story 2.13 live probe — shipped espn adapter against the real feed (read-only, zero Supabase)');
@@ -241,7 +245,10 @@ async function runProbe(datesArg) {
     if (feedUrls[0] !== scoreboardUrl(datesArg)) {
       throw new Error(`the adapter asked ${feedUrls[0]} first — expected exactly ${scoreboardUrl(datesArg)}`);
     }
-    const strays = [...distinctUrls].filter((url) => !/^https:\/\/site\.api\.espn\.com\/apis\/site\/v2\/sports\/basketball\/nba\/scoreboard\?dates=\d{8}$/.test(url));
+    // Derived from the imported endpoint constant, never a copied literal
+    // (pass-2 review): an endpoint change moves the check with it.
+    const singleDateForm = new RegExp(`^${SCOREBOARD_ENDPOINT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\?dates=\\d{8}$`);
+    const strays = [...distinctUrls].filter((url) => !singleDateForm.test(url));
     if (strays.length > 0) {
       throw new Error(`the adapter asked a URL that is not the single-date form: ${strays.join(' | ')}`);
     }
@@ -252,7 +259,7 @@ async function runProbe(datesArg) {
     console.log(report.countsLine);
     console.log(report.histogramLine);
     for (const note of report.notes) console.log(note);
-    for (const alert of report.alerts) console.log(`BIRTH NEEDED: ${alert}`);
+    for (const alert of report.alerts) console.log(`${BIRTH_NEEDED_PREFIX} ${alert}`);
     console.log(`feed requests made by the adapter: ${feedUrls.length} call(s), ${distinctUrls.size} distinct URL(s)`);
     console.log(`URL: ${feedUrls[0]}`);
     console.log(`port rows: ${statuses.length} series status(es), ${scores.length} game score(s) — a date with neither a Game 7 nor a certified 3–3 Game 6 (named or re-read) yields zero rows BY RULE`);

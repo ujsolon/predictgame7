@@ -667,7 +667,7 @@ so that every pending Game 7 appears inside its one-to-two-day window without me
 **Given** a Final Game 6 on the run's date whose `competitions[0].series` is `completed: false` with **3 wins each, read per team**, and no stored row for that pair in either slot order. (The `wins` array follows competitor order, not home/away: GS–HOU read `[0,1]` after Game 1.)
 **When** the run backfills
 **Then** it finds games 1–5 by walking back one date at a time from Game 6's date, using the existing single-date request, bounded at **21 dates**, and stopping once all five are found
-**And** each game must be Final, between the same pair, with a headline naming its game number; dates already fetched are shared across concurrent backfills, and no range parameter is used
+**And** each game must be Final, between the same pair, with a headline naming its game number; dates already fetched are shared across concurrent backfills, and no range parameter is used **[2026-10-07, Story 2.18 pass-2 review: as built, the walks run one after another, not concurrently; what is shared is the per-run date cache — a date fetched for one backfill (or the re-read) is never fetched again.]**
 **And** the six games reach the planner as an ordinary six-game source and are born through `pipeline_birth_series` with every AD-4/AD-5 check (certified 3–3, `team_a` = Game 1's home team), and the run reports the birth
 **And** `feedSeriesCount` counts the run's own date only. Backfill and re-read requests never add to it, so `--require-feed`'s independence (Story 2.6 D-3) holds
 

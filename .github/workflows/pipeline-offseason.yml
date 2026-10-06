@@ -129,7 +129,10 @@ jobs:
           fi
 
       - name: File a birth-needed alert
-        if: always() && steps.alerts.outputs.found == 'true'
+        # A dry-run dispatch prints the same alert lines but writes nothing, so
+        # it files no issue (owner decision 2026-10-07, Story 2.18 pass-2
+        # review); its lines stay in the dispatch log.
+        if: always() && steps.alerts.outputs.found == 'true' && !inputs.dry_run
         uses: ./.github/actions/notify-failure
         with:
           title: Pipeline birth needed ${{ steps.alerts.outputs.date }}

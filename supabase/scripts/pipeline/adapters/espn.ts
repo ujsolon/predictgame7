@@ -23,7 +23,7 @@
  *   probed. [2026-10-06, Story 2.18 (`sprint-change-proposal-2026-10-06.md`):
  *   still single-date, but no longer one per run. Each run also re-reads the
  *   PREVIOUS date, and a Final Game 6 at 3–3 whose pair is not stored triggers a
- *   bounded walk back (≤21 dates, shared within the run, ≤25 extra requests and
+ *   bounded walk back (≤21 dates, shared within the run, ≤25 extra dates and
  *   ~3 minutes per run) for that pair's games 1–5. `feedSeriesCount` still
  *   counts the run's own date only, and every extra date is isolated: its
  *   errors become `alerts`, never a thrown run. See "Story 2.18" below.]
@@ -196,7 +196,7 @@ export interface EspnFeedResult {
   report: AdapterRunReport;
   /** Story 2.18: every event of the request date as parsed, so Game 6 detection reads the same parse the admission did. */
   parsed?: ParsedEvent[];
-  /** Story 2.18: the admitted Game 7 events, index-parallel to `statuses` and `scores`. */
+  /** Story 2.18: the admitted Game 7 events, index-parallel to `statuses` and `scores`. Only the primary result carries them; `extendWithBirths` rebuilds `statuses`/`scores` (kept Game 7s plus births) and returns `[]` here, so the merged result's copy must not be read as "no Game 7s admitted". */
   admittedEvents?: ParsedEvent[];
 }
 
@@ -700,8 +700,8 @@ async function fetchScoreboardEvents(url: string, deps: AdapterDeps): Promise<un
 
 /** Games 1–5 are looked for on at most this many dates, Game 6's own date counted as the first (the spike's bound; it measured 13). */
 export const BACKFILL_DATE_BOUND = 21;
-/** Extra dates (re-read plus backfill) one run may request; retries of the same date are not counted separately. */
-export const EXTRA_REQUEST_BUDGET = 25;
+/** Extra dates (re-read plus backfill) one run may request; retries of the same date are not counted separately. The unit is dates, not HTTP requests — ratified 2026-10-07 (spec Change Log): the wall clock below is the binding cap. */
+export const EXTRA_DATE_BUDGET = 25;
 /** Wall-clock budget for the extra dates, checked before each new one starts — well under the workflow's 10-minute step. */
 export const EXTRA_WALL_CLOCK_BUDGET_MS = 180_000;
 /** Where every alert sends the owner. */
@@ -735,25 +735,25 @@ function messageOf(error: unknown): string {
  * A failed date is cached as failed: it is alerted once and not re-asked.
  */
 function createExtraPages(deps: AdapterDeps, primaryDates: string, primaryEvents: ParsedEvent[], alerts: string[]): ExtraPages {
-  const budget = deps.extraFetchBudget ?? { requests: EXTRA_REQUEST_BUDGET, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS };
+  const budget = deps.extraFetchBudget ?? { dates: EXTRA_DATE_BUDGET, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS };
   const clock = deps.monotonicNow ?? (() => performance.now());
   const startedAt = clock();
   const cache = new Map<string, ExtraPage>([[primaryDates, { ok: true, events: primaryEvents, unreadable: [] }]]);
   const requested: string[] = [];
   return {
     requested,
-    limit: budget.requests,
+    limit: budget.dates,
     async read(dates, purpose) {
       const cached = cache.get(dates);
       if (cached) return cached;
-      if (requested.length >= budget.requests) {
-        return { ok: false, budgetSpent: true, reason: `the per-run budget of ${budget.requests} extra request(s) is spent` };
+      if (requested.length >= budget.dates) {
+        return { ok: false, budgetSpent: true, reason: `the per-run budget of ${budget.dates} extra date(s) is spent` };
       }
       if (clock() - startedAt >= budget.wallClockMs) {
         return {
           ok: false,
           budgetSpent: true,
-          reason: `the per-run wall-clock budget of ${Math.round(budget.wallClockMs / 1000)} s for extra requests is spent`,
+          reason: `the per-run wall-clock budget of ${Math.round(budget.wallClockMs / 1000)} s for extra dates is spent`,
         };
       }
       requested.push(dates);
@@ -774,7 +774,8 @@ function createExtraPages(deps: AdapterDeps, primaryDates: string, primaryEvents
         page = { ok: false, budgetSpent: false, reason: messageOf(error) };
         alerts.push(
           `espn: dates=${dates} (${purpose}) could not be read — ${messageOf(error)}. It is not counted in feedSeriesCount and the run ` +
-            `carried on, but a Game 6 at 3–3 or a Game 7 on that date may have been missed; check it per ${RUNBOOK_PATH}`,
+            `carried on, but a Game 6 at 3–3 on that date may have been missed; check it per ${RUNBOOK_PATH}. (A Game 7 of another date ` +
+            'is never this run\'s to complete — a missed one is the runbook\'s manual recovery.)',
         );
       }
       cache.set(dates, page);
@@ -831,7 +832,7 @@ export function classifyGameSix(event: ParsedEvent): GameSixVerdict {
       reason: `competitions[0].series reads ${series.homeWins}-${series.awayWins} with completed=${series.completed}, which no Game 6 can`,
     };
   }
-  if (tied && series.kind === 'read' && (series.type === null || series.type === 'playoff')) {
+  if (tied && (series.type === null || series.type === 'playoff')) {
     return { kind: 'candidate' };
   }
   return { kind: 'none' };
@@ -998,12 +999,13 @@ async function backfillBirth(target: BirthTarget, pages: ExtraPages): Promise<Ba
     })),
   };
   const foundOn = [1, 2, 3, 4, 5].map((number) => `G${number} ${(found.get(number) as { dates: string }).dates}`).join(', ');
+  const warnings = problems.length > 0 ? ` — walk warnings: ${problems.join('; ')}` : '';
   return {
     ok: true,
     birth,
     note:
       `espn: birth source assembled — ${target.label} ${rounds[0]}: games 1–6 certified (${foundOn}, G6 ${target.pageDates}; ` +
-      `Game 1 home ${gameOne.homeCode} → team_a), every game's own series standing matches the running score wins`,
+      `Game 1 home ${gameOne.homeCode} → team_a), every game's own series standing matches the running score wins${warnings}`,
   };
 }
 
@@ -1159,7 +1161,7 @@ async function extendWithBirths(primary: EspnFeedResult, dates: string, deps: Ad
 
   if (targets.length > 0) {
     notes.push(
-      `espn extra requests: ${pages.requested.length} of a ${pages.limit}-date budget (dates ${pages.requested.join(', ')}) — none ` +
+      `espn extra dates: ${pages.requested.length} of a ${pages.limit}-date budget (dates ${pages.requested.join(', ')}) — none ` +
         'counted in feedSeriesCount',
     );
   }

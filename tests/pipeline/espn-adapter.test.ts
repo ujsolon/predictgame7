@@ -13,7 +13,7 @@
 // `team.abbreviation`), and every field the adapter must NOT read is present
 // with a decoy value (`team.id`, `displayName`, `venue.fullName`,
 // `type.shortName: '3'`) so a test reddens the moment a parse reaches for it.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
@@ -24,7 +24,7 @@ import {
   deriveRequestDate,
   describeFetchThrow,
   etCalendarDay,
-  EXTRA_REQUEST_BUDGET,
+  EXTRA_DATE_BUDGET,
   EXTRA_WALL_CLOCK_BUDGET_MS,
   FETCH_TIMEOUT_MS,
   MAX_FEED_ATTEMPTS,
@@ -1266,7 +1266,7 @@ const LAC = 13;
 const GS = 10;
 const HOU = 11;
 
-/** A committed payload for one date, freshly parsed (so an edit never leaks between cases); `null` when none is committed. */
+/** A committed payload for one date, freshly parsed (so an edit never leaks between cases); `null` when none is committed. A file that IS committed but fails to parse throws — a corrupt fixture must never degrade into a rest-day page (pass-2 review). */
 function payloadFor(dates: string): ScoreboardBody | null {
   const file =
     dates === '20250503'
@@ -1274,11 +1274,9 @@ function payloadFor(dates: string): ScoreboardBody | null {
       : dates === '20250504'
         ? 'espn-scoreboard-20250504-mixed.json'
         : `espn-backfill-2025/scoreboard-${dates}.json`;
-  try {
-    return JSON.parse(readRepoFile(`./fixtures/${file}`)) as ScoreboardBody;
-  } catch {
-    return null;
-  }
+  const path = fileURLToPath(new URL(`./fixtures/${file}`, import.meta.url));
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf8')) as ScoreboardBody;
 }
 
 /** The injected fetch: `dates=` → the committed payload, through an optional per-date edit; every asked date is logged. */
@@ -1461,9 +1459,9 @@ const RUN_0505 = '2025-05-05T07:30:00Z'; // run date 20250504 (GS–HOU G7 + CLE
 const DEN_LAC_WALK = datesBetween('20250501', '20250419');
 
 describe('Story 2.18 — the scheduled run births a series at 3–3', () => {
-  it("the bounds are the spec's: 21 dates per walk, 25 extra requests and 3 minutes per run", () => {
+  it("the bounds are the spec's: 21 dates per walk, 25 extra dates and 3 minutes per run", () => {
     expect(BACKFILL_DATE_BOUND).toBe(21);
-    expect(EXTRA_REQUEST_BUDGET).toBe(25);
+    expect(EXTRA_DATE_BUDGET).toBe(25);
     expect(EXTRA_WALL_CLOCK_BUDGET_MS).toBe(180_000);
     expect(shiftDates('20250301', -1)).toBe('20250228');
     expect(shiftDates('20250101', -1)).toBe('20241231');
@@ -1502,8 +1500,8 @@ describe('Story 2.18 — the scheduled run births a series at 3–3', () => {
     // The fetch log: every date once, and exactly the union of the two walks.
     expect(new Set(run.asked).size).toBe(run.asked.length);
     expect([...run.asked].sort()).toEqual(datesBetween('20250502', '20250419').sort());
-    expect(run.asked.length - 1).toBeLessThanOrEqual(EXTRA_REQUEST_BUDGET);
-    expect(run.text).toMatch(/espn extra requests: 13 of a 25-date budget/);
+    expect(run.asked.length - 1).toBeLessThanOrEqual(EXTRA_DATE_BUDGET);
+    expect(run.text).toMatch(/espn extra dates: 13 of a 25-date budget/);
   });
 
   it('Already stored: a pending DEN–LAC row, in either slot order, means no backfill request for the pair', async () => {
@@ -1820,10 +1818,10 @@ describe('Story 2.18 — the scheduled run births a series at 3–3', () => {
     expect(run.asked.filter((dates) => dates === '20250430')).toHaveLength(3);
   });
 
-  it('Budget (C1): a spent request or wall-clock budget stops the walk, alerts the unfinished series, and still completes', async () => {
+  it('Budget (C1): a spent date or wall-clock budget stops the walk, alerts the unfinished series, and still completes', async () => {
     let now = 0;
     const cases: { budget?: AdapterDeps['extraFetchBudget']; clock?: () => number; reason: RegExp }[] = [
-      { budget: { requests: 4, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS }, reason: /the per-run budget of 4 extra request\(s\) is spent/ },
+      { budget: { dates: 4, wallClockMs: EXTRA_WALL_CLOCK_BUDGET_MS }, reason: /the per-run budget of 4 extra date\(s\) is spent/ },
       // Each clock read advances 60 s; the default 180 s budget then refuses
       // a date a few reads in.
       {
@@ -1831,7 +1829,7 @@ describe('Story 2.18 — the scheduled run births a series at 3–3', () => {
           now += 60_000;
           return now;
         },
-        reason: /wall-clock budget of 180 s for extra requests is spent/,
+        reason: /wall-clock budget of 180 s for extra dates is spent/,
       },
     ];
     for (const { budget, clock, reason } of cases) {

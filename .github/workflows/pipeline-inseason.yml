@@ -57,7 +57,8 @@ name: Pipeline - inseason daily
 # `--require-feed`.]
 #
 # Story 2.18 — births. A Final Game 6 at 3-3 whose pair is not stored is
-# backfilled (games 1-5 by single dates, <=21 back, <=25 extra requests and ~3
+# backfilled (games 1-5 by single dates, <=21 back, <=25 extra DATES — retries of
+# a date are not counted separately, owner-ratified 2026-10-07 — and ~3
 # minutes per run) and born by the run itself. When a backfill cannot certify the
 # 3-3, the runner prints a `BIRTH NEEDED:` line and still exits on the merits of
 # the rest of the run. The two steps after the failure step grep the run's log
@@ -232,7 +233,10 @@ jobs:
           fi
 
       - name: File a birth-needed alert
-        if: always() && steps.alerts.outputs.found == 'true'
+        # A dry-run dispatch prints the same alert lines but writes nothing, so
+        # it files no issue (owner decision 2026-10-07, Story 2.18 pass-2
+        # review); its lines stay in the dispatch log.
+        if: always() && steps.alerts.outputs.found == 'true' && !inputs.dry_run
         uses: ./.github/actions/notify-failure
         with:
           title: Pipeline birth needed ${{ steps.alerts.outputs.date }}

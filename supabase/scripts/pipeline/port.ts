@@ -137,8 +137,8 @@ export interface AdapterDeps {
    * sees and leaves every Game 7 to the planner, as Story 2.13 did.
    */
   isPairStored?: (year: number, teamIdA: number, teamIdB: number) => boolean;
-  /** Story 2.18 test seam: the per-run budget for extra (re-read + backfill) dates. Defaults to 25 dates / 180 s. */
-  extraFetchBudget?: { requests: number; wallClockMs: number };
+  /** Story 2.18 test seam: the per-run budget for extra (re-read + backfill) dates. Defaults to 25 dates / 180 s. The unit is DATES, not HTTP requests: retries of a date are not counted separately (ratified 2026-10-07, Story 2.18 pass-2 review). */
+  extraFetchBudget?: { dates: number; wallClockMs: number };
   /** Story 2.18 test seam: a monotonic millisecond clock for the wall-clock budget. Defaults to `performance.now`. */
   monotonicNow?: () => number;
 }
