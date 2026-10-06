@@ -57,7 +57,7 @@
  *   string are excluded, never defaulted to "finished" — `site.api.espn.com` is
  *   undocumented Disney-side infrastructure with no SLA, so a drifted payload
  *   must exit non-zero rather than invent a row.
- * - Failure posture (the same discipline as `nbaCom.ts`): 25 s
+ * - Failure posture (the discipline Story 2.4's retired stats.nba.com adapter set): 25 s
  *   `AbortSignal.timeout`, three attempts, `[1000, 4000]` ms backoff on
  *   429/5xx or a body that is not the expected scoreboard shape; non-retryable
  *   statuses fail at once. Every terminal message names the URL and reason and
@@ -574,7 +574,7 @@ export async function buildFeed(url: string, dates: string, deps: AdapterDeps): 
       events = eventsOf(body);
     } catch (error) {
       // A body that is not the scoreboard shape is drift, and drift is retried
-      // the way nbaCom treats it — the terminal message still names the URL.
+      // as Story 2.4's retired adapter treated it — the terminal message still names the URL.
       lastReason = `response ${error instanceof Error ? error.message : String(error)}`;
       continue;
     }

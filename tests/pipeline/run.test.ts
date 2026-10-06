@@ -18,9 +18,10 @@ import { fileURLToPath } from 'node:url';
  * and `OKC` stay NULL rather than carrying a code this table does not need — the
  * full 30-franchise seed is `00018`'s and `espn-adapter.test.ts` audits it, and a
  * fixture code nobody read is the silent-mismatch failure finding 5 warns about.
- * Nothing here runs the `espn` resolver: this table serves the `manual_csv` and
- * `nba_com` cases, and the adapter's own suite injects a table that does hold
- * codes.
+ * This table serves the `manual_csv` cases and, since Story 2.16, the runner
+ * cases that ride the `espn` feed: those use only `CLE` and `DEN`, the two
+ * measured codes, so the `espn` resolver here never needs a code this table
+ * leaves NULL. The adapter's own suite injects the table that holds the rest.
  */
 const TEAMS: TeamRow[] = [
   { id: 10, abbreviation: 'GSW', espn_code: null },
@@ -188,6 +189,39 @@ function capture(): { lines: string[]; log: (line: string) => void } {
   return { lines, log: (line: string) => lines.push(line) };
 }
 
+/**
+ * Story 2.16: the runner cases that used to ride the retired feed adapter now
+ * ride `espn`, the scheduled source. One measured-shape scoreboard event
+ * (`payload-contract.md`: `state`/`description`, `notes[0].headline`,
+ * `competitors[].homeAway`/`score`/`team.abbreviation`) between two codes
+ * `TEAMS` resolves. The decoy fields and the edge rows of the shape belong to
+ * `espn-adapter.test.ts`; these cases are about the runner, not the parse.
+ */
+function espnEvent(headline: string, home = 'CLE', away = 'DEN'): Record<string, unknown> {
+  const side = (code: string, homeAway: 'home' | 'away', score: number) => ({ homeAway, score, team: { abbreviation: code } });
+  return {
+    date: '2027-05-01T23:00Z',
+    status: { type: { state: 'post', description: 'Final' } },
+    competitions: [{ notes: [{ headline }], competitors: [side(home, 'home', 110), side(away, 'away', 100)] }],
+  };
+}
+const espnBody = (events: Record<string, unknown>[] = []) => ({ events });
+const stubFeed = (body: unknown) => async () => ({ ok: true, status: 200, json: async () => body });
+/**
+ * Story 2.13: the retry backoff wait is injected as a no-op. A body the adapter
+ * cannot read is retried by design (three attempts, `[1000, 4000]` ms), and a
+ * suite that waits on the real timers both costs five seconds per such case and
+ * can pass by accident on a slow assertion. No test here depends on how long a
+ * run waits — only on what it finally exits with.
+ */
+const noWait = async () => {};
+/** A fixed run instant inside the playoff window; `espn` derives its one date from it. */
+const runNow = () => new Date(Date.UTC(2027, 4, 2, 7, 30));
+/** A file read is how a silent `manual_csv` fallback would show itself; these seams make it a red. */
+const readFileMustNotRun = () => {
+  throw new Error('test seam violated: a feed run read a file (a manual_csv fallback?)');
+};
+
 describe('runPipeline — apply, idempotency, dry-run', () => {
   it('runs the worked fixture from an empty table: two births, one completion, and the results derive pending/archive', async () => {
     const sink = new FakeSink();
@@ -353,8 +387,8 @@ describe('runPipeline — apply, idempotency, dry-run', () => {
 
 describe('runPipeline — refusal rows of the matrix', () => {
   it('SERIES_SOURCE naming an unimplemented adapter refuses the start and never falls back', async () => {
-    // Story 2.4 implemented `nba_com`, so `fantrax` carries the recognised-
-    // but-unimplemented slot — with its rejection recorded, not a silence.
+    // `fantrax` carries the recognised-but-unimplemented slot — with its
+    // rejection recorded, not a silence.
     let sinkBuilt = false;
     const errors = capture();
     const code = await runPipeline({
@@ -373,21 +407,44 @@ describe('runPipeline — refusal rows of the matrix', () => {
     expect(sinkBuilt).toBe(false);
   });
 
-  it('nba_com is now implemented: selection passes and the CSV-only floor stays default', async () => {
-    // The registry flip itself — no refusal at selection; the run proceeds to
-    // the env check with `nba_com` accepted (Story 2.4, Decision 7).
-    const errors = capture();
-    const code = await runPipeline({
-      env: {},
-      argv: ['--source=nba_com'],
-      createSink: () => new FakeSink(),
-      logError: errors.log,
-    });
-    expect(code).toBe(2);
-    const text = errors.lines.join('\n');
-    expect(text).not.toMatch(/not implemented/);
-    expect(text).toMatch(/SUPABASE_URL/);
-  });
+  // Story 2.16 (2026-10-06): the stats.nba.com adapter is retired and its name
+  // is an unrecognised adapter. These are the matrix's "retired source by flag"
+  // and "retired source by env" rows: the start refuses before any credential
+  // is read or sink opened, and — the env row's point — never falls back to the
+  // manual_csv floor, which would read a file and plan from it while looking
+  // healthy. The egress evidence that retired it stays in the docs, not here.
+  it.each([
+    ['by flag', ['--source=nba_com'], {}],
+    ['by env', [], { SERIES_SOURCE: 'nba_com' }],
+  ] as [string, string[], Record<string, string>][])(
+    'the retired nba_com source refuses the start %s as an unrecognised adapter, never a fallback',
+    async (_label, argv, env) => {
+      let sinksOpened = 0;
+      let filesRead = 0;
+      const errors = capture();
+      const code = await runPipeline({
+        env: envWith(env),
+        argv,
+        createSink: () => {
+          sinksOpened += 1;
+          return new FakeSink();
+        },
+        readFile: () => {
+          filesRead += 1;
+          return FIXTURE_CSV;
+        },
+        fetch: () => {
+          throw new Error('test seam violated: a retired source reached a feed');
+        },
+        logError: errors.log,
+      });
+      expect(code).toBe(2);
+      const text = errors.lines.join('\n');
+      expect(text).toMatch(/SERIES_SOURCE="nba_com" is not a recognised adapter\. Known adapters: espn, fantrax, manual_csv\./);
+      expect(sinksOpened).toBe(0);
+      expect(filesRead).toBe(0);
+    },
+  );
 
   it('an unknown adapter name is rejected against the registry', async () => {
     const errors = capture();
@@ -676,7 +733,7 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
     expect(out.lines.join('\n')).not.toMatch(/BIRTH|COMPLETE|SKIP|plan:/);
   });
 
-  it('U10: the flag bypasses adapter selection — it works with the default, with --source=nba_com, and with an unimplemented SERIES_SOURCE alike', async () => {
+  it('U10: the flag bypasses adapter selection — it works with the default, with --source=espn, and with an unimplemented SERIES_SOURCE alike', async () => {
     // The third case is the one that pins the bypass: the short-circuit needs
     // only the sink, so a `SERIES_SOURCE` naming a recognised-but-unimplemented
     // adapter cannot refuse an adapter-free refresh (and cannot reach
@@ -684,7 +741,7 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
     // makes).
     for (const [argv, env] of [
       [['--refresh-insights'], envWith()],
-      [['--refresh-insights', '--source=nba_com'], envWith()],
+      [['--refresh-insights', '--source=espn'], envWith()],
       [['--refresh-insights'], envWith({ SERIES_SOURCE: 'fantrax' })],
     ] as [string[], Record<string, string | undefined>][]) {
       const sink = new FakeSink();
@@ -703,14 +760,14 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
   });
 
   it('U10: --refresh-insights refuses a scoping flag instead of silently discarding it', async () => {
-    // `--csv=` / `--season=` parse fine on this path and narrow nothing: the
-    // refresh reads no source file and no season. Silently dropping them is the
-    // exact mistake the ADAPTER_FLAGS block refuses for a mismatched adapter,
-    // so they are refused by name — and asserted refused on the sink's call log
-    // too, because a refusal that still refreshed would pass a message-only
-    // check.
+    // `--csv=` parses fine on this path and narrows nothing: the refresh reads
+    // no source file. Silently dropping it is the exact mistake the
+    // ADAPTER_FLAGS block refuses for a mismatched adapter, so it is refused by
+    // name — and asserted refused on the sink's call log too, because a refusal
+    // that still refreshed would pass a message-only check. (Story 2.16 removed
+    // the `--season=` row with the flag; a retired flag on this path is an
+    // unrecognised flag, pinned in the Story 2.16 block below.)
     for (const [name, flag, env] of [
-      ['season', '--season=2016-17', envWith({ SERIES_SOURCE: 'nba_com' })],
       ['csv', '--csv=operator.csv', envWith({ SERIES_SOURCE: 'manual_csv' })],
     ] as [string, string, Record<string, string | undefined>][]) {
       const sink = new FakeSink();
@@ -826,25 +883,14 @@ describe('runPipeline — Story 2.5 insights cache refresh', () => {
 // which case a run is in. Every "did not write" claim below is asserted on the
 // FakeSink call log, the way Story 2.5's rows are.
 describe('runPipeline — Story 2.6 --require-feed', () => {
-  /** The rowSet column names — the twin of `nba-com.test.ts` HEADERS. */
-  const FEED_COLUMNS = ['GAME_ID', 'GAME_DATE', 'TEAM_ID', 'TEAM_ABBREVIATION', 'MATCHUP', 'PTS', 'WL'];
-  const feedBody = (rowSet: unknown[][]) => ({ resultSets: [{ headers: FEED_COLUMNS, rowSet }] });
-  const stubFeed = (body: unknown) => async () => ({ ok: true, status: 200, json: async () => body });
-  /**
-   * Story 2.13: the retry backoff wait is injected as a no-op. A body one
-   * adapter cannot read is retried by design (three attempts, `[1000, 4000]`
-   * ms), and a suite that waits on the real timers both costs five seconds per
-   * such case and can pass by accident on a slow assertion. No test here
-   * depends on how long a run waits — only on what it finally exits with.
-   */
-  const noWait = async () => {};
-  /** June 2027, so `deriveSeason` asks for the postseason being played. */
-  const runNow = () => new Date(Date.UTC(2027, 5, 20));
-  /** One game between two abbreviations `FakeSink.teams` really holds. */
-  const ONE_SERIES_ROWSET = [
-    ['004270101', '2027-05-01', 999, 'OKC', 'OKC vs. DEN', 110, 'W'],
-    ['004270101', '2027-05-01', 888, 'DEN', 'DEN @ OKC', 100, 'L'],
-  ];
+  // Story 2.16 (2026-10-06): this block was built on the retired feed adapter's
+  // `resultSets` body and now rides `espn`, the scheduled source. Its red,
+  // green and one-series cases were deleted rather than re-pointed, because
+  // `espn-adapter.test.ts` already holds their twins: "a rest day under
+  // --require-feed is red naming the adapter, and green without the flag" (the
+  // red and green halves) and "a feed whose every game is excluded is still a
+  // non-zero feed: the alarm passes" (the one-series case). The dry-run alarm
+  // below had no twin, so it was re-parented onto `espn` here.
   /** The manual_csv floor with no data rows at all — the floor's own "empty feed". */
   const headerOnlyCsv = () => 'year,round,game_number,home_team,away_team,home_score,away_score';
 
@@ -859,7 +905,7 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
       env: envWith(),
       argv,
       createSink: () => sink,
-      fetch: stubFeed(opts.body ?? feedBody([])),
+      fetch: stubFeed(opts.body ?? espnBody()),
       sleep: noWait,
       now: runNow,
       readFile: opts.readFile ?? headerOnlyCsv,
@@ -868,49 +914,6 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     });
     return { code, lines: out.lines.join('\n'), errors: errors.lines.join('\n') };
   };
-
-  it('an empty feed with the flag exits 2, after the report lines that explain it', async () => {
-    const sink = new FakeSink();
-    const run = await runOver(sink, ['--source=nba_com', '--require-feed']);
-    expect(run.code).toBe(2);
-    expect(run.errors).toMatch(/--require-feed: nba_com returned 0 series/);
-    // The alarm prints what the feed carried BEFORE it fails, so the Actions
-    // log diagnoses without a local repro (CAP-4) — the report line is the
-    // evidence that the run reached the endpoint at all.
-    expect(run.lines).toMatch(/nba_com: 0 series in feed/);
-    // AC 2: the derived season is in the log on the red path, so the empty
-    // feed is read against the scope that was actually fetched.
-    expect(run.lines).toMatch(/; season=\d{4}-\d{2}$/m);
-    // Failure precedes planning and writing entirely: no readCurrent, no write.
-    expect(sink.calls).toEqual(['readTeams']);
-    expect(sink.births).toHaveLength(0);
-    expect(sink.completions).toHaveLength(0);
-    expect(sink.refreshes).toHaveLength(0);
-  });
-
-  it('the same empty feed is green WITHOUT the flag — the flag is the whole difference', async () => {
-    // The other half of the pair above: an offseason edge run against an empty
-    // bracket must stay quiet, so nothing here may make zero rows an error by
-    // default. Read the two tests together; either alone proves nothing.
-    const sink = new FakeSink();
-    const run = await runOver(sink, ['--source=nba_com']);
-    expect(run.code).toBe(0);
-    expect(run.errors).toBe('');
-    expect(run.lines).toMatch(/nba_com: 0 series in feed/);
-    expect(run.lines).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)/);
-    expect(sink.calls).toEqual(['readTeams', 'readCurrent']);
-  });
-
-  it('a feed that carried series passes the flag silently', async () => {
-    const sink = new FakeSink();
-    const run = await runOver(sink, ['--source=nba_com', '--require-feed'], { body: feedBody(ONE_SERIES_ROWSET) });
-    expect(run.code).toBe(0);
-    expect(run.errors).toBe('');
-    expect(run.lines).toMatch(/nba_com: 1 series in feed/);
-    // One game is not a Game 7, so this proves the flag does not also demand a
-    // non-empty PLAN — feed rows were carried, so the alarm is satisfied.
-    expect(run.lines).toMatch(/plan: 0 birth\(s\), 0 completion\(s\), 0 skip\(s\)/);
-  });
 
   it('the flag refuses manual_csv before any client is built — with or without --source=', async () => {
     // `createSink` throwing is the credential-free evidence: the refusal must
@@ -962,25 +965,31 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     // This is what gives the alarm a zero-write red in October instead of
     // April: dispatch the inseason workflow with dry_run and require_feed both
     // set and the schedule's own failure path is exercised without a bracket.
+    // Re-parented onto `espn` by Story 2.16: it is the scheduled source, and the
+    // workflow's dispatch inputs are exactly `--source=espn --require-feed
+    // --dry-run`. The report lines and the date the adapter derived print
+    // BEFORE the red, so the Actions log diagnoses without a local repro.
     const sink = new FakeSink();
-    const run = await runOver(sink, ['--source=nba_com', '--require-feed', '--dry-run']);
+    const run = await runOver(sink, ['--source=espn', '--require-feed', '--dry-run']);
     expect(run.code).toBe(2);
-    expect(run.errors).toMatch(/--require-feed: nba_com returned 0 series/);
+    expect(run.errors).toMatch(/--require-feed: espn returned 0 series/);
+    expect(run.lines).toMatch(/^espn: 0 series in feed \(dates=20270501\)/m);
     expect(run.lines).not.toMatch(/dry-run: 0 rows written/);
     expect(sink.calls).toEqual(['readTeams']);
   });
 
   it('a near-miss typo of the flag is still refused, and the supported list names it', async () => {
     const sink = new FakeSink();
-    const run = await runOver(sink, ['--requirefeed', '--source=nba_com']);
+    const run = await runOver(sink, ['--requirefeed', '--source=espn']);
     expect(run.code).toBe(2);
     expect(run.errors).toMatch(/unrecognised flag "--requirefeed"/);
     expect(run.errors).toMatch(/--require-feed/);
     expect(sink.calls).toEqual([]);
   });
 
-  // A per-test budget, not a global `testTimeout`: this case awaits three full
-  // `runPipeline` runs in sequence, and its own work is milliseconds (measured
+  // A per-test budget, not a global `testTimeout`: this case awaits one full
+  // `runPipeline` run per implemented adapter in sequence (three when this was
+  // measured, two since Story 2.16), and its own work is milliseconds (measured
   // 53-77ms), but the default 5s is a WALL-CLOCK budget that a contended machine
   // can blow without the test doing anything — a `npm run gate` under a loaded
   // pool starved it to 6520ms and killed the push, while every sibling in the
@@ -995,14 +1004,12 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     // So the behavioural guard runs against every implemented adapter with its
     // own zero-row source.
     const implemented = Object.entries(ADAPTER_REGISTRY).filter(([, entry]) => entry.implemented);
-    expect(implemented.map(([name]) => name).sort()).toEqual(['espn', 'manual_csv', 'nba_com']);
+    expect(implemented.map(([name]) => name).sort()).toEqual(['espn', 'manual_csv']);
     // Each adapter's OWN empty feed, so the red this pins is the empty-feed
     // alarm rather than an accidental shape error: `manual_csv` reads a header
-    // only (`opts.readFile` above), `nba_com` a `resultSets` with no rows, and
-    // `espn` an `events` array with no games.
+    // only (`opts.readFile` above), and `espn` an `events` array with no games.
     const emptyBodyByAdapter: Record<string, unknown> = {
-      nba_com: feedBody([]),
-      espn: { events: [] },
+      espn: espnBody(),
     };
     for (const [name] of implemented) {
       const sink = new FakeSink();
@@ -1025,7 +1032,7 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
         csvPath: 'whatever.csv',
         readFile: headerOnlyCsv,
         teamIdByAbbreviation: () => undefined,
-        fetch: stubFeed(feedBody([])),
+        fetch: stubFeed(espnBody()),
         now: runNow,
       });
       expect(adapterHasRunReport(name), `ADAPTER_REGISTRY.hasRunReport drifted for ${name}`).toBe(source.describeRun !== undefined);
@@ -1211,5 +1218,147 @@ describe('runPipeline — Story 2.14 runner hardening', () => {
     // W4's own fact, which the loop above cannot state: the header says WHICH of
     // these the schedule runs.
     expect(runnerSource).toMatch(/--source=espn --dry-run\s+\(the scheduled source\)/);
+  });
+});
+
+// Story 2.16 — the runner guarantees the retired feed adapter's suite was the
+// only one to pin. Each is about the RUNNER, not about a feed, so each lands
+// here on the scheduled `espn` source (or on `manual_csv` where the guarantee is
+// the floor's); the spec's Implementation Notes name the original each replaces
+// and the mutation that turns it red. The retired `--season=` flag's refusal
+// pin sits here too; the retired source's refusal pins sit with the other
+// refusal rows above.
+describe('runPipeline — Story 2.16 runner guarantees re-parented from the retired adapter suite', () => {
+  const runEspn = async (
+    argv: string[],
+    opts: { env?: Record<string, string | undefined>; fetch?: Parameters<typeof runPipeline>[0]['fetch']; body?: unknown } = {},
+  ) => {
+    const sink = new FakeSink();
+    const out = capture();
+    const errors = capture();
+    const code = await runPipeline({
+      env: opts.env ?? envWith(),
+      argv,
+      createSink: () => sink,
+      fetch: opts.fetch ?? stubFeed(opts.body ?? espnBody()),
+      sleep: noWait,
+      now: runNow,
+      readFile: readFileMustNotRun,
+      log: out.log,
+      logError: errors.log,
+    });
+    return { code, sink, lines: out.lines, errors: errors.lines.join('\n') };
+  };
+
+  it('exclusion notes reach stdout through the runner, after the report and before the plan', async () => {
+    const run = await runEspn(['--source=espn'], { body: espnBody([espnEvent('West 1st Round - Game 2')]) });
+    expect(run.code).toBe(0);
+    const noteIndex = run.lines.findIndex((line) => /^espn: excluded .*game 2 of 7/.test(line));
+    const countsIndex = run.lines.findIndex((line) => line.startsWith('espn: 1 series in feed'));
+    const planIndex = run.lines.findIndex((line) => line.startsWith('plan:'));
+    expect(noteIndex).toBeGreaterThan(countsIndex);
+    expect(countsIndex).toBeGreaterThanOrEqual(0);
+    expect(planIndex).toBeGreaterThan(noteIndex);
+  });
+
+  it('a feed that fails every attempt exits 2 through the runner, naming URL + status, writing nothing, no fallback', async () => {
+    const urls: string[] = [];
+    const failing = async (url: string) => {
+      urls.push(url);
+      return { ok: false, status: 503, json: async () => undefined };
+    };
+    const run = await runEspn(['--source=espn'], { fetch: failing });
+    expect(run.code).toBe(2);
+    expect(urls).toHaveLength(3);
+    expect(run.errors).toContain(urls[0]);
+    expect(run.errors).toMatch(/failed after 3 attempt\(s\): HTTP 503/);
+    expect(run.errors).toMatch(/no manual_csv fallback was taken/);
+    // `readFile` throws in this harness, so a manual_csv fallback could not run
+    // silently either: the only sink call is the team read that precedes the feed.
+    expect(run.sink.calls).toEqual(['readTeams']);
+  });
+
+  it('feed shape drift aborts the run through the runner: exit 2, the drift named, zero writes', async () => {
+    const run = await runEspn(['--source=espn'], { body: { leagues: [] } });
+    expect(run.code).toBe(2);
+    expect(run.errors).toMatch(/events/);
+    expect(run.errors).toMatch(/no manual_csv fallback was taken/);
+    expect(run.sink.calls).toEqual(['readTeams']);
+  });
+
+  it('SERIES_SOURCE selects a feed adapter end to end, not just past the registry check', async () => {
+    const run = await runEspn([], { env: envWith({ SERIES_SOURCE: 'espn' }), body: espnBody([espnEvent('West 1st Round - Game 2')]) });
+    expect(run.code).toBe(0);
+    const text = run.lines.join('\n');
+    expect(text).toMatch(/^espn: 1 series in feed/m);
+    expect(text).toMatch(/pipeline adapter=espn/);
+  });
+
+  it('a duplicate --csv= refuses the run instead of silently taking the first value', async () => {
+    let sinksOpened = 0;
+    let filesRead = 0;
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--source=manual_csv', '--csv=first.csv', '--csv=second.csv'],
+      createSink: () => {
+        sinksOpened += 1;
+        return new FakeSink();
+      },
+      readFile: () => {
+        filesRead += 1;
+        return FIXTURE_CSV;
+      },
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toMatch(/duplicate --csv= flag \(2 given: first\.csv, second\.csv\)/);
+    expect(sinksOpened).toBe(0);
+    expect(filesRead).toBe(0);
+  });
+
+  // The matrix's "retired flag" row: `--season=` retired with its only adapter,
+  // so it is no longer a flag every adapter rejects but a token outside
+  // `SUPPORTED_FLAGS`, refused before any sink, file or feed is touched —
+  // whatever source the run names, and on the refresh path too.
+  it.each([
+    ['no source', []],
+    ['manual_csv', ['--source=manual_csv']],
+    ['espn', ['--source=espn']],
+    ['the operator refresh', ['--refresh-insights']],
+  ] as [string, string[]][])('--season=2025-26 with %s is refused as an unrecognised flag, naming the token', async (_label, argv) => {
+    let sinksOpened = 0;
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: [...argv, '--season=2025-26'],
+      createSink: () => {
+        sinksOpened += 1;
+        return new FakeSink();
+      },
+      readFile: readFileMustNotRun,
+      fetch: () => {
+        throw new Error('test seam violated: a refused flag reached a feed');
+      },
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    const text = errors.lines.join('\n');
+    expect(text).toContain('unrecognised flag "--season=2025-26"');
+    expect(text).not.toMatch(/--season=<YYYY-YY>/);
+    expect(sinksOpened).toBe(0);
+  });
+
+  it('manual_csv still works, still defaults, and reports nothing extra', async () => {
+    const sink = new FakeSink();
+    const out = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture, log: out.log });
+    expect(code).toBe(0);
+    expect(sink.births).toHaveLength(2);
+    const text = out.lines.join('\n');
+    expect(text).toMatch(/pipeline adapter=manual_csv/);
+    expect(text).not.toMatch(/series in feed/);
+    expect(text).not.toMatch(/depth histogram/);
+    expect(text).not.toMatch(/excluded/);
   });
 });

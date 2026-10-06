@@ -17,7 +17,6 @@
  * `_bmad-output/implementation-artifacts/seriesdatasource-port.md`.
  */
 import { createManualCsvAdapter } from './adapters/manualCsv.ts';
-import { createNbaComAdapter } from './adapters/nbaCom.ts';
 import { createEspnAdapter } from './adapters/espn.ts';
 
 /** One series as the source sees it: identity, display round, and whether game 7 has landed. */
@@ -118,10 +117,8 @@ export interface AdapterDeps {
   teamIdByEspnCode?: (code: string) => number | undefined;
   /** HTTP-adapter seam (Decision 8): injectable fetch; defaults to the global. Tests must inject one. */
   fetch?: FeedFetch;
-  /** HTTP-adapter seam: the run's UTC clock, the season-derivation input. Defaults to wall time. */
+  /** HTTP-adapter seam: the run's UTC clock, the request-date derivation input. Defaults to wall time. */
   now?: () => Date;
-  /** HTTP-adapter seam: the `--season=` override, undefined when the flag was not passed. */
-  seasonOverride?: string;
   /** HTTP-adapter seam: retry backoff wait; defaults to `setTimeout`. Tests inject a recorder. */
   sleep?: (ms: number) => Promise<void>;
 }
@@ -149,21 +146,32 @@ function unimplementedEntry(rejection?: string): AdapterEntry {
 
 /**
  * The adapter registry keyed by `SERIES_SOURCE`. `manual_csv` is the
- * guaranteed floor and stays the default; Story 2.4 added `nba_com` beside it
- * (never replacing it), and Story 2.13 adds `espn` — the SCHEDULED source,
- * because Story 2.6's egress evidence proved `stats.nba.com` refuses every
- * cloud while `site.api.espn.com` answers from both. `nba_com` stays registered
- * and hand-runnable: dropping a recognised name would invite a future session
- * to re-propose the endpoint unexamined (owner call C1), and it remains the
- * source a residential address can still run. `fantrax` stays
- * recognised-but-unimplemented with the Story 2.1 rejection recorded — a silent
- * drop would let a future session re-propose it as unexamined. The runner never
- * falls back to `manual_csv` silently, because a silent fallback during the
- * playoff window would leave Active Series stale while looking healthy.
+ * guaranteed floor and stays the default; Story 2.13 adds `espn` — the
+ * SCHEDULED source, because Story 2.6's egress evidence proved `stats.nba.com`
+ * refuses every cloud while `site.api.espn.com` answers from both (the
+ * four-cell table in `_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-03.md`).
+ * `fantrax` stays recognised-but-unimplemented with the Story 2.1 rejection
+ * recorded — a silent drop would let a future session re-propose it as
+ * unexamined. The runner never falls back to `manual_csv` silently, because a
+ * silent fallback during the playoff window would leave Active Series stale
+ * while looking healthy.
+ *
+ * [2026-10-06, Story 2.16 — owner call C1 reversed.] Story 2.4's stats.nba.com
+ * adapter is retired: its file, its registry entry, its two hand-run probes
+ * and its test suite were deleted together, and its name is now an
+ * unrecognised adapter that refuses the start. C1 had kept it registered for
+ * two reasons: "dropping a recognised name would invite a future session to
+ * re-propose the endpoint unexamined", and "it remains the source a
+ * residential address can still run". The first is answered by keeping the
+ * egress conclusion and its citations in the docs (the proposal above;
+ * `seriesdatasource-port.md`) instead of in a registry name — do not
+ * re-propose stats.nba.com or cdn.nba.com for a scheduled run. The second was
+ * no longer worth a registered source once its last live job, Game 7 venue
+ * curation, was complete (160/160 NBA/BAA cells, F3 closed). A blank venue
+ * cell is now filled by hand through `venueBackfill.ts`'s worksheet.
  */
 export const ADAPTER_REGISTRY: Record<string, AdapterEntry> = {
   manual_csv: { implemented: true, hasRunReport: false, create: createManualCsvAdapter },
-  nba_com: { implemented: true, hasRunReport: true, create: createNbaComAdapter },
   espn: { implemented: true, hasRunReport: true, create: createEspnAdapter },
   fantrax: unimplementedEntry(
     'it was rejected by the Story 2.1 spike: Fantrax endpoints are fantasy-scoped and return fantasy point totals and playoff ' +

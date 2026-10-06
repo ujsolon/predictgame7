@@ -132,7 +132,8 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // empty, so the effective adapter is whatever the fallback names. Every
     // other pin in this file reads the choice list or the `default:` key, and
     // both stay green while the fallback drifts to `nba_com` — the host Story
-    // 2.6 measured as refusing every cloud. That drift is what this pins shut.
+    // 2.6 measured as refusing every cloud (and, since Story 2.16, a retired name
+    // that refuses the start). That drift is what this pins shut.
     const run = stepsOf(INSEASON).find((step) => step.name === 'Run the pipeline');
     expect(run?.env?.PIPELINE_SOURCE).toBe("${{ inputs.source || 'espn' }}");
     // …and the bash has to USE it, as the one and only source on the command
@@ -151,9 +152,10 @@ describe('pipeline-inseason.yml — the daily cadence (FR-21) and the alarm (CAP
     // `fantrax` is a deliberate option: it is the recognised-but-unimplemented
     // name whose refusal is the zero-write failure the alarm is tested with.
     // `nba_com` is NOT offered: a hosted runner cannot reach nba.com (Story
-    // 2.6's egress evidence), so the option could only ever go red. It stays
-    // registered in `port.ts` and runs by hand from a residential address
-    // (Story 2.13 review, owner call 2026-10-05).
+    // 2.6's egress evidence), so the option could only ever go red (Story 2.13
+    // review, owner call 2026-10-05). [2026-10-06, Story 2.16: the source is
+    // retired — off `port.ts`'s registry too — so the name now refuses the start
+    // as an unrecognised adapter; it stays un-offered here all the same.]
     expect(inputs.source).toMatchObject({
       type: 'choice',
       options: ['espn', 'manual_csv', 'fantrax'],

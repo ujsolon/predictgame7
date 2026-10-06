@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-06-2026 12:21
+last_updated: 10-06-2026 12:45
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -339,7 +339,13 @@ development_status:
   # drill-2-7-results.md + deferred-work.md, epics.md:253 dated bracket, epic-2-context.md re-check note.
   # At review: done only after the owner approves the runbook wording (spec AC). Approved 2026-10-06.
   2-15-playoff-birth-runbook: done
-  2-16-nba-com-retirement: backlog
+  # 2-16: built 2026-10-06. Deleted nbaCom.ts, both nba.com probes and nba-com.test.ts (2,359
+  # lines) plus rounds.ts's chain walk; --season= retired (now an unrecognised flag). Coverage
+  # (@vitest/coverage-v8, --no-save) + knip scan recorded in the spec BEFORE deletion; 64 cases
+  # triaged, 6 runner guarantees re-parented into run.test.ts + 1 moved to manual-csv.test.ts,
+  # each with a red mutation. C1 reversal in port.ts; dated annotations in epics.md 2.4/2.6/2.13,
+  # seriesdatasource-port.md, CURRENT_DATA_MODEL.md. At review: done only after its review.
+  2-16-nba-com-retirement: review
   # 2-17 added 2026-10-06 by owner decision during 2-15's build: manual-csv.test.ts:66-74
   # requires the committed operator CSV to be empty, so playoff rows redden the gate and block
   # every push to master. Relax it to "valid against the real teams seed"; runbook caveat goes
@@ -545,6 +551,9 @@ action_items:
       (incl. ECH-1); retire source-text pins that exist only because of the missing
       checker. [A1, P5]"
     owner: "agent"
+    # 2026-10-06: Story 2.16 deleted the venue-backfill.test.ts source-text pins together with
+    # the probe they grepped; the probe itself is gone, so its per-match logic has nothing to
+    # move. The checker half (checkJs + Biome over scripts/*.mjs) stays open.
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-19-measured-test-bloat-pass-install-a-cover"
@@ -553,6 +562,9 @@ action_items:
       an unused-export scan, report dead code with evidence before deleting anything.
       [A4]"
     owner: "agent"
+    # 2026-10-06: Story 2.16 ran the scan for nba_com only (recorded in its spec); still open for
+    # a committed coverage provider and the rest of the knip report (src/ + venueBackfill.ts
+    # exports left with no non-test consumer once the venue probe went).
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-20-annotate-epics-md-417-story-2-12-ac-chec"
@@ -583,7 +595,9 @@ action_items:
     action: "Port describeFetchThrow into nbaCom.ts:301 (or extract the shared fetch/retry
       loop from espn.ts and nbaCom.ts). [A2]"
     owner: "agent"
-    status: open
+    # 2026-10-06: closed BY DELETION in Story 2.16 (nbaCom.ts is gone), not by porting; the
+    # Story 2.14 waiver covered the period before it landed.
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-24-check-claude-ai-account-memory-for-the-b"
     epic: 2

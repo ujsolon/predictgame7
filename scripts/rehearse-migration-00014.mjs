@@ -113,7 +113,7 @@ import { inflateRawSync } from 'node:zlib';
 
 // The Story 2.8 generator, imported — not reimplemented — so section 5's
 // self-test exercises the shipped emit path (native type-stripping, Node
-// >= 22.18, the same requirement scripts/probe-nba-com-adapter.mjs states).
+// >= 22.18, the requirement the owner-run probes state, e.g. scripts/probe-espn-adapter.mjs).
 const venueBackfill = await import('../supabase/scripts/pipeline/venueBackfill.ts');
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');

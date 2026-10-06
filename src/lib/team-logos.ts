@@ -112,9 +112,12 @@ export const getAliasTeamCode = (teamName: string): string | undefined => {
  * The archive and every FK-backed surface keep `getTeamCode`: a row is in hand
  * there, and an empty stored code must stay visible rather than be papered over
  * by the alias table. It lives here, not in `nba-utils.ts`, because this module
- * reads `import.meta.env` and `nba-utils.ts` is also imported by the pipeline
- * program (`tests/pipeline/nba-com.test.ts`), which has no Vite types — the
- * import runs one way, from here to there.
+ * reads `import.meta.env` and `nba-utils.ts` must stay importable by the
+ * pipeline program, which has no Vite types — the import runs one way, from
+ * here to there. [2026-10-06, Story 2.16: the pipeline-program file that
+ * imported it was Story 2.4's adapter suite, deleted with that adapter; no
+ * pipeline file imports `nba-utils.ts` today, and the one-way rule stays so the
+ * next one can.]
  */
 export const getTypedTeamCode = (name: string, ...rows: Array<Team | null | undefined>): string => {
   const trimmed = (name ?? '').trim();

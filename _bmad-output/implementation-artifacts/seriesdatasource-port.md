@@ -3,7 +3,14 @@
 Status: shipped in `supabase/scripts/pipeline/` (Story 2.3; the `nba_com`
 adapter landed beside it in Story 2.4; the `espn` adapter landed in Story 2.13
 and became the SCHEDULED source there — `nba_com` stays registered and
-hand-runnable). This is the port documentation `epics.md` Story 2.3 AC (:353)
+hand-runnable). **[2026-10-06, Story 2.16: `nba_com` is retired — `nbaCom.ts`,
+its registry entry, its two owner-run probes and its test suite were deleted
+in one commit, `--season=` retired with it, and the name now refuses the start
+as an unrecognised adapter. This reverses owner call C1. The registered sources
+are `manual_csv` (the floor and the default), `espn` (scheduled) and `fantrax`
+(the recorded refusal). The `nba_com` text below is kept as the record of what
+the adapter did and why it left — see the dated notes in "Adapter selection"
+and "Automated adapter: `nba_com`".]** This is the port documentation `epics.md` Story 2.3 AC (:353)
 asks for, with `manual_csv` as the reference implementation. Source of truth for
 the boundary is `ARCHITECTURE-SPINE.md` AD-5; the two fetch method names below
 are verbatim from AD-5 and must not drift.
@@ -88,11 +95,27 @@ exact pair; the runner groups, plans, and asserts before any write.
   Supabase). `nba_com` stays registered and hand-runnable, because it remains
   the source a residential address can still reach and dropping a recognised
   name would only invite a future session to re-propose the endpoint
-  unexamined (owner call C1).
+  unexamined (owner call C1). **[2026-10-06, Story 2.16 — C1 reversed: the
+  `nba_com` entry is removed from `ADAPTER_REGISTRY`, so the AD-5 list as built
+  is `manual_csv | fantrax | espn` and `--source=nba_com` /
+  `SERIES_SOURCE=nba_com` refuse the start as an unrecognised adapter, never a
+  fallback. C1's first reason is answered by keeping the egress conclusion in
+  the docs instead of in a registry name: `stats.nba.com` (and `cdn.nba.com`)
+  refuse every cloud — the four-cell table in
+  `_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-03.md`, and
+  the 0/15 measurement cited under "Automated adapter: `espn`" below — so do not
+  re-propose either host for a scheduled run. Its second reason (a residential
+  address can still run it) stopped being worth a registered source once Game 7
+  venue curation, its last live job, was complete: 160/160 NBA/BAA cells filled,
+  F3 closed (`sprint-status.yaml`, Story 2.12).]**
 - Implemented: `manual_csv` and `nba_com` (Story 2.4), `espn` (Story 2.13). A
   flag the selected adapter cannot use (`--csv=` with `nba_com`, `--season=`
   with `manual_csv`, anything at all with `espn`) refuses the run — a silently
   discarded flag would let the operator believe they steered it.
+  **[2026-10-06, Story 2.16: implemented today are `manual_csv` and `espn`.
+  `--season=` is no longer a flag at all: it is outside the runner's
+  `SUPPORTED_FLAGS`, so it refuses the run as an unrecognised flag (exit 2,
+  naming the token) with any source.]**
 - `fantrax` stays recognised-but-unimplemented, and its refusal message now
   carries the Story 2.1 spike's actual rejection (Fantrax endpoints are
   fantasy-scoped and never return a real NBA game score with home/away sides,
@@ -103,6 +126,18 @@ exact pair; the runner groups, plans, and asserts before any write.
   leave Active Series stale while looking healthy.
 
 ## Automated adapter: `nba_com` (Story 2.4)
+
+**[RETIRED 2026-10-06 by Story 2.16.]** Everything in this section describes
+code that no longer exists: `adapters/nbaCom.ts`, `scripts/probe-nba-com-adapter.mjs`,
+`scripts/probe-game7-venues.mjs` and `tests/pipeline/nba-com.test.ts` were
+deleted together, and the chain-depth walk in `adapters/rounds.ts` went with its
+only consumer. It is kept as the record of what the adapter measured (the
+TEAM_ID namespace finding, the archive freeze) and of the egress conclusion
+that retired it. If a Game 7 venue cell in `data/game7_venues_curated.csv` ever
+goes blank again, the route is the hand-entry worksheet
+(`node supabase/scripts/pipeline/venueBackfill.ts --worksheet`, which needs no
+feed) with `basketball-reference.com` as the reference — see
+`docs/CURRENT_DATA_MODEL.md` § "Story 2.8 status".
 
 `supabase/scripts/pipeline/adapters/nbaCom.ts` — the route the Story 2.1 spike
 proved: the unkeyed `stats.nba.com/stats/leaguegamelog` feed
@@ -394,7 +429,8 @@ false report:
    refused by the flag validator **before any credential is read or client
    built** — dry-run promises zero writes and the refresh is three; the two
    are mutually exclusive by validation, not by ordering. `--csv=` and
-   `--season=` are refused on this path by the same rule: it selects no
+   `--season=` **[2026-10-06, Story 2.16: `--season=` retired; it is now
+   refused as an unrecognised flag before this rule is reached]** are refused on this path by the same rule: it selects no
    adapter, so no scoping flag can narrow it and silently discarding one
    would mislead the operator. Adapter selection is not validated here at all
    — a `SERIES_SOURCE` naming an unimplemented adapter cannot refuse a refresh
@@ -492,6 +528,11 @@ node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --season=
 node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights
 ```
 
+**[2026-10-06, Story 2.16: the two `nba_com` lines above are retired. The first
+now refuses the start as an unrecognised adapter; the second is refused even
+earlier, as an unrecognised `--season=` flag. Both exit 2 having opened no
+sink.]**
+
 The last line is **the owner's Story 2.5 command** (U10): after `npx supabase
 db push` applies `00017`, it is how the insights cache gets its first real
 population without waiting for a winner-filling run. It writes only the three
@@ -507,7 +548,8 @@ no `engines` field, so on an older Node the first command fails at parse time
 rather than with a readable message. `--csv=<path>` points `manual_csv` at a
 different file; `--season=<YYYY-YY>` points `nba_com` at one postseason
 (the archive is frozen — a drill onto an archived year reaches the archive
-guard, never a rewrite). `espn` takes **no flag at all**: its single date is
+guard, never a rewrite) **[2026-10-06, Story 2.16: retired with `nba_com`;
+`--csv=` is the only scoping flag left]**. `espn` takes **no flag at all**: its single date is
 derived from the run instant, so a hand run of it asks the feed for yesterday in
 `America/New_York` and nothing else — a `--date=` would put calendar logic in the
 operator's hands, which AD-4 refuses. Each flag refuses the run when handed to

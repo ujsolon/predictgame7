@@ -594,10 +594,10 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // imported by the local-stack drill) — the evidence behind §6.5's closure. Its
   // pass-2 review adds the one spike audit Story 2.7 edited (`status` dropped from
   // the projection): nothing else parses it, and it next runs at the owner's hand.
+  // Story 2.16 (2026-10-06) dropped the venue probe and the stats.nba.com
+  // adapter probe from this list: both were deleted with the adapter they imported.
   for (const script of [
-    'probe-game7-venues.mjs',
     'probe-espn-adapter.mjs',
-    'probe-nba-com-adapter.mjs',
     'rehearse-migration-00014.mjs',
     'measure-predict-latency.mjs',
     'drill-2-7-reconcile.mjs',
@@ -706,28 +706,6 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
     });
     expect(res.stdout).toContain('FIXTURE REPORT OK');
     expect(res.status).toBe(0);
-  });
-
-  it('the venue probe passes the matched row\'s slots at every resolver call (Story 2.12)', () => {
-    // The resolver's slot parameter is required in TypeScript, but `scripts/**` is
-    // in no gate program (biome.json's includes cover no `scripts/*.mjs`, tsc -b covers
-    // src + supabase/scripts/pipeline), so a call site regressing to the two-arg
-    // form parses, lints, type-checks and tests green — and fails only in the
-    // owner's next live run, which is the run Story 2.12 exists to protect. This
-    // asserts the shape the story's whole fix depends on, and that the refusal
-    // branch for a code naming neither slot survived the fix.
-    const probe = readFileSync(new URL('../../scripts/probe-game7-venues.mjs', import.meta.url), 'utf8');
-    const calls = probe.match(/generator\.resolveFeedCode\([^)]*\)/g) ?? [];
-    expect(calls.length).toBe(2);
-    for (const call of calls) {
-      expect(call).toContain('[m.row.teamA, m.row.teamB]');
-    }
-    expect(probe).toContain('if (home !== m.row.teamA && home !== m.row.teamB)');
-    expect(probe).toContain('refusing to print a paste target');
-    // The `[via alias …]` suffix is the probe's report that an alias, not a direct
-    // match, carried the answer — the resolver tests prove the resolution, this
-    // proves the reporting surface that tells the owner which one fired is intact.
-    expect(probe).toContain('[via alias ${m.via.aliases.map');
   });
 });
 

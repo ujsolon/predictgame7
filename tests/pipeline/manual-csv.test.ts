@@ -3,7 +3,7 @@
 // I/O matrix demands.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { ManualCsvError, parseManualCsv } from '../../supabase/scripts/pipeline/adapters/manualCsv.ts';
+import { createManualCsvAdapter, ManualCsvError, parseManualCsv } from '../../supabase/scripts/pipeline/adapters/manualCsv.ts';
 
 const TEAMS: Record<string, number> = { GSW: 10, CLE: 6, OKC: 21, DEN: 8 };
 const lookup = (abbreviation: string): number | undefined => TEAMS[abbreviation];
@@ -138,5 +138,18 @@ describe('ManualCsvError', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(ManualCsvError);
     }
+  });
+});
+
+// Moved here from `nba-com.test.ts` by Story 2.16 (2026-10-06), unchanged: it
+// pins this adapter's own Decision 8 guard, and was the only test reaching it.
+describe('manual_csv adapter deps (Decision 8)', () => {
+  it('createManualCsvAdapter without a csvPath fails loudly instead of reading undefined', () => {
+    expect(() =>
+      createManualCsvAdapter({
+        readFile: () => 'unused',
+        teamIdByAbbreviation: () => undefined,
+      }),
+    ).toThrow(/received no csvPath/);
   });
 });

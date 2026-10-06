@@ -12,7 +12,6 @@
  * Owner usage (the agent never runs this against production):
  *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=espn --dry-run        (the scheduled source)
  *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run  (the floor; births)
- *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run     (hand-run only)
  *
  * Story 2.14 additions: every supported flag lives in `SUPPORTED_FLAGS`, which
  * both the refusal and its help text read, and ANY argv token outside it —
@@ -21,12 +20,11 @@
  * refreshes the insights cache before exiting 2, because the refresh trigger
  * is one-shot and the next run would plan those series as skips.
  *
- * Story 2.4 additions: `--season=<YYYY-YY>` drills the nba_com adapter into
- * one postseason (the archive is frozen — a drill onto an archived year
- * reaches Story 2.3's archive guard, never a rewrite, unless an era
- * abbreviation the teams table lacks aborts it first), a flag the selected
- * adapter cannot use refuses the run, and an adapter that carries a run
- * report (`describeRun`) prints it before planning.
+ * Story 2.4 additions: a flag the selected adapter cannot use refuses the run,
+ * and an adapter that carries a run report (`describeRun`) prints it before
+ * planning. [2026-10-06, Story 2.16: Story 2.4 also added `--season=<YYYY-YY>`,
+ * which drilled its stats.nba.com adapter into one postseason. The flag retired
+ * with that adapter and is now an unrecognised flag that refuses the run.]
  *
  * Story 2.5 additions: a run that filled at least one winner (a completion,
  * or a birth carrying its Game 7 follow-up) refreshes the insights cache
@@ -34,9 +32,8 @@
  * `--refresh-insights` runs *only* that refresh and exits — no adapter
  * selected, fetched, or validated, no series row read or written. It is
  * refused up front when combined with `--dry-run` (dry-run promises zero
- * writes; the refresh is three) and when combined with a `--csv=` /
- * `--season=` scoping flag, which could narrow nothing here and would
- * otherwise read as if it had.
+ * writes; the refresh is three) and when combined with the `--csv=` scoping
+ * flag, which could narrow nothing here and would otherwise read as if it had.
  * A refresh failure reaches the same exit-2 path as any other step.
  *
  * Story 2.6 additions: `--require-feed` makes an empty feed a failure rather
@@ -85,11 +82,9 @@ const REFRESH_RECOVERY_COMMAND = '`node --env-file=.env supabase/scripts/pipelin
  */
 const ADAPTER_FLAGS: Record<string, string[]> = {
   manual_csv: ['csv'],
-  nba_com: ['season'],
   // Story 2.13: `espn` takes NO flag. Its one date is derived from the run
   // instant inside the adapter, so a `--date=` flag would be the calendar
-  // input the spec's Non-goals refuse, and `--season=` is an nba_com notion
-  // the scoreboard endpoint does not speak.
+  // input the spec's Non-goals refuse.
   espn: [],
 };
 
@@ -128,7 +123,7 @@ function flagValue(argv: string[], name: string): string | undefined {
 /**
  * Story 2.14: the ONE list of supported flags. The refusal below and its help
  * text both read it, so a flag is added or retired in exactly one place
- * (Story 2.16 retires `--season=` by deleting its entry). A value flag is
+ * (Story 2.16 retired `--season=` by deleting its entry). A value flag is
  * written `--name=value` and needs a value that does not start with
  * whitespace; a bare flag must match exactly.
  */
@@ -155,15 +150,6 @@ export const SUPPORTED_FLAGS: readonly SupportedFlag[] = [
   },
   { name: 'source', takesValue: true, usage: '--source=<adapter>' },
   { name: 'csv', takesValue: true, usage: '--csv=<path>' },
-  {
-    name: 'season',
-    takesValue: true,
-    usage: '--season=<YYYY-YY>',
-    note:
-      "--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived year reaches the runner's " +
-      'archive guard, never a rewrite, unless an era abbreviation the teams table lacks aborts it first; nba_com has no schedule, so ' +
-      "hand-run it only once the previous US night's games are final, about 09:00 UTC",
-  },
 ];
 
 /** `--name=value` with a value that does not start with whitespace. */
@@ -272,11 +258,10 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     // passes this flag does — so the flag is off by default and the date
     // expression stays singular (the cron line).
     const requireFeed = argv.includes('--require-feed');
-    // The two scoping flags are read once, up here, because both paths
-    // validate them — the run path against the selected adapter, the refresh
-    // path against the fact that it selects no adapter at all.
+    // The scoping flag is read once, up here, because both paths validate it
+    // — the run path against the selected adapter, the refresh path against
+    // the fact that it selects no adapter at all.
     const csvArg = flagValue(argv, 'csv');
-    const seasonArg = flagValue(argv, 'season');
     // Secrets are read and the client built at one site so both paths share
     // one credential check. Lazy by shape: the run path still calls it only
     // after adapter selection has been validated, so an unimplemented
@@ -309,14 +294,12 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       // The same operator-misdirection the ADAPTER_FLAGS block below refuses
       // for a mismatched adapter: a scoping flag on this path narrows nothing,
       // so it is refused by name rather than parsed and discarded — the
-      // operator must not believe a season or a file steered a refresh that
-      // reads neither.
-      const scoped = csvArg !== undefined ? 'csv' : seasonArg !== undefined ? 'season' : undefined;
-      if (scoped !== undefined) {
+      // operator must not believe a file steered a refresh that reads none.
+      if (csvArg !== undefined) {
         throw new PipelineRunError(
-          `--refresh-insights cannot be combined with --${scoped}= — the operator refresh selects no adapter, so no source file and no ` +
-            'season can narrow it, and the flag would be silently discarded. Run --refresh-insights on its own: it recomputes the cache ' +
-            'over the whole league-filtered archive as it stands.',
+          '--refresh-insights cannot be combined with --csv= — the operator refresh selects no adapter, so no source file can narrow ' +
+            'it, and the flag would be silently discarded. Run --refresh-insights on its own: it recomputes the cache over the whole ' +
+            'league-filtered archive as it stands.',
         );
       }
       // U10's operator path is a short-circuit, not a mode: one RPC, one report
@@ -339,13 +322,10 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     assertAdapterImplemented(sourceName);
 
     // A flag the selected adapter cannot use refuses the run (ADAPTER_FLAGS):
-    // silently discarding `--csv=` on an nba_com run would let an operator
-    // believe a file steered a feed run that never read it, and vice versa —
-    // the same class of mistake the stray-flag guard above refuses for a
-    // `--dryrun` typo.
-    const passedFlags = [csvArg !== undefined ? 'csv' : undefined, seasonArg !== undefined ? 'season' : undefined].filter(
-      (name): name is string => name !== undefined,
-    );
+    // silently discarding `--csv=` on an espn run would let an operator
+    // believe a file steered a feed run that never read it — the same class
+    // of mistake the stray-flag guard above refuses for a `--dryrun` typo.
+    const passedFlags = csvArg !== undefined ? ['csv'] : [];
     const allowed = ADAPTER_FLAGS[sourceName] ?? [];
     const misplaced = passedFlags.find((name) => !allowed.includes(name));
     if (misplaced) {
@@ -395,7 +375,6 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       teamIdByEspnCode: (code) => espnTeamIds.get(code),
       fetch: deps.fetch,
       now: deps.now,
-      seasonOverride: seasonArg,
       sleep: deps.sleep,
     };
 
@@ -427,7 +406,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
         throw new PipelineRunError(
           `--require-feed: ${sourceName} returned 0 series — an empty feed inside the playoff window is a failure, not a quiet ` +
             'success (Story 2.6 / SM-4). No plan was computed and nothing was written; the report lines above are what the feed ' +
-            'carried, including the season or date the adapter derived. Check the endpoint and that scope before the next cron slot.',
+            'carried, including the date the adapter derived. Check the endpoint and that scope before the next cron slot.',
         );
       }
     }

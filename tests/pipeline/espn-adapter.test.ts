@@ -1,5 +1,5 @@
 // Story 2.13 — the `espn` feed adapter. Most fixtures here are built INLINE (the
-// `tests/pipeline/nba-com.test.ts` house pattern), because a hand-shaped payload
+// house pattern of Story 2.4's adapter suite, retired by Story 2.16), because a hand-shaped payload
 // is what lets a case carry exactly one decoy field. The block at the bottom
 // instead reads the VERBATIM captures committed under `tests/pipeline/fixtures/`:
 // the shape of a real Game 7 and the population of `teams.espn_code` are facts
@@ -993,13 +993,14 @@ describe('espn through runPipeline', () => {
     const harness = runnerHarness(emptyBody(), new FeedSink(), ['--require-feed'], { source: 'manual_csv' });
     expect(await harness.promise).toBe(2);
     expect(harness.errors.join('\n')).toMatch(/use --source=espn/);
-    expect(harness.errors.join('\n')).not.toMatch(/use --source=nba_com/);
   });
 
   it('a flag espn does not understand refuses the run (ADAPTER_FLAGS)', async () => {
-    const harness = runnerHarness(emptyBody(), new FeedSink(), ['--season=2026-27']);
+    // Story 2.16: `--csv=` rather than the retired `--season=`, which is now an
+    // unrecognised flag refused before adapter selection (run.test.ts pins that).
+    const harness = runnerHarness(emptyBody(), new FeedSink(), ['--csv=operator.csv']);
     expect(await harness.promise).toBe(2);
-    expect(harness.errors.join('\n')).toMatch(/--season= does not apply to adapter "espn"/);
+    expect(harness.errors.join('\n')).toMatch(/--csv= does not apply to adapter "espn"/);
     expect(harness.errors.join('\n')).toMatch(/Flags this adapter understands: none/);
   });
 
