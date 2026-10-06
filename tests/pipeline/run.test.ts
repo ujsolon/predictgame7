@@ -9,6 +9,8 @@ import { runPipeline, SUPPORTED_FLAGS } from '../../supabase/scripts/pipeline/ru
 import { ADAPTER_REGISTRY, adapterHasRunReport, createAdapterSource } from '../../supabase/scripts/pipeline/port.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Story 2.13 grows `TeamRow.espn_code`. Only `CLE` and `DEN` are filled, because
@@ -1189,5 +1191,25 @@ describe('runPipeline — Story 2.14 runner hardening', () => {
     expect(code).toBe(2);
     expect(sink.calls).not.toContain('refreshInsights');
     expect(errors.lines).toEqual(['pipeline failed: pipeline_complete_series failed: simulated rejection']);
+  });
+
+  it('the operator usage header names every implemented adapter (retro W4)', () => {
+    // W4 is a comment, so there is no runtime to exercise — the pin is the source
+    // text, the shape `insights-refresh.test.ts` and `workflows.test.ts` already
+    // use. The expected names come from `ADAPTER_REGISTRY` because that is the
+    // live list: an adapter added without a usage line reds here, which is the
+    // only gate that can see the omission this story was raised for.
+    const runnerSource = readFileSync(
+      fileURLToPath(new URL('../../supabase/scripts/pipeline/run.ts', import.meta.url)),
+      'utf8',
+    );
+    const implemented = Object.keys(ADAPTER_REGISTRY).filter((name) => ADAPTER_REGISTRY[name].implemented);
+    expect(implemented.length).toBeGreaterThan(0);
+    for (const name of implemented) {
+      expect(runnerSource).toContain(`run.ts --source=${name} --dry-run`);
+    }
+    // W4's own fact, which the loop above cannot state: the header says WHICH of
+    // these the schedule runs.
+    expect(runnerSource).toMatch(/--source=espn --dry-run\s+\(the scheduled source\)/);
   });
 });
