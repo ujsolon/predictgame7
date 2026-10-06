@@ -8,6 +8,7 @@ review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/architecture/architecture-predictgame7-2026-09-23/ARCHITECTURE-SPINE.md'
+  - '{project-root}/_bmad-output/implementation-artifacts/analytics-continuity-before-4-0.md'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -98,7 +99,7 @@ context:
 
 ## Design Notes
 
-Finding (a) is refuted at HEAD, by measurement rather than inference. `posthog-js@1.376.4` init calls `capture_pageview && setTimeout(Ki)`, and `"history_change"` is truthy. `Ki` captures `$pageview` once `visibilityState === 'visible'`. A cold, extension-free headless Chrome against a `vite build` of `282c1dd` (2026-10-07) decoded `$pageview` on first load of `/`, `/historical` and `/predict`. So the init options stay byte-identical. The 2026-09-30 "no `/i/v0/e/` at all" observation against production remains unexplained, and Story 3.4 rechecks it in live view.
+Finding (a) is refuted at HEAD, by measurement rather than inference. `posthog-js@1.376.4` init calls `capture_pageview && setTimeout(Ki)`, and `"history_change"` is truthy. `Ki` captures `$pageview` once `visibilityState === 'visible'`. A cold, extension-free headless Chrome against a `vite build` of `282c1dd` (2026-10-07) decoded `$pageview` on first load of `/`, `/historical` and `/predict`. So the init options stay byte-identical. The 2026-09-30 "no `/i/v0/e/` at all" observation against production is superseded: the owner's live-view before leg (2026-10-07, `analytics-continuity-before-4-0.md`) shows a landing `$pageview` at `/` arriving in PostHog from production.
 
 ## Verification
 
