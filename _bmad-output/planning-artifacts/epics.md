@@ -440,8 +440,8 @@ so that the cadence Story 2.6 shipped has a fetch leg that answers a hosted runn
 **And** team resolution goes through a new `teams.espn_code` column (owner call C2 — a column on the live table per provider, not a committed CSV): migration `00018`, additive, nullable, unique-where-not-null, seeded from a **measured** cross-check of all 30 modern franchises' ESPN codes against a live payload (the two known divergences are `NYK`→`NY` and `SAS`→`SA`; the rest are verified, not guessed), owner-applied after the throwaway rehearsal (whose `COVERED_THROUGH` extends to it), `docs/CURRENT_DATA_MODEL.md` in the same commit. [Amended 2026-10-04 when the cross-check actually ran: **six** of 30 diverge — the two known plus `GSW`→`GS`, `NOP`→`NO`, `UTA`→`UTAH` and `WAS`→`WSH`, all four of which the contract had carried as "assumed to agree" until CAP-8 measured them. The measurement is a committed payload (`tests/pipeline/fixtures/espn-teams-site-20261004.json`, the owner's one-off release of the no-agent-fetch rule), the seed traces to it line by line, and the suite re-audits that transcription on every run. ESPN's own `team.id` differs from `teams.id` on 27 of 30 and `displayName` is `LA Clippers` where the table stores `Los Angeles Clippers`, which is why neither is a key. `00018` is authored and rehearsed through it (`COVERED_THROUGH` now 18, section 7, exit 0) and `docs/CURRENT_DATA_MODEL.md` moved in the same commit as the file, so both of the legs above are satisfied; **the owner applied it (`npx supabase db push`) on 2026-10-04, and the application is evidenced rather than asserted: dispatch `37235646137` ran `--source=espn --require-feed` to exit 0, which requires `readTeams`' `espn_code` selection to resolve against the live table.** Proof D's verdict — the hollow green the owner accepted, and the exhibition-game class it met (`"NBA Canada Games 2026"`, excluded by rule with the headline quoted) — is in the run sheet and `payload-contract.md`.] An event team that resolves to zero `teams` rows **aborts the run naming the code** — never a silent drop, never a substring or city+nickname guess; `--require-feed` stays the backstop that turns a dropped game into a loud red
 **And** round naming is parsed from `competitions[0].notes[0].headline` ("East 1st Round - Game 2") into the adapter's canonical round vocabulary — `competitions[0].type.shortName` is absent on the measured payload — and the 17 archived era spellings are never rewritten (Story 2.4's rule stands)
 **And** the request date is derived in the league's US-local timezone (`America/New_York`), not the runner's UTC: `dates=` filters by US local date (measured — `dates=20260605` returned a game stamped `2026-06-06T00:30Z`), which is a live hazard for the 09:30 UTC cron and for the empty-feed test (09:30 as written at authoring time; the slot moved to 07:30 by the amendment two ACs below, and the hazard is unchanged — sharper, since the ET instant is then 02:30–03:30)
-**And** one fetch per run uses the single-date form; range parameters are refused (`400` with a JSON error body, measured) — a backfill is a bounded loop of single-date requests, not a new parameter
-**And** only `status.type.description == Final` games enter the plan, and the story **probes** a live/in-progress payload shape (`status.type.state == 'in'`) rather than assuming it — it has never been fetched `[Amended 2026-10-04, owner call during Story 2.13's build: admission is Final **and** Game 7. `plan.ts` learned exactly one new source shape — a stored *pending* series plus a source carrying only that series' game 7 — so the scheduled feed can complete a series but never seed one; births stay `--source=manual_csv` and Story 2.7's drill, which is why the April offseason edge no longer initializes from this feed. The 3–3 certification is NOT dropped: `pipeline_complete_series` re-reads the six stored games server-side and raises unless they split 3–3 (`supabase/migrations/00015_pipeline_series_functions.sql:286-308`). Contract of record: `_bmad-output/specs/spec-2-13-espn-feed-adapter/SPEC.md` CAP-6 + its "the scheduled feed completes; it does not seed" constraint.]`
+**And** one fetch per run uses the single-date form; range parameters are refused (`400` with a JSON error body, measured) — a backfill is a bounded loop of single-date requests, not a new parameter **[2026-10-06, `sprint-change-proposal-2026-10-06.md`: still single-date, but no longer one per run — Story 2.18 adds a bounded backfill (≤21 dates) when a Game 6 stands 3–3, and a re-read of the previous date; `feedSeriesCount` counts the run's own date only.]**
+**And** only `status.type.description == Final` games enter the plan, and the story **probes** a live/in-progress payload shape (`status.type.state == 'in'`) rather than assuming it — it has never been fetched `[Amended 2026-10-04, owner call during Story 2.13's build: admission is Final **and** Game 7. `plan.ts` learned exactly one new source shape — a stored *pending* series plus a source carrying only that series' game 7 — so the scheduled feed can complete a series but never seed one; births stay `--source=manual_csv` and Story 2.7's drill, which is why the April offseason edge no longer initializes from this feed. The 3–3 certification is NOT dropped: `pipeline_complete_series` re-reads the six stored games server-side and raises unless they split 3–3 (`supabase/migrations/00015_pipeline_series_functions.sql:286-308`). Contract of record: `_bmad-output/specs/spec-2-13-espn-feed-adapter/SPEC.md` CAP-6 + its "the scheduled feed completes; it does not seed" constraint.]` **[Reversed 2026-10-06 by owner decision (option B), `sprint-change-proposal-2026-10-06.md`: Story 2.18 makes the feed seed too, at a feed-observed 3–3 with games 1–6 backfilled — measured on two 2025 series before the decision.]**
 **And** basketball-reference is recorded in the adapter's docs as the designated automated fallback of last resort if the ESPN route ever breaks (owner call C4, measured reachable from both clouds at 200/~220 ms — HTML, scrape cost) but is **not implemented**: its implementation is a conditional story authored only if that trigger fires, and `manual_csv` remains the floor
 **And** the `nba_com` adapter stays registered and runnable by hand (`--source=nba_com` from the owner's machine is the one measured-passing cell) but leaves the workflow surface entirely (owner call C1) **[2026-10-06, Story 2.16: C1 reversed — the adapter is retired and the name now refuses the start as an unrecognised adapter; see Story 2.16 and `port.ts`]**
 **And** it inherits Story 2.6's run-sheet transfers (owner call C3): the `source=fantrax` zero-write dispatch, the issue-#8 close → re-fire → fresh-issue confirmation, one `migration-rehearsal.yml` dispatch, and — after this adapter ships — the green **non-dry** CAP-2 dispatch that spec-2-6's CAP-2 owes, re-pointed here **[All four carry recorded run ids as of 2026-10-04: `37199559809` (`fantrax` refuses before `openSink`), the close → re-fire opening issue #9, `37201495284` (manual rehearsal) and `37235646137` (the hollow non-dry CAP-2 green, owner-accepted). The push that carried `00018` also produced `37235181319`, the hosted rehearsal through section 7.]**
@@ -654,32 +654,50 @@ so that adding a 3–3 series neither blocks every push to `master` nor rules ou
 **And** the runbook's scenario 3 is pinned, which Story 2.15's matrix audit found measured but untested: in `tests/pipeline/plan.test.ts`, a source carrying only games 1–6 (null winner) against an **archived** stored row is refused with "never rewrites an archived outcome", and the same source plus its matching Game 7 is a skip
 **And** no change to the runner, the adapters, the plan, the workflows, or any migration; `npm run gate` passes
 
-### Story 2.18: Alert the owner when a series reaches 3–3
+### Story 2.18: The scheduled run births a series at 3–3
 
-*Created 2026-10-06 by owner decision, after Story 2.15's runbook. Births stay curated: this story **detects and alerts**, and the owner still does the birth through `docs/PLAYOFF_RUNBOOK.md`. That keeps the owner's 2026-10-04 call (Story 2.13: the feed completes, it does not seed) intact, so no course correction is needed. The owner's sketch was: keep the list of current Game 7s, check ESPN for new 3–3 series, update the list, and run the birth runbook for new entries. The list is the stored pending rows (null winner, six games), which the run already reads. The standing comes from the scoreboard payload the scheduled run already fetches: every event carries `competitions[0].series` with each competitor's `wins` and a `completed` flag (measured in `tests/pipeline/fixtures/espn-scoreboard-20250504-mixed.json`, e.g. `"summary": "IND leads series 1-0"`). The owner chose this over scraping the ESPN bracket page, which stays a fallback only if a real miss happens. Due before the first inseason run, 2027-04-16.*
+*Re-scoped 2026-10-06 by `sprint-change-proposal-2026-10-06.md` (owner decision, option B). It was registered earlier the same day as "alert the owner when a series reaches 3–3": detect and alert only, with births still curated. The owner then chose to automate births. This **reverses** the owner's 2026-10-04 call (Story 2.13: "the scheduled feed completes; it does not seed") and two Story 2.13 constraints (`SPEC.md:66`, one date per run; `:80`, no multi-date fetch), for this backfill only. The approach was measured before the decision on two 2025 first-round series (DEN–LAC, GS–HOU): Game 6's `competitions[0].series` read `"Series tied 3-3"`, and games 1–5 were found by walking back single dates, in 13 requests each with no errors. The payloads are in `tests/pipeline/fixtures/espn-backfill-2025/`. Due before the first inseason run, 2027-04-16.*
 
 As the owner,
-I want the scheduled run to tell me when a series reaches 3–3 that is not yet in Active Series,
-so that I do the birth inside the game-6 → game-7 window instead of having to watch every Game 6 myself.
+I want the scheduled run to put a series into Active Series by itself when it reaches 3–3,
+so that every pending Game 7 appears inside its one-to-two-day window without me watching every Game 6.
 
 **Acceptance Criteria:**
 
-**Given** the `espn` adapter today excludes a Final Game 6 as "game 6 of 7" and keeps nothing of its `series` field
-**When** a Final Game 6 event's `competitions[0].series` shows `completed: false` and both competitors at 3 wins
-**Then** the run reports **birth needed**, naming both teams by `teams.abbreviation`, the round, and the date read, unless a stored pending row already holds that pair in either slot order (then it reports nothing)
-**And** the competitors resolve through `teams.espn_code` exactly as the adapter's game teams do; an unresolvable code aborts naming it, as today
-**And** a missing or malformed `series` field on a Final Game 6 is reported by name and never read as "not 3–3"; nothing defaults silently (Story 2.13's loud-drift rule)
-**And** a Game 6 that is **not Final** when read (the overtime gap at 07:30 UTC) reports "Game 6 not final when read — check this series' standing yourself", because no later run re-reads that date
+**Given** a Final Game 6 on the run's date whose `competitions[0].series` is `completed: false` with **3 wins each, read per team**, and no stored row for that pair in either slot order. (The `wins` array follows competitor order, not home/away: GS–HOU read `[0,1]` after Game 1.)
+**When** the run backfills
+**Then** it finds games 1–5 by walking back one date at a time from Game 6's date, using the existing single-date request, bounded at **21 dates**, and stopping once all five are found
+**And** each game must be Final, between the same pair, with a headline naming its game number; dates already fetched are shared across concurrent backfills, and no range parameter is used
+**And** the six games reach the planner as an ordinary six-game source and are born through `pipeline_birth_series` with every AD-4/AD-5 check (certified 3–3, `team_a` = Game 1's home team), and the run reports the birth
+**And** `feedSeriesCount` counts the run's own date only. Backfill and re-read requests never add to it, so `--require-feed`'s independence (Story 2.6 D-3) holds
 
-**Given** a birth-needed or Game-6-not-final report on a scheduled run
+**Given** a late finish or a missed run (option (i) of the proposal)
+**When** any scheduled run executes
+**Then** it also re-reads the **previous** date for two things: Final Game 6s at 3–3 not yet stored (births), and Final Game 7s of stored pending series (completions)
+**And** both are idempotent, and neither counts toward `feedSeriesCount`
+
+**Given** a backfill that cannot assemble a certified 3–3: a game missing within 21 dates, a non-Final game, a pair or headline mismatch, or a missing or malformed `series` field
 **When** the run ends
-**Then** the owner is notified within that cron cycle, distinguishably from a run failure (the story picks the mechanism, e.g. the `notify-failure` composite with its own title or a separate issue, and records why)
-**And** detection never blocks the run's other work: completions in the same run still land, the insights refresh still fires, and the exit code reflects only real failures
-**And** `--dry-run` prints the same reports and writes nothing
+**Then** nothing is born for that series, and a **"birth needed"** alert names it and points to `docs/PLAYOFF_RUNBOOK.md`
+**And** the alert arrives within that cron cycle and is distinguishable from a run failure; the story picks the mechanism and records why
+**And** the alert never blocks completions or the insights refresh, and the exit code reflects only real failures
+**And** `--dry-run` prints the same detection, backfill and plan, and writes nothing
 
-**And** fixture-driven tests cover: a 3–3 with no stored row (report), the same with a stored pending row (silent), a 3–2 or a completed series (silent), a missing `series` field (named), and a non-Final Game 6 (warning). Fixtures follow the measured `series` shape; no agent fetches ESPN
-**And** `docs/PLAYOFF_RUNBOOK.md` step 1 makes the alert the primary cue and keeps the game result as the backstop, and states the overtime gap
-**And** no automated birth, and no change to `plan.ts`'s decisions, the RPCs or any migration; `npm run gate` passes
+**And** fixture-driven tests, built on the committed 2025 spike payloads, cover:
+- a normal birth;
+- an already-stored pair (silent);
+- a 3–2 or completed series (silent);
+- a missing `series` field (named, alert);
+- a backfill gap (alert);
+- the previous-date re-read, for a birth and for a completion;
+- `feedSeriesCount` unaffected by backfill;
+- per-team `wins` ordering.
+
+No agent fetches ESPN.
+**And** the spike payloads are committed under `tests/pipeline/fixtures/espn-backfill-2025/` with a provenance note: owner-released fetch on 2026-10-06, resolved through `1.1.1.1` because the local resolver refuses the name, as Story 2.13's run sheet records
+**And** in the same change as the code, `docs/PLAYOFF_RUNBOOK.md` is reframed as the **fallback** procedure: births and missed Game 7s are automatic, the runbook covers the "birth needed" alert path and the offseason reset, and step 1's cue becomes the alert
+**And** in that same change, `seriesdatasource-port.md`'s `espn` section describes the backfill and the re-read
+**And** no change to the RPCs, migrations, crons or Edge Functions; `npm run gate` passes
 
 ## Epic 3: Owner Operations — analytics you can trust, contacts you never miss, gate numbers you can read
 

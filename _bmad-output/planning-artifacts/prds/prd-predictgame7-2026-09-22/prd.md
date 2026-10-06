@@ -218,7 +218,7 @@ Home hero, Insights labels, contact copy, and empty/error states read as intenti
 
 ### 4.4 Data Pipeline & Content Operations
 
-**Description:** How Series data — especially Active Series — stays correct without manual heroics during the playoffs. Current state (owner-confirmed 2026-09-22): historically loaded via a Python script from a spreadsheet; **active-series updates are manual today**; no committed automation exists yet.
+**Description:** How Series data — especially Active Series — stays correct without manual heroics during the playoffs. Current state (owner-confirmed 2026-09-22): historically loaded via a Python script from a spreadsheet; **active-series updates are manual today**; no committed automation exists yet. **[2026-10-06, `sprint-change-proposal-2026-10-06.md`: holds for completions now, and for births once Story 2.18 lands; `docs/PLAYOFF_RUNBOOK.md` is the fallback.]**
 
 #### FR-19: Canonical archive data  **[LIVE]**
 The normalized schema (`teams`, `series`, `series_game_scores`) holds the migrated Historical series with logos — **178 series rows live**, measured 2026-09-30 (177 in the source spreadsheet; see the count caveat below); legacy flat tables archived (addendum).
@@ -226,15 +226,16 @@ The normalized schema (`teams`, `series`, `series_game_scores`) holds the migrat
 - Archive counts reconcile with source spreadsheet totals; legacy tables retained in `archive` schema for audit only. `[As written this does not hold — 2026-09-30]` the live table carries one row more than the spreadsheet's 177; the caveat below is the pin and the delta is the open half of it. `[Reconciled 2026-10-01 by sprint-change-proposal-2026-10-01.md: the sheet's 177 Game-7 rows are NBA 158 + BAA 1 + ABA 18 and it stops at the 2026 conference semifinals; 178 live = 160 NBA/BAA + 18 ABA, which is nba.com's published 160 to the unit. Nothing missing, nothing spurious — the half that stays open is the identity of the extra row, not the totals.]`
 - `[Count caveat 2026-09-29; pinned by Story 2.1 on 2026-09-30]` **The live table holds 178 `series` rows and 1,246 `series_game_scores` rows, every series exactly seven** — measured by `scripts/spike-2-1/audit-archive.mjs` (exit 0) and independently by the identity-key pre-flight over the same 178 rows; recorded in `_bmad-output/implementation-artifacts/decision-2-1-q-4-data-source.md`. **177 remains the source-spreadsheet figure** (`NBASeriesResults.xlsx`, addendum §B/§C) and **172 + 5 is AD-7's prerender route split**, not a table count. Forward-looking documents use **178**. Two things this pin does *not* claim: that the one-row delta between the spreadsheet and the table is explained (it isn't, anywhere — settle it in the dashboard with `SELECT count(*) FROM archive.game_sevens` against `SELECT count(*) FROM public.series`), and that every archived row still has seven score rows tomorrow (that holds as of the audit date, and Story 2.3's runner is the first thing that can change it).
 
-#### FR-20: Offseason pipeline mode  **[PLANNED]**
+#### FR-20: Offseason pipeline mode  **[LIVE]**
 The pipeline runs at the start and end of the NBA playoffs to initialize and finalize Season records.
 **Consequences (testable):**
 - A run idempotently creates/updates the current postseason bracket; a failed run is detectable (alert or logged status).
+- **[2026-10-06, `sprint-change-proposal-2026-10-06.md`: as built, no series row exists before a series stands 3–3 (AD-4, derived phase), so there is no bracket to initialize; the offseason runs (Apr 12, Jun 25) are bounded runs of the same pipeline, and a failure alarms as in FR-21. Tag moved `[PLANNED]` → `[LIVE]` (Epic 2).]**
 
-#### FR-21: Inseason pipeline mode  **[PLANNED]**
+#### FR-21: Inseason pipeline mode  **[LIVE]**
 During the playoffs, the pipeline runs daily to update Active Series statuses and game scores. Realizes UJ-3's need for live accuracy.
 **Consequences (testable):**
-- After a daily run, Predict's Active Series reflect latest results.
+- After a daily run, Predict's Active Series reflect latest results. **[2026-10-06, `sprint-change-proposal-2026-10-06.md`: the daily run completes a pending series from its Game 7 (Story 2.13). Births — a series appearing in Active Series at 3–3 — are automated by Story 2.18 (due 2027-04-16): the run detects a 3–3 Game 6 and backfills games 1–6 itself, re-reading the previous date to cover late finishes. Until 2.18 lands, and as its fallback, births are curated by hand per `docs/PLAYOFF_RUNBOOK.md` with a "birth needed" alert. Tag moved `[PLANNED]` → `[LIVE]` (Epic 2).]**
 - Script-based and CI-scheduled, consistent with the existing `supabase/scripts` precedent (owner-confirmed 2026-09-22).
 - Data source direction is set (Q-4: Fantrax API preferred, nba.com scrape fallback) but unverified — a feasibility spike is a build-time prerequisite. `[NOTE FOR PM]` if both fail, FR-21 reopens as a phase-blocker: stale Active Series data during the playoffs would invalidate the Traffic Gate measurement itself. `[Re-resolved 2026-10-03 by sprint-change-proposal-2026-10-03.md: Fantrax was ruled out by the spike (2026-09-30), and the shipped nba_com adapter's endpoint refuses all cloud egress — stats.nba.com 0/15 across two providers and three client stacks, cdn.nba.com 403 from both. The scheduled source is ESPN's site.api.espn.com (Story 2.13), an unofficial endpoint with no SLA whose failure modes land in Story 2.6's proven non-zero-exit → issue machinery. basketball-reference is the designated automated fallback of last resort (owner call C4); manual_csv remains the floor. The phase-blocker note is not invoked — a hosted source exists.]`
 
@@ -360,7 +361,7 @@ The user can share a completed Prediction as a stable Share Link that reproduces
 - Reliability pass on Predict flow + regression coverage (FR-8, FR-30 / issue #3).
 - Release-quality copy sweep (FR-18 / issue #4).
 - Contact delivery + analytics + UX (FR-17 / issue #2).
-- Data pipeline automation, both modes (FR-20/21) so Active Series are live-current without manual work.
+- Data pipeline automation, both modes (FR-20/21) so Active Series are live-current without manual work. **[2026-10-06, `sprint-change-proposal-2026-10-06.md`: holds for completions now, and for births once Story 2.18 lands; `docs/PLAYOFF_RUNBOOK.md` is the fallback.]**
 - Traffic Gate reporting (FR-25).
 - Analytics isolation refactor — move PostHog behind the NFR-V1 decoupling layer so the gate and instrumentation survive a vendor swap or exit.
 - Shareable prediction deep-links + OG cards (FR-31) — the SEO/spike-capture play that must be indexed *before* the 2027 window.

@@ -17,6 +17,8 @@ sources:
 
 # Spec: Story 2.13 — ESPN feed adapter (the source change Story 2.6's egress evidence forces)
 
+> **[2026-10-06]** The constraints "One date per run, rest days included" and "The scheduled feed completes; it does not seed", and the non-goal "Any multi-date fetch" (cited elsewhere as `:66`/`:69`/`:80`, from before this banner was added) are superseded by `_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-06.md` (Story 2.18, automated births); see `.memlog.md`. This file is derived from the memlog and was not re-rendered.
+
 ## Why
 
 A pain to solve, with the same calendar deadline attached to it. Story 2.6 shipped the cadence — daily inseason runs, two offseason edges, a failure that files a deduped GitHub issue — and every part of it was proven working except the one part that has to leave the building: the fetch. `stats.nba.com` refuses all cloud egress (0/15 across two providers and three client stacks) and `cdn.nba.com` returns `403` from both clouds, so the scheduled source shipped in 2.4 answers to nobody but a residential address. `site.api.espn.com` answers from both clouds — 226 ms from Supabase, 78 ms from a GitHub-hosted runner, confirming run `37119291248` — which is why FR-21 was re-resolved on 2026-10-03 (`sprint-change-proposal-2026-10-03.md`, owner calls C1–C4) and why the documented reopening trigger on the feed route has fired.
