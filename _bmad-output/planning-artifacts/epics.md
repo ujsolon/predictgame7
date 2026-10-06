@@ -566,6 +566,7 @@ so that the 2027 playoff runs fail loudly on operator error and partial failure,
 **Given** `unknownFlag` (`supabase/scripts/pipeline/run.ts:123-132`) inspects only tokens that start with `--`, so `-dry-run`, `dry-run` and `—dry-run` (an em-dash pasted from a doc) each run live
 **When** any argv token is not exactly one of the supported flags
 **Then** the run refuses with exit 2, names the token, and opens no sink — positional and single-dash tokens included
+**And** the supported flags live in **one** list that both the refusal and its help text read, so Story 2.16 retires `--season=` by deleting one entry rather than editing a regex and a message separately
 
 **Given** a write-loop throw after an earlier write in the same run filled a winner (`run.ts:389-438`) — today the run exits 2 through the generic catch with no refresh and no recovery hint, and the next run plans those series as skips
 **When** a birth, follow-up or completion RPC rejects after at least one winner landed
@@ -573,7 +574,7 @@ so that the 2027 playoff runs fail loudly on operator error and partial failure,
 
 **And** the test `FakeSink` (`tests/pipeline/run.test.ts:70-74`) gains a completion-failure hook, and the mixed run above is pinned — today no runner test exercises a rejected completion at all
 **And** `run.ts`'s operator usage header (`:12-14`) lists the `espn` dry-run, the scheduled source since Story 2.13
-**And** `nbaCom.ts:301` names the cause behind a bare `fetch failed` the way `espn.ts`'s `describeFetchThrow` does (`4c5198c`) — shared or ported, the story records which
+**And** `nbaCom.ts:301` names the cause behind a bare `fetch failed` the way `espn.ts`'s `describeFetchThrow` does (`4c5198c`) — shared or ported, the story records which **[Waived 2026-10-06 by owner call (recorded in `../implementation-artifacts/epic-2-retro-2026-10-06.md`, action item 10): the scheduled source is `espn` and `nba_com` runs by hand only, so this AC is not built here. The accepted cost until Story 2.16 lands is that a hand-run `nba_com` keeps printing the bare `fetch failed`. Closes by deletion in Story 2.16.]**
 **And** no change to `plan.ts`'s decisions, the RPCs or any migration; `npm run gate` passes
 
 ### Story 2.15: The 2027 playoff birth runbook
@@ -600,30 +601,34 @@ so that every pending Game 7 reaches Active Series in the one-to-two-day window 
 
 As the owner,
 I want the hand-run-only `nba_com` source and its test file gone together, not one without the other,
-so that Epic 3 does not carry ~1,900 lines of adapter, probe and tests that no scheduled path can reach and no gate program can see.
+so that Epic 3 does not carry ~2,350 lines of adapter, probes and tests that no scheduled path can reach and no gate program can see.
 
 **Acceptance Criteria:**
 
-**Given** the adapter's only non-test consumer is `scripts/probe-game7-venues.mjs:85-86`, which imports `createNbaComAdapter` and `validateSeasonOverride` rather than copying them, and that probe's remaining purpose was filling the 160 now-filled venue cells
+**Given** the adapter's non-test consumers are `scripts/probe-game7-venues.mjs:85-86` and `scripts/probe-nba-com-adapter.mjs:58-59`, which import `createNbaComAdapter` and `validateSeasonOverride` (the latter also `deriveSeason` and `NBA_COM_HEADERS`) rather than copying them, and the venue probe's remaining purpose was filling the 160 now-filled venue cells **[corrected 2026-10-06: the registration named only the venue probe; both probes are deleted by this story, so the consequence is unchanged]**
 **When** the retirement lands
-**Then** `supabase/scripts/pipeline/adapters/nbaCom.ts` (607 lines), `scripts/probe-nba-com-adapter.mjs` (292), `scripts/probe-game7-venues.mjs` and `tests/pipeline/nba-com.test.ts` (1,059) are deleted in one commit, and the registry entry at `port.ts:166` goes with them
+**Then** `supabase/scripts/pipeline/adapters/nbaCom.ts` (607 lines), `scripts/probe-nba-com-adapter.mjs` (292), `scripts/probe-game7-venues.mjs` (401) and `tests/pipeline/nba-com.test.ts` (1,059) are deleted in one commit, and the registry entry at `port.ts:166` goes with them
 **And** `scripts/spike-2-1/**` is untouched — it is recorded provenance for Stories 2.1 and 2.4, not a live surface
 **And** the venue-curation route that survives is the hand-entry worksheet (`venueBackfill.ts:1140-1148`), which needs no feed, and the docs say what to do if a cell ever goes blank again
 
 **Given** action item 6's rule — coverage plus an unused-export scan, evidence recorded **before** any deletion
 **When** the story runs
 **Then** that scan's output is in the story record, and `rounds.ts` is left holding only what still has a consumer: `labelForDepth` and `formatHistogram` stay (both already pinned through the live `espn` adapter at `espn-adapter.test.ts:410-415`, `:684`), while `walkChainDepth`, `histogramFromPlacements` and their types go with their only consumer (`nbaCom.ts:71,463,465`) — `nba-com.test.ts:356` is their sole pin today, so they are deleted as dead exports, not re-pinned
-**And** every deletion from `nba-com.test.ts` is triaged per-describe with the numbers in the record: `:225`/`:286`/`:441`/`:567` go as adapter-only; the 15 runner cases at `:815` are split — each guarantee that is about the **runner** rather than the feed (report prints before planning, exclusion notes reach stdout, `--season=` reaches the wire, a duplicate `--season=` refuses) is re-parented into `tests/pipeline/run.test.ts` **before** its original is deleted, and only the `nba_com`-specific shapes are dropped; the single `manual_csv` case at `:1051` moves to `manual-csv.test.ts`
+**And** every deletion from `nba-com.test.ts` is triaged per-describe with the numbers in the record: `:225`/`:286`/`:441`/`:567` go as adapter-only; the 15 runner cases at `:815` are split — each guarantee that is about the **runner** rather than the feed (report prints before planning, exclusion notes reach stdout, a duplicate scoping flag refuses — re-pinned with `--csv=`, since `--season=` retires below) is re-parented into `tests/pipeline/run.test.ts` **before** its original is deleted, and only the `nba_com`-specific shapes are dropped. "`--season=` reaches the wire" is **not** re-parented: it is an `nba_com` guarantee and retires with the flag. The single `manual_csv` case at `:1050` moves to `manual-csv.test.ts`
 **And** no case is deleted while it is the sole pin of live code, and the record names where each surviving guarantee lands
 **And** the source-text pins at `tests/pipeline/venue-backfill.test.ts:712-731` — which regex-match the deleted probe's call sites only because `scripts/**` sits in no gate program (finding A1) — are deleted with it; action item 5's other half (bringing `scripts/*.mjs` under a checker) is NOT claimed here
 
 **Given** `--source=nba_com` today selects an implemented adapter
 **When** the entry is removed
-**Then** the name becomes an unrecognised source that refuses the start, and `run.ts`'s 7 references plus `run.test.ts`'s 22 re-point to that behaviour; `workflows.test.ts` keeps its 2 references pinning that no workflow offers the source
+**Then** the name becomes an unrecognised source that refuses the start; `run.ts`'s 7 references go or re-point, and `workflows.test.ts` keeps its 2 references pinning that no workflow offers the source
+**And** `run.test.ts`'s 22 references are split, not bulk re-pointed: the selection and refresh-bypass cases (`:362-368`, `:665-673`, `:699`) re-point to the refusal or to `espn`; the `--require-feed` block (`:858-990`, Story 2.6's playoff alarm) uses `nba_com` **as the feed**, so it re-points to `espn`. The `espn` suite already holds the red, green and one-series twins (`espn-adapter.test.ts:941-993`), so those originals go once their twins are cited; **`--dry-run --require-feed` on an empty feed is red (`run.test.ts:952`) has no `espn` twin and is re-parented onto `espn` before its original is deleted**; and the registry list at `:984` becomes `['espn', 'manual_csv']`
+**And** the `--season=` flag retires with its only adapter (`run.ts:77` is its sole `ADAPTER_FLAGS` entry): Story 2.14's single supported-flag list loses the entry, and the header (`:16-21`), help text (`:196-202`), refresh-path scoping check (`:256`), `passedFlags` (`:288`), `seasonOverride` (`:340`; `port.ts:123-124`) and `run.test.ts:692-699` follow, so `--season=` becomes an unrecognised flag that refuses the run rather than a flag every adapter rejects
+**And** the `node --check` smoke list at `tests/pipeline/venue-backfill.test.ts:597-604` drops `probe-game7-venues.mjs` and `probe-nba-com-adapter.mjs` in the same commit — otherwise the suite reds on the deleted files
 **And** Story 2.6's egress conclusion is preserved as evidence, not re-litigated: the finding that nba.com refuses every cloud keeps its citations in the docs and the spec record after its probe is gone, so nobody re-proposes the endpoint
 **And** action item 10 closes **by deletion** rather than by porting `describeFetchThrow`, and it points back at the dated waiver Story 2.14 records on its `nbaCom.ts:301` AC for the period before this story landed
 
-**And** `docs/seriesdatasource-port.md`'s registry line, `docs/CURRENT_DATA_MODEL.md` if it names the source, and `epics.md` Stories 2.4 and 2.6 carry dated retirement annotations with their frozen text intact, and this story's C1 reversal is written into `port.ts`'s comment where C1 was recorded
+**And** `_bmad-output/implementation-artifacts/seriesdatasource-port.md`'s registry line (path corrected 2026-10-06; no `docs/` copy exists), `docs/CURRENT_DATA_MODEL.md` if it names the source, and `epics.md` Stories 2.4 and 2.6 carry dated retirement annotations with their frozen text intact, and this story's C1 reversal is written into `port.ts`'s comment where C1 was recorded
+**And** comments naming the deleted files are swept: `espn.ts:60,577`, `rounds.ts:21`, `team-logos.ts:116`, `rehearse-migration-00014.mjs:116`, `espn-adapter.test.ts:2`. `docs/CHANGELOG.md:33` is release history and stays
 **And** no migration, RPC, workflow cron, Edge Function or `plan.ts` decision changes; no live fetch by the agent; per-AC mutation evidence for every re-parented case; `npm run gate` passes with the exit code read from the command itself
 
 ## Epic 3: Owner Operations — analytics you can trust, contacts you never miss, gate numbers you can read
