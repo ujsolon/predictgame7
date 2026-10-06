@@ -184,6 +184,15 @@ describe('planPipeline — I/O matrix', () => {
     expect(followup?.winner_team_id).toBe(TEAM_B);
   });
 
+  it('runbook scenario 3 (Story 2.17): an archived row against a games-1–6-only source refuses; the same source plus its Game 7 skips', () => {
+    // docs/PLAYOFF_RUNBOOK.md scenario 3: once the feed completes a series, an
+    // operator CSV still holding only its games 1–6 makes the next manual run
+    // red for every series in the file; appending the matching Game 7 (or
+    // removing the rows) is the fix. Measured in Story 2.15, pinned here.
+    expect(() => planFor([pendingSource()], [currentArchive()])).toThrowError(/never rewrites an archived outcome/);
+    expect(planFor([archiveSource()], [currentArchive()]).skips).toHaveLength(1);
+  });
+
   it('archived row + identical source: skip; diverging source: refuse to rewrite the archive', () => {
     expect(planFor([archiveSource()], [currentArchive()]).skips).toHaveLength(1);
     const different = [...sixGames().slice(0, 5), scoreRow(6, TEAM_B, TEAM_A, 120, 80), GAME_SEVEN];

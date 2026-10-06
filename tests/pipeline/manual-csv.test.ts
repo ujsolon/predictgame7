@@ -4,6 +4,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createManualCsvAdapter, ManualCsvError, parseManualCsv } from '../../supabase/scripts/pipeline/adapters/manualCsv.ts';
+import { CANONICAL_ROUND_LABELS } from '../../supabase/scripts/pipeline/adapters/rounds.ts';
+import { groupSourceRows, planPipeline } from '../../supabase/scripts/pipeline/plan.ts';
+import { parseTeamsSeed } from '../../supabase/scripts/pipeline/venueBackfill.ts';
 
 const TEAMS: Record<string, number> = { GSW: 10, CLE: 6, OKC: 21, DEN: 8 };
 const lookup = (abbreviation: string): number | undefined => TEAMS[abbreviation];
@@ -63,13 +66,84 @@ describe('parseManualCsv — the shipped example file', () => {
   });
 });
 
+/**
+ * Story 2.17: the committed operator file must be VALID, not empty. Story
+ * 2.3's original case required zero data rows, which reddened the gate (and
+ * the master pre-push hook) for every push while a playoff 3–3 sat in the
+ * file. Header-only is the offseason state (`series_manual.csv:17-21`), not a
+ * requirement. Valid means: every row resolves against the real 59-team seed,
+ * the rows pass the runner's own grouping and plan assertions against an
+ * empty table (a certified 3–3, or a valid seven-game shape), and every round
+ * is one of the canonical labels — so a typo reddens the gate before any
+ * dispatch, never at the operator's dry-run.
+ */
+const SEED_LOOKUP = (() => {
+  const read = (name: string) => readFileSync(new URL(`../../supabase/migrations/${name}`, import.meta.url), 'utf8');
+  const seed = parseTeamsSeed(
+    read('00005_release_1_data_model.sql') + read('00007_backfill_missing_historical_series.sql'),
+    '00005 + 00007 teams seed',
+  );
+  return (abbreviation: string): number | undefined => seed.get(abbreviation);
+})();
+
+function assertValidOperatorCsv(text: string, name: string): void {
+  const { statuses, scores } = parseManualCsv(text, name, SEED_LOOKUP);
+  for (const status of statuses) {
+    if (!CANONICAL_ROUND_LABELS.includes(status.round)) {
+      throw new Error(`${name}: round "${status.round}" is not one of ${CANONICAL_ROUND_LABELS.join(', ')}`);
+    }
+  }
+  planPipeline(groupSourceRows(statuses, scores), []);
+}
+
 describe('the committed operator file', () => {
-  it('carries no data rows, so an untouched apply run plans zero rows', () => {
-    // series_manual.csv is live operator data, not a fixture: the safe default
-    // is a header and nothing else, and it must stay that way between seasons.
-    const { statuses, scores } = parseManualCsv(LIVE_CSV, 'series_manual.csv', lookup);
-    expect(statuses).toHaveLength(0);
-    expect(scores).toHaveLength(0);
+  it('is valid: real team codes, a plan the runner accepts, canonical rounds (header-only is the offseason state)', () => {
+    expect(() => assertValidOperatorCsv(LIVE_CSV, 'series_manual.csv')).not.toThrow();
+  });
+
+  // The check itself, against temporary text — never the live file.
+  const pendingThreeThree = [
+    '2027,First Round,1,NYK,BOS,108,101',
+    '2027,First Round,2,NYK,BOS,97,104',
+    '2027,First Round,3,BOS,NYK,112,99',
+    '2027,First Round,4,BOS,NYK,95,102',
+    '2027,First Round,5,NYK,BOS,110,103',
+    '2027,First Round,6,BOS,NYK,106,100',
+  ];
+
+  it('accepts a header-only file and a valid six-row 3–3', () => {
+    expect(() => assertValidOperatorCsv(HEADER, 'empty.csv')).not.toThrow();
+    expect(() => assertValidOperatorCsv(csv(...pendingThreeThree), 'pending.csv')).not.toThrow();
+  });
+
+  it('accepts the normal mid-playoff file: one series pending, one carried through Game 7', () => {
+    // The runbook's scenarios 2–4 leave seven-row series in the committed file
+    // beside pending ones; a tightened check must not redden that state.
+    const completed = [
+      '2027,First Round,1,DEN,LAL,110,102',
+      '2027,First Round,2,DEN,LAL,104,115',
+      '2027,First Round,3,LAL,DEN,108,99',
+      '2027,First Round,4,LAL,DEN,101,112',
+      '2027,First Round,5,DEN,LAL,120,110',
+      '2027,First Round,6,LAL,DEN,98,95',
+      '2027,First Round,7,DEN,LAL,112,105',
+    ];
+    expect(() => assertValidOperatorCsv(csv(...pendingThreeThree, ...completed), 'mid-playoff.csv')).not.toThrow();
+  });
+
+  it('rejects an ESPN code where the teams table holds another (NY for NYK)', () => {
+    const espnCode = pendingThreeThree.map((line) => line.replace('NYK', 'NY'));
+    expect(() => assertValidOperatorCsv(csv(...espnCode), 'espn-code.csv')).toThrowError(/unknown team abbreviation "NY"/);
+  });
+
+  it('rejects a series the runner would refuse (a 4–2 split)', () => {
+    const fourTwo = [...pendingThreeThree.slice(0, 5), '2027,First Round,6,BOS,NYK,99,106'];
+    expect(() => assertValidOperatorCsv(csv(...fourTwo), 'four-two.csv')).toThrowError(/not a certified 3–3/);
+  });
+
+  it('rejects a non-canonical round label', () => {
+    const typo = pendingThreeThree.map((line) => line.replace('First Round', 'First Rnd'));
+    expect(() => assertValidOperatorCsv(csv(...typo), 'round-typo.csv')).toThrowError(/round "First Rnd" is not one of/);
   });
 });
 

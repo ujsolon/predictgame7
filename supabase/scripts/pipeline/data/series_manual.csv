@@ -3,7 +3,7 @@
 #
 # Columns (in this exact order):
 #   year        — calendar year of the series (NOT an NBA season id)
-#   round       — free-text display label; round is outside the identity key and has no CHECK
+#   round       — First Round | Conference Semifinals | Conference Finals | NBA Finals (npm test enforces it)
 #   game_number — 1..7; game_number 1 fixes the team slots (team_a = game 1's home team, AD-5)
 #   home_team   — teams.abbreviation of this game's home team (resolved to teams.id at runtime)
 #   away_team   — teams.abbreviation of this game's away team
@@ -16,8 +16,8 @@
 #
 # This file is the operator's live data, not an example: an apply run writes
 # exactly these rows to production, and a fabricated row becomes a real Active
-# Series the moment it exists. It is intentionally empty (header only) outside a
-# playoff window — an empty plan writes zero rows and exits 0.
+# Series the moment it exists. Rows are committed during a playoff and npm test validates
+# them (Story 2.17); header-only is the offseason state (an empty plan writes zero rows).
 # See series_manual.example.csv beside it for the row shape and cadence.
 # Playoff procedure (births by hand, late births, recovery, offseason reset): docs/PLAYOFF_RUNBOOK.md
 year,round,game_number,home_team,away_team,home_score,away_score
