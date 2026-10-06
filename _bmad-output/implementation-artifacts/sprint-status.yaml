@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-06-2026 11:59
+last_updated: 10-06-2026 12:21
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -345,6 +345,10 @@ development_status:
   # every push to master. Relax it to "valid against the real teams seed"; runbook caveat goes
   # in the same commit. Due before 2027-04-12.
   2-17-live-operator-csv-carries-playoff-rows: backlog
+  # 2-18 added 2026-10-06 by owner decision: detect a new 3-3 from the scoreboard payload the
+  # scheduled espn run already fetches (competitions[0].series wins) and alert the owner to do the
+  # runbook birth. Detection + alert only; births stay curated. Due before 2027-04-16.
+  2-18-alert-on-new-three-three-series: backlog
 
   epic-3: backlog
   3-1-analytics-isolation-layer-ad-1-port: backlog
