@@ -211,15 +211,23 @@ export function adapterHasRunReport(name: string): boolean {
 }
 
 /**
- * Validate an adapter name without touching the environment or the network —
- * the entry point calls this before reading any secret, so `SERIES_SOURCE`
- * naming an unimplemented or unknown adapter refuses the run at once.
+ * Where an adapter name came from, so the refusal below names the lever the
+ * operator actually pulled. `pipeline-inseason.yml` dispatches through
+ * `--source=` and never sets `SERIES_SOURCE`, so a hard-coded env name there
+ * would tell a hosted run to fix a variable that is not in its environment.
  */
-export function assertAdapterImplemented(name: string): void {
+export type AdapterSelectionOrigin = '--source=' | 'SERIES_SOURCE=';
+
+/**
+ * Validate an adapter name without touching the environment or the network —
+ * the entry point calls this before reading any secret, so a name an operator
+ * passed by either route refuses the run at once.
+ */
+export function assertAdapterImplemented(name: string, origin: AdapterSelectionOrigin): void {
   const entry = ADAPTER_REGISTRY[name];
   if (!entry) {
     throw new AdapterSelectionError(
-      `SERIES_SOURCE="${name}" is not a recognised adapter. Known adapters: ${Object.keys(ADAPTER_REGISTRY)
+      `${origin}"${name}" is not a recognised adapter. Known adapters: ${Object.keys(ADAPTER_REGISTRY)
         .sort()
         .join(', ')}.`,
     );
@@ -227,8 +235,8 @@ export function assertAdapterImplemented(name: string): void {
   if (!entry.implemented) {
     const reason = entry.rejection ? ` — ${entry.rejection}` : ' — ADAPTER_REGISTRY lists no factory for it (an unimplemented entry should carry its rejection reason, the way `fantrax` carries the Story 2.1 spike verdict)';
     throw new AdapterSelectionError(
-      `SERIES_SOURCE="${name}" is a recognised adapter but is not implemented${reason}. ` +
-        'The runner never falls back silently — unset SERIES_SOURCE (or pass --source=manual_csv) to use the manual_csv floor.',
+      `${origin}"${name}" is a recognised adapter but is not implemented${reason}. ` +
+        `The runner never falls back silently — use the manual_csv floor deliberately by naming it in place of "${name}" (${origin === '--source=' ? '--source=manual_csv' : 'SERIES_SOURCE=manual_csv'} on the command line, or the workflow's \`source\` input on a hosted dispatch).`,
     );
   }
 }

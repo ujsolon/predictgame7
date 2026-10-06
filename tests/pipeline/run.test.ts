@@ -329,7 +329,9 @@ describe('runPipeline — apply, idempotency, dry-run', () => {
       logError: errors.log,
     });
     expect(code).toBe(2);
-    expect(errors.lines.join('\n')).toMatch(/SERIES_SOURCE="fantrax" is a recognised adapter but is not implemented/);
+    expect(errors.lines.join('\n')).toMatch(/--source="fantrax" is a recognised adapter but is not implemented/);
+    // The remedy names the lever this route actually has: the flag, not the env var.
+    expect(errors.lines.join('\n')).toMatch(/naming it in place of "fantrax" \(--source=manual_csv on the command line/);
     expect(sink.births).toHaveLength(0);
   });
 
@@ -403,6 +405,9 @@ describe('runPipeline — refusal rows of the matrix', () => {
     expect(code).toBe(2);
     const text = errors.lines.join('\n');
     expect(text).toMatch(/fantrax.*is a recognised adapter but is not implemented/s);
+    expect(text).toMatch(/SERIES_SOURCE="fantrax"/);
+    // Selected by env, so the remedy names the env var rather than a flag.
+    expect(text).toMatch(/naming it in place of "fantrax" \(SERIES_SOURCE=manual_csv on the command line/);
     expect(text).toMatch(/rejected by the Story 2\.1 spike/);
     expect(sinkBuilt).toBe(false);
   });
@@ -414,11 +419,11 @@ describe('runPipeline — refusal rows of the matrix', () => {
   // manual_csv floor, which would read a file and plan from it while looking
   // healthy. The egress evidence that retired it stays in the docs, not here.
   it.each([
-    ['by flag', ['--source=nba_com'], {}],
-    ['by env', [], { SERIES_SOURCE: 'nba_com' }],
-  ] as [string, string[], Record<string, string>][])(
+    ['by flag', ['--source=nba_com'], {}, '--source='],
+    ['by env', [], { SERIES_SOURCE: 'nba_com' }, 'SERIES_SOURCE='],
+  ] as [string, string[], Record<string, string>, string][])(
     'the retired nba_com source refuses the start %s as an unrecognised adapter, never a fallback',
-    async (_label, argv, env) => {
+    async (_label, argv, env, origin) => {
       let sinksOpened = 0;
       let filesRead = 0;
       const errors = capture();
@@ -440,7 +445,7 @@ describe('runPipeline — refusal rows of the matrix', () => {
       });
       expect(code).toBe(2);
       const text = errors.lines.join('\n');
-      expect(text).toMatch(/SERIES_SOURCE="nba_com" is not a recognised adapter\. Known adapters: espn, fantrax, manual_csv\./);
+      expect(text).toContain(`${origin}"nba_com" is not a recognised adapter. Known adapters: espn, fantrax, manual_csv.`);
       expect(sinksOpened).toBe(0);
       expect(filesRead).toBe(0);
     },

@@ -64,6 +64,7 @@ import {
   createAdapterSource,
   DEFAULT_ADAPTER_NAME,
   type AdapterDeps,
+  type AdapterSelectionOrigin,
   type FeedFetch,
 } from './port.ts';
 import { groupSourceRows, planPipeline, type CurrentSeriesRow, type Plan } from './plan.ts';
@@ -331,11 +332,13 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
     }
     // An empty SERIES_SOURCE — a CI job that declares the variable with no
     // value — means "unset": the documented default is the manual_csv floor.
-    const sourceName = flagValue(argv, 'source') ?? (deps.env.SERIES_SOURCE?.trim() || DEFAULT_ADAPTER_NAME);
+    const sourceFlag = flagValue(argv, 'source');
+    const sourceName = sourceFlag ?? (deps.env.SERIES_SOURCE?.trim() || DEFAULT_ADAPTER_NAME);
+    const origin: AdapterSelectionOrigin = sourceFlag !== undefined ? '--source=' : 'SERIES_SOURCE=';
     // Adapter selection is validated before any secret is read: a recognised
     // but unimplemented name (Story 2.4's) refuses loudly, never silently
-    // falling back to manual_csv.
-    assertAdapterImplemented(sourceName);
+    // falling back to manual_csv. The refusal names the route the operator used.
+    assertAdapterImplemented(sourceName, origin);
 
     // A flag the selected adapter cannot use refuses the run (ADAPTER_FLAGS):
     // silently discarding `--csv=` on an espn run would let an operator
