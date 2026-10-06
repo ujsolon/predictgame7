@@ -10,8 +10,16 @@
  * offending row.
  *
  * Owner usage (the agent never runs this against production):
- *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run
- *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run
+ *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=espn --dry-run        (the scheduled source)
+ *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=manual_csv --dry-run  (the floor; births)
+ *   node --env-file=.env supabase/scripts/pipeline/run.ts --source=nba_com --dry-run     (hand-run only)
+ *
+ * Story 2.14 additions: every supported flag lives in `SUPPORTED_FLAGS`, which
+ * both the refusal and its help text read, and ANY argv token outside it —
+ * positional, single-dash, em-dash, empty — refuses the run before a sink is
+ * opened. A write that throws after a winner already landed in this run
+ * refreshes the insights cache before exiting 2, because the refresh trigger
+ * is one-shot and the next run would plan those series as skips.
  *
  * Story 2.4 additions: `--season=<YYYY-YY>` drills the nba_com adapter into
  * one postseason (the archive is frozen — a drill onto an archived year
@@ -66,6 +74,9 @@ export const ENV_SERVICE_ROLE_KEY = 'SUPABASE_SERVICE_ROLE_KEY';
 
 export class PipelineRunError extends Error {}
 
+/** The operator recovery both refresh-failure messages print — one copy, so they cannot drift. */
+const REFRESH_RECOVERY_COMMAND = '`node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights`';
+
 /**
  * Flags each adapter understands (Story 2.4, review triage row 6): passing a
  * flag the selected adapter cannot use refuses the run. A silently discarded
@@ -115,20 +126,75 @@ function flagValue(argv: string[], name: string): string | undefined {
 }
 
 /**
+ * Story 2.14: the ONE list of supported flags. The refusal below and its help
+ * text both read it, so a flag is added or retired in exactly one place
+ * (Story 2.16 retires `--season=` by deleting its entry). A value flag is
+ * written `--name=value` and needs a value that does not start with
+ * whitespace; a bare flag must match exactly.
+ */
+interface SupportedFlag {
+  name: string;
+  takesValue: boolean;
+  usage: string;
+  note?: string;
+}
+
+export const SUPPORTED_FLAGS: readonly SupportedFlag[] = [
+  { name: 'dry-run', takesValue: false, usage: '--dry-run' },
+  {
+    name: 'refresh-insights',
+    takesValue: false,
+    usage: '--refresh-insights',
+    note: '--refresh-insights runs only the Story 2.5 insights-cache refresh and exits',
+  },
+  {
+    name: 'require-feed',
+    takesValue: false,
+    usage: '--require-feed',
+    note: '--require-feed turns an empty feed into a failure',
+  },
+  { name: 'source', takesValue: true, usage: '--source=<adapter>' },
+  { name: 'csv', takesValue: true, usage: '--csv=<path>' },
+  {
+    name: 'season',
+    takesValue: true,
+    usage: '--season=<YYYY-YY>',
+    note:
+      "--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived year reaches the runner's " +
+      'archive guard, never a rewrite, unless an era abbreviation the teams table lacks aborts it first; nba_com has no schedule, so ' +
+      "hand-run it only once the previous US night's games are final, about 09:00 UTC",
+  },
+];
+
+/** `--name=value` with a value that does not start with whitespace. */
+function hasValue(arg: string, prefix: string): boolean {
+  return arg.startsWith(prefix) && /^\S/.test(arg.slice(prefix.length));
+}
+
+function isSupportedFlag(arg: string): boolean {
+  return SUPPORTED_FLAGS.some((flag) =>
+    flag.takesValue ? hasValue(arg, `--${flag.name}=`) : arg === `--${flag.name}`,
+  );
+}
+
+/**
  * The first argument that is not one of the supported flags. A typo like
  * `--dry-run=true` or `--dryrun` must not read as "dry run requested and
  * silently ignored" — the whole point of the flag is that no write follows, so
- * an unrecognised flag refuses the run instead.
+ * an unrecognised flag refuses the run instead. Story 2.14 closed the gap the
+ * Epic 2 retro observed (finding W3): the old check looked only at tokens
+ * starting with `--`, so `-dry-run`, `dry-run` and an em-dash `—dry-run` ran
+ * live. Every token is checked now, and the empty string is a token too —
+ * which is why callers compare against `undefined`, not truthiness.
  */
 function unknownFlag(argv: string[]): string | undefined {
-  return argv.find(
-    (arg) =>
-      arg.startsWith('--') &&
-      arg !== '--dry-run' &&
-      arg !== '--refresh-insights' &&
-      arg !== '--require-feed' &&
-      !/^--(source|csv|season)=\S/.test(arg),
-  );
+  return argv.find((arg) => !isSupportedFlag(arg));
+}
+
+function supportedFlagsHelp(): string {
+  const usages = SUPPORTED_FLAGS.map((flag) => flag.usage).join(', ');
+  const notes = SUPPORTED_FLAGS.flatMap((flag) => (flag.note ? [flag.note] : [])).join('; ');
+  return `supported: ${usages} (${notes})`;
 }
 
 /**
@@ -191,16 +257,8 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
 
   try {
     const stray = unknownFlag(argv);
-    if (stray) {
-      throw new PipelineRunError(
-        `unrecognised flag "${stray}" — supported: --dry-run, --refresh-insights, --require-feed, --source=<adapter>, ` +
-          '--csv=<path>, --season=<YYYY-YY> ' +
-          '(--season drills the nba_com adapter into one postseason; the archive is frozen, so pointing it at an archived ' +
-          "year reaches the runner's archive guard, never a rewrite, unless an era abbreviation the teams table lacks aborts it " +
-          "first; nba_com has no schedule, so hand-run it only once the previous US night's games are final, about 09:00 UTC; " +
-          '--refresh-insights runs only the Story 2.5 insights-cache ' +
-          'refresh and exits; --require-feed turns an empty feed into a failure)',
-      );
+    if (stray !== undefined) {
+      throw new PipelineRunError(`unrecognised flag "${stray}" — ${supportedFlagsHelp()}`);
     }
     const dryRun = argv.includes('--dry-run');
     // U10 (owner decision 2026-10-03): a bare operator flag that runs ONLY the
@@ -386,26 +444,57 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
       return 0;
     }
 
-    for (const birth of plan.births) {
-      const seriesId = await sink.birth(birth);
-      log(`wrote birth ${birth.label} as series ${seriesId}`);
-      if (birth.followup) {
-        await sink.complete({
-          kind: 'completion',
-          label: birth.label,
-          series_id: seriesId,
-          year: birth.year,
-          team_a_id: birth.team_a_id,
-          team_b_id: birth.team_b_id,
-          game: birth.followup.game,
-          winner_team_id: birth.followup.winner_team_id,
-        });
-        log(`wrote completion ${birth.label} on series ${seriesId}`);
+    // Story 2.14 (retro finding W1): count the winners that actually LANDED, so
+    // a write that throws partway through still refreshes the cache over them.
+    // Without this, a run that filled one winner and then failed on the next
+    // write exited 2 with no refresh, and the next run planned the landed
+    // series as skips — the one-shot trigger never fired on their account.
+    let winnersLanded = 0;
+    try {
+      for (const birth of plan.births) {
+        const seriesId = await sink.birth(birth);
+        log(`wrote birth ${birth.label} as series ${seriesId}`);
+        if (birth.followup) {
+          await sink.complete({
+            kind: 'completion',
+            label: birth.label,
+            series_id: seriesId,
+            year: birth.year,
+            team_a_id: birth.team_a_id,
+            team_b_id: birth.team_b_id,
+            game: birth.followup.game,
+            winner_team_id: birth.followup.winner_team_id,
+          });
+          winnersLanded += 1;
+          log(`wrote completion ${birth.label} on series ${seriesId}`);
+        }
       }
-    }
-    for (const completion of plan.completions) {
-      await sink.complete(completion);
-      log(`wrote completion ${completion.label} on series ${completion.series_id}`);
+      for (const completion of plan.completions) {
+        await sink.complete(completion);
+        winnersLanded += 1;
+        log(`wrote completion ${completion.label} on series ${completion.series_id}`);
+      }
+    } catch (writeError) {
+      // No winner landed yet: nothing to refresh, so the failure surfaces
+      // exactly as it did before this story.
+      if (winnersLanded === 0) throw writeError;
+      const writeMessage = writeError instanceof Error ? writeError.message : String(writeError);
+      let census: InsightsRefreshCensus;
+      try {
+        census = await sink.refreshInsights();
+      } catch (refreshError) {
+        const refreshMessage = refreshError instanceof Error ? refreshError.message : String(refreshError);
+        throw new PipelineRunError(
+          `${writeMessage} — ${winnersLanded} winner(s) landed in this run before that failure, and the insights refresh over them ` +
+            `failed too (${refreshMessage}). The landed writes stay landed, so a re-run will NOT retry this refresh; recover with ` +
+            REFRESH_RECOVERY_COMMAND,
+        );
+      }
+      log(insightsRefreshLine(census));
+      throw new PipelineRunError(
+        `${writeMessage} — ${winnersLanded} winner(s) landed in this run before that failure; the insights cache was refreshed ` +
+          'over them before exiting, so no --refresh-insights recovery is needed for those. Fix the failed write and re-run.',
+      );
     }
     log(`applied: ${plan.births.length} birth(s), ${plan.completions.length} completion(s), ${plan.skips.length} skip(s)`);
 
@@ -431,7 +520,7 @@ export async function runPipeline(deps: RunDeps): Promise<number> {
         const message = error instanceof Error ? error.message : String(error);
         throw new PipelineRunError(
           `${message} — the series writes above landed, so a re-run will NOT retry this refresh; recover with ` +
-            '`node --env-file=.env supabase/scripts/pipeline/run.ts --refresh-insights`',
+            REFRESH_RECOVERY_COMMAND,
         );
       }
       log(insightsRefreshLine(census));

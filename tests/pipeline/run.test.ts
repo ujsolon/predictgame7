@@ -5,7 +5,7 @@
 // read path sees them.
 import { describe, expect, it } from 'vitest';
 import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-phase.ts';
-import { runPipeline } from '../../supabase/scripts/pipeline/run.ts';
+import { runPipeline, SUPPORTED_FLAGS } from '../../supabase/scripts/pipeline/run.ts';
 import { ADAPTER_REGISTRY, adapterHasRunReport, createAdapterSource } from '../../supabase/scripts/pipeline/port.ts';
 import type { CurrentSeriesRow, PlannedBirth, PlannedCompletion } from '../../supabase/scripts/pipeline/plan.ts';
 import type { InsightsRefreshCensus, PipelineSink, TeamRow } from '../../supabase/scripts/pipeline/writer.ts';
@@ -72,6 +72,12 @@ class FakeSink implements PipelineSink {
   calls: string[] = [];
   refreshes: InsightsRefreshCensus[] = [];
   failNextRefresh: Error | null = null;
+  /**
+   * Story 2.14: fail the Nth call (1-based) of a write, so a test can let earlier
+   * writes land first. `failNextBirth` fails the very first birth and cannot.
+   */
+  failBirthOn: { call: number; error: Error } | null = null;
+  failCompleteOn: { call: number; error: Error } | null = null;
   /** A fixed census so the report line has a deterministic source to pin against. */
   refreshCensus: InsightsRefreshCensus = {
     total_game_sevens: 160,
@@ -93,6 +99,9 @@ class FakeSink implements PipelineSink {
   async birth(birthOp: PlannedBirth): Promise<string> {
     this.calls.push('birth');
     if (this.failNextBirth) throw this.failNextBirth;
+    if (this.failBirthOn && this.calls.filter((call) => call === 'birth').length === this.failBirthOn.call) {
+      throw this.failBirthOn.error;
+    }
     // Enforce 00015's birth rules here too: an end-to-end test must never be
     // able to certify a write the production RPC would reject.
     const numbers = birthOp.scores.map((score) => score.game_number);
@@ -128,6 +137,9 @@ class FakeSink implements PipelineSink {
 
   async complete(completion: PlannedCompletion): Promise<void> {
     this.calls.push('complete');
+    if (this.failCompleteOn && this.calls.filter((call) => call === 'complete').length === this.failCompleteOn.call) {
+      throw this.failCompleteOn.error;
+    }
     this.completions.push(completion);
     const row = this.current.find((candidate) => candidate.id === completion.series_id);
     if (!row) throw new Error(`fake sink: completion for unknown series ${completion.series_id}`);
@@ -1018,5 +1030,164 @@ describe('runPipeline — Story 2.6 --require-feed', () => {
     }
     expect(adapterHasRunReport('fantrax')).toBe(false);
     expect(adapterHasRunReport('not_an_adapter')).toBe(false);
+  });
+});
+
+// Story 2.14 — the Epic 2 retro's write-path findings (W3, W1), both observed by
+// execution against an in-memory sink before this story existed.
+describe('runPipeline — Story 2.14 runner hardening', () => {
+  /** A stored pending 3–3 for (a, b) — team_a home in 1, 2, 5 — and the CSV lines that agree with it plus game 7. */
+  function pendingPair(id: string, a: TeamRow, b: TeamRow): { row: CurrentSeriesRow; csv: string[] } {
+    const games: [number, TeamRow, TeamRow, number, number][] = [
+      [1, a, b, 110, 102],
+      [2, a, b, 104, 115],
+      [3, b, a, 108, 99],
+      [4, b, a, 101, 112],
+      [5, a, b, 120, 110],
+      [6, b, a, 98, 95],
+    ];
+    return {
+      row: {
+        id,
+        year: 2027,
+        team_a_id: a.id,
+        team_b_id: b.id,
+        winner_team_id: null,
+        scores: games.map(([game_number, home, away, home_score, away_score]) => ({
+          game_number,
+          home_team_id: home.id,
+          away_team_id: away.id,
+          home_score,
+          away_score,
+        })),
+      },
+      csv: [
+        ...games.map(([n, home, away, hs, as]) => `2027,First Round,${n},${home.abbreviation},${away.abbreviation},${hs},${as}`),
+        `2027,First Round,7,${a.abbreviation},${b.abbreviation},112,105`,
+      ],
+    };
+  }
+
+  const [GSW, CLE, OKC, DEN] = TEAMS;
+
+  /** Two stored pending series whose Game 7s both arrive in one run: two completions, in CSV order. */
+  function twoGameSevens(sink: FakeSink): () => string {
+    const first = pendingPair('pending-okc-den', OKC, DEN);
+    const second = pendingPair('pending-gsw-cle', GSW, CLE);
+    sink.current.push(first.row, second.row);
+    const csv = ['year,round,game_number,home_team,away_team,home_score,away_score', ...first.csv, ...second.csv].join('\n');
+    return () => csv;
+  }
+
+  it.each([
+    ['-dry-run', 'single dash'],
+    ['dry-run', 'positional, no dash'],
+    ['—dry-run', 'em-dash pasted from a doc'],
+    ['', 'empty string'],
+    ['--', 'bare double dash'],
+    ['--source=', 'value flag with no value'],
+    ['--source= espn', 'value starting with whitespace'],
+  ])('refuses %j (%s) with exit 2, names it, and never opens a sink', async (token) => {
+    let sinksOpened = 0;
+    const errors = capture();
+    const code = await runPipeline({
+      env: envWith(),
+      argv: ['--source=manual_csv', token],
+      createSink: () => {
+        sinksOpened += 1;
+        return new FakeSink();
+      },
+      readFile: fixture,
+      logError: errors.log,
+    });
+    expect(code).toBe(2);
+    expect(errors.lines.join('\n')).toContain(`unrecognised flag "${token}"`);
+    expect(sinksOpened).toBe(0);
+  });
+
+  it('the help text is generated from the one supported-flag list', async () => {
+    const errors = capture();
+    expect(await runPipeline({ env: envWith(), argv: ['-n'], createSink: () => new FakeSink(), logError: errors.log })).toBe(2);
+    const text = errors.lines.join('\n');
+    expect(SUPPORTED_FLAGS.length).toBeGreaterThan(0);
+    for (const flag of SUPPORTED_FLAGS) {
+      expect(text).toContain(flag.usage);
+      if (flag.note) expect(text).toContain(flag.note);
+    }
+  });
+
+  it('a completion rejected after another landed: refreshes over the landed winner, then exits 2 naming the failure', async () => {
+    const sink = new FakeSink();
+    const readFile = twoGameSevens(sink);
+    sink.failCompleteOn = { call: 2, error: new Error('pipeline_complete_series failed: simulated rejection') };
+    const out = capture();
+    const errors = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile, log: out.log, logError: errors.log });
+    expect(code).toBe(2);
+    expect(sink.completions.map((c) => c.series_id)).toEqual(['pending-okc-den']);
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent', 'complete', 'complete', 'refreshInsights']);
+    expect(out.lines.join('\n')).toMatch(/insights cache refreshed: 3 keys rewritten over 160/);
+    const message = errors.lines.join('\n');
+    expect(message).toMatch(/pipeline_complete_series failed: simulated rejection/);
+    expect(message).toMatch(/1 winner\(s\) landed in this run before that failure; the insights cache was refreshed/);
+  });
+
+  it('the same failure when the refresh fails too: exit 2 carrying the --refresh-insights recovery', async () => {
+    const sink = new FakeSink();
+    const readFile = twoGameSevens(sink);
+    sink.failCompleteOn = { call: 2, error: new Error('pipeline_complete_series failed: simulated rejection') };
+    sink.failNextRefresh = new Error('pipeline_refresh_insights_cache failed: connection reset');
+    const out = capture();
+    const errors = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile, log: out.log, logError: errors.log });
+    expect(code).toBe(2);
+    expect(sink.completions.map((c) => c.series_id)).toEqual(['pending-okc-den']);
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent', 'complete', 'complete', 'refreshInsights']);
+    expect(out.lines.join('\n')).not.toMatch(/insights cache refreshed/);
+    const message = errors.lines.join('\n');
+    expect(message).not.toMatch(/the insights cache was refreshed/);
+    expect(message).toMatch(/pipeline_complete_series failed: simulated rejection/);
+    expect(message).toMatch(/pipeline_refresh_insights_cache failed: connection reset/);
+    expect(message).toMatch(/a re-run will NOT retry this refresh; recover with .*--refresh-insights/);
+  });
+
+  it('a birth rejected after a birth-with-follow-up landed a winner refreshes too', async () => {
+    // The fixture writes the finished 2016 series first (birth + follow-up =
+    // one winner), then the live 2027 birth — which is the one that fails.
+    const sink = new FakeSink();
+    sink.failBirthOn = { call: 2, error: new Error('pipeline_birth_series failed: simulated rejection') };
+    const errors = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture, logError: errors.log });
+    expect(code).toBe(2);
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent', 'birth', 'complete', 'birth', 'refreshInsights']);
+    expect(errors.lines.join('\n')).toMatch(/pipeline_birth_series failed: simulated rejection — 1 winner\(s\) landed/);
+  });
+
+  it('a follow-up completion rejected after an earlier follow-up landed a winner refreshes too', async () => {
+    // Both CSV series arrive finished, so each birth carries a follow-up: the
+    // 2016 one lands a winner, the 2027 one is the follow-up that fails.
+    const sink = new FakeSink();
+    sink.failCompleteOn = { call: 2, error: new Error('pipeline_complete_series failed: simulated rejection') };
+    const bothFinished = () => `${FIXTURE_CSV}\n2027,Western Conference First Round,7,OKC,DEN,112,105`;
+    const errors = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: bothFinished, logError: errors.log });
+    expect(code).toBe(2);
+    expect(sink.calls).toEqual(['readTeams', 'readCurrent', 'birth', 'complete', 'birth', 'complete', 'refreshInsights']);
+    expect(sink.completions).toHaveLength(1);
+    expect(errors.lines.join('\n')).toMatch(
+      /simulated rejection — 1 winner\(s\) landed in this run before that failure; the insights cache was refreshed/,
+    );
+  });
+
+  it('a failure before any winner landed is unchanged: no refresh, the bare error', async () => {
+    // The first write is the 2016 birth's follow-up completion failing: the
+    // birth landed, but no winner did.
+    const sink = new FakeSink();
+    sink.failCompleteOn = { call: 1, error: new Error('pipeline_complete_series failed: simulated rejection') };
+    const errors = capture();
+    const code = await runPipeline({ env: envWith(), argv: [], createSink: () => sink, readFile: fixture, logError: errors.log });
+    expect(code).toBe(2);
+    expect(sink.calls).not.toContain('refreshInsights');
+    expect(errors.lines).toEqual(['pipeline failed: pipeline_complete_series failed: simulated rejection']);
   });
 });
