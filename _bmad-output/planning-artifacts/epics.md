@@ -250,7 +250,7 @@ so that what tests can't see (layout, touch targets, real network conditions) is
 
 ## Epic 2: Data Pipeline — Active Series stay true without manual heroics
 
-Playoff-week data accuracy stops depending on hand-editing. Delivers FR-20/21 (offseason + inseason pipeline modes) and the FR-19 data-integrity invariants they rest on, behind the `SeriesDataSource` port (AD-5). Calendar-critical: inseason automation must be deployed and drilled **before** the Apr 2027 playoff window — a stale Active Series list during the playoffs would invalidate the Traffic Gate measurement itself.
+Playoff-week data accuracy stops depending on hand-editing. Delivers FR-20/21 (offseason + inseason pipeline modes) and the FR-19 data-integrity invariants they rest on, behind the `SeriesDataSource` port (AD-5). Calendar-critical: inseason automation must be deployed and drilled **before** the Apr 2027 playoff window — a stale Active Series list during the playoffs would invalidate the Traffic Gate measurement itself. **[2026-10-06, Story 2.15 (Epic 2 retro finding R1): as built, this goal holds for completions only. Completions are automated — the scheduled `espn` run completes a stored pending series the morning after its Game 7. Births are curated by owner call 2026-10-04 (Story 2.13): each series that reaches 3–3 is added by hand through `--source=manual_csv`, inside the game-6 → game-7 window, per `docs/PLAYOFF_RUNBOOK.md`.]**
 
 ### Story 2.0: Gate the server side — Edge Function type-check and input validation
 
@@ -630,6 +630,25 @@ so that Epic 3 does not carry ~2,350 lines of adapter, probes and tests that no 
 **And** `_bmad-output/implementation-artifacts/seriesdatasource-port.md`'s registry line (path corrected 2026-10-06; no `docs/` copy exists), `docs/CURRENT_DATA_MODEL.md` if it names the source, and `epics.md` Stories 2.4 and 2.6 carry dated retirement annotations with their frozen text intact, and this story's C1 reversal is written into `port.ts`'s comment where C1 was recorded
 **And** comments naming the deleted files are swept: `espn.ts:60,577`, `rounds.ts:21`, `team-logos.ts:116`, `rehearse-migration-00014.mjs:116`, `espn-adapter.test.ts:2`. `docs/CHANGELOG.md:33` is release history and stays
 **And** no migration, RPC, workflow cron, Edge Function or `plan.ts` decision changes; no live fetch by the agent; per-AC mutation evidence for every re-parented case; `npm run gate` passes with the exit code read from the command itself
+
+### Story 2.17: Let the live operator CSV carry playoff rows without reddening the gate
+
+*Created 2026-10-06 by owner decision during Story 2.15's build. Its implementation found that `tests/pipeline/manual-csv.test.ts:66-74` (Story 2.3) asserts the committed `series_manual.csv` has **no data rows**. That test reads the working-tree file, and the `pre-push` hook runs the gate, so while any 3–3 series sits in the file every push to `master` is refused (Epic 3/4 work included), CI reports red, and the "push the CSV and dispatch" recovery in `pipeline-inseason.yml:175-187` cannot reach `master`. The owner chose to relax the test over keeping births in a scratch file. Due before 2027-04-12, because `docs/PLAYOFF_RUNBOOK.md` documents the red gate as the state until this lands.*
+
+As the owner,
+I want playoff rows in `series_manual.csv` to be a valid committed state,
+so that adding a 3–3 series neither blocks every push to `master` nor rules out dispatching the birth from Actions.
+
+**Acceptance Criteria:**
+
+**Given** the "committed operator file" case at `tests/pipeline/manual-csv.test.ts:66-74` requires zero data rows
+**When** it is relaxed
+**Then** it asserts the committed file is **valid** instead of empty: every data row parses through the shipped `parseManualCsv` against the real teams seed (`parseTeamsSeed` over `00005` + `00007`, as `src/lib/__tests__/team-logos.test.ts:101` already does), so a typo'd code such as ESPN's `NY` for `NYK` reddens the gate before any dispatch. Single-row parsing alone would leave a 4–2 split, a series with only games 1–4, mixed round labels or a non-canonical label green, so the case also requires that the committed rows pass the runner's own grouping and plan assertions: `groupSourceRows` + `planPipeline` against an **empty** current table, so each series must be a certified 3–3 or a valid seven-game shape. It also requires every `round` to be one of `CANONICAL_ROUND_LABELS` (`supabase/scripts/pipeline/adapters/rounds.ts:28`)
+**And** a header-only file stays green, and the case's comment says header-only is the offseason state (`series_manual.csv:17-21`), not a requirement
+**And** the change is pinned by mutation evidence: a committed row with an unknown code goes red, and a valid six-row 3–3 stays green, both run against a temporary copy and never against the live file
+**And** `docs/PLAYOFF_RUNBOOK.md` drops its red-gate caveat in the same commit: committing the rows becomes the normal path, and its Route B (push, then dispatch `pipeline-inseason.yml` with `source=manual_csv`, dry-run first) becomes a supported route instead of a `--ref <branch>` workaround
+**And** the runbook's scenario 3 is pinned, which Story 2.15's matrix audit found measured but untested: in `tests/pipeline/plan.test.ts`, a source carrying only games 1–6 (null winner) against an **archived** stored row is refused with "never rewrites an archived outcome", and the same source plus its matching Game 7 is a skip
+**And** no change to the runner, the adapters, the plan, the workflows, or any migration; `npm run gate` passes
 
 ## Epic 3: Owner Operations — analytics you can trust, contacts you never miss, gate numbers you can read
 

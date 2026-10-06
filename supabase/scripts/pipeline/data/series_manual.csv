@@ -19,4 +19,5 @@
 # Series the moment it exists. It is intentionally empty (header only) outside a
 # playoff window — an empty plan writes zero rows and exits 0.
 # See series_manual.example.csv beside it for the row shape and cadence.
+# Playoff procedure (births by hand, late births, recovery, offseason reset): docs/PLAYOFF_RUNBOOK.md
 year,round,game_number,home_team,away_team,home_score,away_score
