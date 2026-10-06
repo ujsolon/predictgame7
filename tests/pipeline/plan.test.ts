@@ -102,6 +102,8 @@ describe('planPipeline — I/O matrix', () => {
     expect(plan.births).toHaveLength(0);
     expect(plan.completions).toHaveLength(0);
     expect(plan.skips).toHaveLength(1);
+    // docs/PLAYOFF_RUNBOOK.md step 3's go/no-go quotes this reason verbatim.
+    expect(plan.skips[0].reason).toBe('already pending with identical games 1–6');
   });
 
   it('game 7 arrives on a pending row: one completion carrying game 7 and the winner', () => {

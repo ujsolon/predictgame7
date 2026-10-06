@@ -156,4 +156,5 @@ PostHog is wired into the frontend for:
 
 - [CHANGELOG.md](./docs/CHANGELOG.md)
 - [CURRENT_DATA_MODEL.md](./docs/CURRENT_DATA_MODEL.md)
+- [PLAYOFF_RUNBOOK.md](./docs/PLAYOFF_RUNBOOK.md) — the Apr–Jun playoff-window operator procedure (hand births, recovery, offseason reset)
 - Archived (superseded by the PRD baseline in `_bmad-output/`): [APP_FUNCTIONALITY_OVERVIEW.md](./docs/archive/APP_FUNCTIONALITY_OVERVIEW.md) · [posthog-setup-report.md](./docs/archive/posthog-setup-report.md)
