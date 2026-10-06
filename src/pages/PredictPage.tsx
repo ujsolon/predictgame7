@@ -8,8 +8,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, getTypedTeamCode, resolveTeamLogoUrl } from '@/lib/team-logos';
-import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
+import { isMethodSlug, METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
+import { isSeriesId } from '@/lib/series-id';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
+import SeriesNotFound from '@/components/common/SeriesNotFound';
 import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
 import { deriveSeriesPhase, isSeriesPending, seriesSourceForPhase } from '@/lib/series-phase';
@@ -50,6 +52,9 @@ export default function PredictPage() {
   // Mount-time series list and `?series=` preload query failures (retryable).
   const [seriesListFailed, setSeriesListFailed] = useState(false);
   const [seriesLoadFailed, setSeriesLoadFailed] = useState(false);
+  // Story 4.1: a `?series=` id that is malformed or names no row. Not
+  // retryable, so it is the in-region 404 treatment, never the retry panel.
+  const [seriesNotFound, setSeriesNotFound] = useState(false);
   // The Active group's empty state is a claim about the whole archive, so it
   // may only render once the archive has actually answered — before that the
   // honest state is "unknown", not "nothing is pending".
@@ -113,13 +118,27 @@ export default function PredictPage() {
     predictSeq.current++;
   }, [selectedSeries, selectedMethod, customInput]);
 
+  // A not-found `?series=` notice is retired by a new series only — choosing a
+  // method or typing custom scores leaves it standing (Story 4.1).
+  useEffect(() => {
+    setSeriesNotFound(false);
+  }, [selectedSeries]);
+
   useEffect(() => {
     fetchAllGames();
     
     // Load series from query parameter if provided
     const seriesId = searchParams.get('series');
     if (seriesId) {
-      loadSeriesById(seriesId);
+      // `?method=` is read here but applied only in the preload's success
+      // branch: setting it now would run the reset effect, bump
+      // `seriesLoadSeq`, and drop the very preload this starts (Story 4.1).
+      // An unknown slug is ignored, never an error.
+      const method = searchParams.get('method');
+      loadSeriesById(seriesId, isMethodSlug(method) ? method : null);
+    } else {
+      // Leaving a not-found link for plain `/predict` retires its notice.
+      setSeriesNotFound(false);
     }
   }, [searchParams]);
 
@@ -165,8 +184,16 @@ export default function PredictPage() {
     }
   };
 
-  const loadSeriesById = async (seriesId: string) => {
+  const loadSeriesById = async (seriesId: string, method: MethodSlug | null = null) => {
     const seq = ++seriesLoadSeq.current;
+    // A malformed id can never name a row, and querying it would come back as
+    // a uuid-cast error the retry panel could never recover from: not found,
+    // with no request at all (Story 4.1).
+    if (!isSeriesId(seriesId)) {
+      setSeriesLoadFailed(false);
+      setSeriesNotFound(true);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('series')
@@ -182,12 +209,16 @@ export default function PredictPage() {
       if (data) {
         const series = asSeriesRow(data);
         setSeriesLoadFailed(false);
+        setSeriesNotFound(false);
         setSelectedSeries({ source: seriesSourceForPhase(deriveSeriesPhase(series)), data: series });
+        // Same batch as the selection (Story 4.1 share arrival): the series and
+        // the method land together, and nothing runs until Generate (D1).
+        if (method) setSelectedMethod(method);
       } else {
-        // A genuinely absent row is not retryable — stays a toast (the 404
-        // treatment belongs to Story 4.1).
+        // A genuinely absent row is not retryable: the in-region 404
+        // treatment (Story 4.1), and the picker stays usable beside it.
         setSeriesLoadFailed(false);
-        toast.error('Series not found');
+        setSeriesNotFound(true);
       }
     } catch (err) {
       // Query failure (broken link, unreadable id, network miss on mount):
@@ -619,6 +650,18 @@ export default function PredictPage() {
                         )}
                       </Button>
                     </DialogTrigger>
+
+                    {/* Story 4.1: an unknown or malformed `?series=` renders
+                        the 404 treatment inside the series region — `<h2>`
+                        under the page's own `<h1>`, no title change, no focus
+                        theft — and the trigger above still opens the picker. */}
+                    {/* `role="status"`: the notice lands asynchronously, so it
+                        is announced the way the retry panel is (WCAG 4.1.3). */}
+                    {seriesNotFound && (
+                      <div role="status" className="px-4">
+                        <SeriesNotFound headingLevel="h2" />
+                      </div>
+                    )}
 
                     {selectedSeries && selectedSeries.source === 'custom' && (
                       <div className="grid grid-cols-2 gap-2 pt-2">
@@ -1152,7 +1195,9 @@ export default function PredictPage() {
                       const seriesId = searchParams.get('series');
                       if (!seriesId) return;
                       setSeriesLoadFailed(false);
-                      void loadSeriesById(seriesId);
+                      // A share arrival's method survives the retry too.
+                      const method = searchParams.get('method');
+                      void loadSeriesById(seriesId, isMethodSlug(method) ? method : null);
                     } else {
                       void handlePredict();
                     }

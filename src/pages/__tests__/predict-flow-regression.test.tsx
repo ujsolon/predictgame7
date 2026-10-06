@@ -19,6 +19,7 @@ import {
   renderPageWithLocationProbe,
   seriesFixture,
   submitPrediction,
+  SERIES_ID,
 } from './helpers';
 
 // Story 1.4 (FR-30): the regression suite for the highest-risk Predict paths
@@ -88,7 +89,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   });
 
   it('populates the card from a ?series= preload and keeps the selection across a later method change', async () => {
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
     expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
     expect(screen.getByText('101 — 91')).toBeInTheDocument();
     // Full name resolved through the alias map to the real logo.
@@ -214,7 +215,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   // through printed `SS` and `UJ`.
   it('answers a DB-backed prediction with the stored codes on the card and the details sheet', async () => {
     db.single = { data: historicalFixture, error: null };
-    renderPage('/predict?series=s-1979');
+    renderPage(`/predict?series=${SERIES_ID}`);
     expect(await screen.findByText('SEA vs UTA')).toBeInTheDocument();
 
     await chooseMethod('Logistic Regression');
@@ -258,7 +259,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   // opposite branch rather than a repeat.
   it('prints the stored code for the losing side when the other row wins', async () => {
     db.single = { data: historicalFixture, error: null };
-    renderPage('/predict?series=s-1979');
+    renderPage(`/predict?series=${SERIES_ID}`);
     await chooseMethod('Logistic Regression');
     db.invoke.mockResolvedValue({
       data: {
@@ -373,7 +374,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   // row beside it, so step 2 of the resolution order answers it.
   it('prints the placeholder literal for a preloaded series whose FK row is missing (U8)', async () => {
     db.single = { data: { ...seriesFixture, team_a: undefined, team_a_id: null }, error: null };
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
 
     // `TMA`, not the bare initialism `TA` the name path would derive from
     // 'Team A' — and the row-backed side is untouched.
@@ -563,7 +564,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
   });
 
   it('clears the flow on New Prediction while preserving custom input, fetched games and the URL', async () => {
-    renderPageWithLocationProbe('/predict?series=s-1');
+    renderPageWithLocationProbe(`/predict?series=${SERIES_ID}`);
     await screen.findByText('BOS vs MIA');
 
     // Move the preloaded selection over to the custom grid.
@@ -584,7 +585,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     expect(screen.getByText('Not selected')).toBeInTheDocument();
     expect(screen.getByText('Click to choose series')).toBeInTheDocument();
     // ...the URL is untouched, and nothing re-fetched the archive.
-    expect(screen.getByTestId('location-probe')).toHaveTextContent('/predict?series=s-1');
+    expect(screen.getByTestId('location-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}`);
     expect(db.from).toHaveBeenCalledTimes(2); // mount list + preload, from before the reset
 
     // Custom input and the fetched games list survived the reset.
@@ -670,7 +671,7 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
 
   function preload(series: object) {
     db.single = { data: series, error: null };
-    return renderPage('/predict?series=s-1');
+    return renderPage(`/predict?series=${SERIES_ID}`);
   }
 
   function seriesWithGame(gameNumber: number, scores: { home_score?: number; away_score?: number }) {
@@ -866,7 +867,7 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
   }
 
   function preloadedSeriesRoute() {
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
     return screen.findByText('BOS vs MIA');
   }
 
@@ -1075,3 +1076,54 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
     expect((document.getElementById('game_1_score_a') as HTMLInputElement).value).toBe('111');
   });
 });
+
+// Story 4.1: `?method=` on a `?series=` link (the historic share-link arrival)
+// is applied in the preload's success branch, so the series and the method land
+// together and nothing runs until the fan taps Generate (owner decision D1).
+describe('PredictPage method preload (Story 4.1)', () => {
+  it('selects the series and the linked method together, and runs nothing until Generate (matrix: share arrival)', async () => {
+    renderPage(`/predict?series=${SERIES_ID}&method=elo`);
+
+    expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
+    expect(screen.getByText('Elo Rating')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(db.invoke).not.toHaveBeenCalled();
+    expect(db.capture).not.toHaveBeenCalled();
+
+    submitPrediction();
+    await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
+    expect(db.invoke.mock.calls[0][1].body.method).toBe('elo');
+  });
+
+  it('ignores an unknown slug: the series still preloads and the method stays unset (matrix: bad method)', async () => {
+    renderPage(`/predict?series=${SERIES_ID}&method=foo`);
+
+    expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select series and method first' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Click to choose method/ })).toBeInTheDocument();
+    expect(db.toast.error).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('ignores an inherited-property slug rather than treating it as a method', async () => {
+    renderPage(`/predict?series=${SERIES_ID}&method=toString`);
+
+    expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select series and method first' })).toBeDisabled();
+  });
+
+  it('keeps the linked method through a failed preload and its Retry (matrix: lookup fails)', async () => {
+    db.single = { data: null, error: new Error('network miss') };
+    renderPage(`/predict?series=${SERIES_ID}&method=elo`);
+    await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
+
+    db.single = { data: seriesFixture, error: null };
+    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
+    expect(screen.getByText('Elo Rating')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(db.invoke).not.toHaveBeenCalled();
+  });
+});
+

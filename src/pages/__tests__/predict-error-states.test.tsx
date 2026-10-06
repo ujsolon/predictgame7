@@ -17,6 +17,7 @@ import {
   renderPage,
   seriesFixture,
   submitPrediction,
+  SERIES_ID,
 } from './helpers';
 
 // The whole file is about what the page *does* with a classified failure, so
@@ -152,7 +153,7 @@ describe('PredictPage error states (Story 1.3)', () => {
 
   it('swaps the picker body for a panel that re-runs the fetch and keeps the selection (matrix: series list on mount)', async () => {
     db.list = { data: null, error: new Error('series select failed') };
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
 
     // The preloaded selection lands asynchronously — wait for the trigger.
     fireEvent.click(await screen.findByText('BOS vs MIA'));
@@ -178,7 +179,7 @@ describe('PredictPage error states (Story 1.3)', () => {
 
   it('treats a failed ?series= query as retryable in the result region (matrix: broken preload)', async () => {
     db.single = { data: null, error: new Error('bad request') };
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
 
     await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
     expect(db.toast.error).not.toHaveBeenCalledWith('Series not found');
@@ -217,17 +218,57 @@ describe('PredictPage error states (Story 1.3)', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('keeps a genuinely missing series row as a toast, not a panel (matrix: broken preload)', async () => {
+  // Story 4.1 retired the "Series not found" toast: a genuinely missing row is
+  // not retryable, so it gets the in-region 404 treatment instead.
+  it('renders an absent ?series= row as the in-region not-found, not a toast or a panel (Story 4.1 matrix: Predict unknown series)', async () => {
     db.single = { data: null, error: null };
+    renderPage(`/predict?series=${SERIES_ID}`);
+
+    const heading = await screen.findByRole('heading', { level: 2 });
+    expect(heading.textContent).toBe("This series doesn't exist.");
+    expect(screen.getByText('It may have been removed, or the link is wrong.')).toBeInTheDocument();
+    expect(screen.getByText('Browse the Historical archive →').closest('a')?.getAttribute('href')).toBe('/historical');
+    // The page keeps its own <h1>, and focus is not stolen from <body>.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Win Probability');
+    expect(heading).not.toHaveFocus();
+    expect(db.toast.error).not.toHaveBeenCalled();
+    expect(screen.queryByText("Couldn't load this series.")).toBeNull();
+  });
+
+  it('treats a malformed ?series= id as not found without querying it (Story 4.1 matrix: Predict malformed series)', async () => {
+    const byId = vi.fn(() => ({ maybeSingle: () => Promise.resolve(db.single) }));
+    db.from.mockImplementation(() => ({
+      select: () => ({ order: () => Promise.resolve(db.list), eq: byId }),
+    }));
     renderPage('/predict?series=does-not-exist');
 
-    await waitFor(() => expect(db.toast.error).toHaveBeenCalledWith('Series not found'));
+    await waitFor(() => expect(document.querySelector('[data-series-not-found] h2')?.textContent).toBe("This series doesn't exist."));
+    expect(db.toast.error).not.toHaveBeenCalled();
+    // The mount-time list fetch still runs; the by-id preload never does —
+    // re-checked after the page has settled, so a late query cannot slip by.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Click to choose series/ })).toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(byId).not.toHaveBeenCalled();
     expect(screen.queryByText("Couldn't load this series.")).toBeNull();
+  });
+
+  it('keeps the picker working beside the not-found notice, and a pick retires it (Story 4.1 matrix: Predict unknown series)', async () => {
+    renderPage('/predict?series=abc');
+    await waitFor(() => expect(document.querySelector('[data-series-not-found]')).not.toBeNull());
+
+    fireEvent.click(screen.getByText('Click to choose series'));
+    clickDecadeCard(2020);
+    await clickYearCard(2022);
+    fireEvent.click(await screen.findByRole('button', { name: /Finals/ }));
+
+    await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());
+    expect(document.querySelector('[data-series-not-found]')).toBeNull();
   });
 
   it('stops masking the result region after a failed preload when the fan picks a series (matrix: broken preload)', async () => {
     db.single = { data: null, error: new Error('bad request') };
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
     await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('Click to choose series'));
@@ -256,7 +297,7 @@ describe('PredictPage error states (Story 1.3)', () => {
         }),
       }),
     }));
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
 
     await chooseCustomMatchup();
     await chooseMethod();

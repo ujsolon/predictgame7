@@ -596,8 +596,10 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // the projection): nothing else parses it, and it next runs at the owner's hand.
   // Story 2.16 (2026-10-06) dropped the venue probe and the stats.nba.com
   // adapter probe from this list: both were deleted with the adapter they imported.
+  // Story 4.1 adds its deep-link probe, which imports the CDP session above.
   for (const script of [
     'probe-espn-adapter.mjs',
+    'probe-deep-links.mjs',
     'rehearse-migration-00014.mjs',
     'measure-predict-latency.mjs',
     'drill-2-7-reconcile.mjs',

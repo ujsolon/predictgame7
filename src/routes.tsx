@@ -3,6 +3,7 @@ import PredictPage from './pages/PredictPage';
 import HistoricalPage from './pages/HistoricalPage';
 import InsightsPage from './pages/InsightsPage';
 import MathsPage from './pages/MathsPage';
+import SeriesRoute from './pages/SeriesRoute';
 import type { ReactNode } from 'react';
 
 export interface RouteConfig {
@@ -43,6 +44,14 @@ export const routes: RouteConfig[] = [
     name: 'Maths',
     path: '/maths',
     element: <MathsPage />,
+    public: true,
+  },
+  {
+    // Story 4.1: the share/deep-link entry point. Not in the nav — `Layouts`
+    // keeps its own list and never reads this array.
+    name: 'Series',
+    path: '/series/:id',
+    element: <SeriesRoute />,
     public: true,
   },
 ];

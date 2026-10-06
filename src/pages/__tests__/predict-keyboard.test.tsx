@@ -12,6 +12,7 @@ import {
   renderPage,
   seriesFixture,
   submitPrediction,
+  SERIES_ID,
 } from './helpers';
 
 // Story 1.5, Decisions 1 and 2: the three primary Predict surfaces — Series
@@ -276,7 +277,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
   // so the card-body mouse surface was left asserted only on the custom route.
   // The main fan route gets both halves of F1's rule pinned here.
   it('keeps the card body clickable as the mouse path on the series route too', async () => {
-    renderPage('/predict?series=s-1');
+    renderPage(`/predict?series=${SERIES_ID}`);
     await screen.findByText('BOS vs MIA');
     await chooseMethod();
 

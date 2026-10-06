@@ -371,7 +371,7 @@ development_status:
   # (sprint-change-proposal-2026-10-07); blocks listed in execution order, numbering unchanged.
   epic-4: in-progress
   4-0-analytics-isolation-layer-ad-1-port: done
-  4-1-series-deep-links-404-spa-fallback: backlog
+  4-1-series-deep-links-404-spa-fallback: review
   4-2-og-card-rendering-share-og-edge-function: backlog
   4-3-prerendered-series-pages-seo: backlog
   4-4-share-button-attribution-fr-31-sm-3: backlog

@@ -10,6 +10,13 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import PredictPage from '@/pages/PredictPage';
 import type { Series, Team } from '@/types/types';
 
+/**
+ * A UUID-shaped `?series=` id for preload tests. Story 4.1 treats a malformed
+ * id as "not found" without querying, so preload URLs must look like a real
+ * `series.id`; the per-suite Supabase mocks ignore the value itself.
+ */
+export const SERIES_ID = '7b0c6e1a-3f2d-4c5e-9a8b-1d2e3f4a5b6c';
+
 export const teamA: Team = { id: 11, full_name: 'Boston Celtics', abbreviation: 'BOS', created_at: 'a' };
 export const teamB: Team = { id: 22, full_name: 'Miami Heat', abbreviation: 'MIA', created_at: 'b' };
 

@@ -22,6 +22,7 @@ import {
   teamA,
   teamB,
   yearCardText,
+  SERIES_ID,
 } from './helpers';
 
 const db = vi.hoisted(() => ({
@@ -185,7 +186,7 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
   it('still loads and predicts a non-reconciling row reached by ?series= (matrix: deep link)', async () => {
     db.single = { data: nonReconcilingSeries, error: null };
     db.invoke.mockResolvedValue({ data: conformingResult, error: null });
-    renderPage('/predict?series=s-anomaly');
+    renderPage(`/predict?series=${SERIES_ID}`);
 
     expect(await screen.findByText('LAL vs GSW')).toBeInTheDocument();
     await chooseMethod();

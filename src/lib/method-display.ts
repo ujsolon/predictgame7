@@ -18,3 +18,13 @@ export const METHOD_MATHS_ANCHORS: Record<MethodSlug, string> = {
   elo: 'elo-rating',
   exponential_smoothing: 'exponential-smoothing',
 };
+
+/**
+ * Narrows a URL `?method=` value to a `MethodSlug` (Story 4.1). The own-key
+ * check against `METHOD_LABELS` is the only slug list in the client — its keys
+ * are pinned to the function's `ACCEPTED_METHOD_SLUGS` by
+ * `predict-request.test.ts` — so an unknown slug is simply not a method.
+ */
+export function isMethodSlug(value: string | null | undefined): value is MethodSlug {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(METHOD_LABELS, value);
+}
