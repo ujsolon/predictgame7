@@ -129,7 +129,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 - FR-19: Epic 2 — canonical data maintained; migration integrity (NFR-D1)
 - FR-20, FR-21: Epic 2 — pipeline modes
 - FR-22, FR-23: excluded (Traffic Gate)
-- FR-24: Epic 3 — instrumentation relocated behind AD-1 port, names verbatim
+- FR-24: Epic 4 (Story 4.0) — instrumentation relocated behind AD-1 port, names verbatim (moved from Epic 3, sprint-change-proposal-2026-10-07)
 - FR-25: Epic 3 — gate reporting surface + UV definition pinned
 - FR-26..FR-29: excluded (Traffic Gate)
 - FR-30: Epic 1 — regression suite + failure catalog + QA matrix
@@ -145,9 +145,11 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 - NFR7 (A1): Epics 1–4 (AA-clean ACs on new/changed UI) + Epic 5 (verify & remediate)
 - NFR8 (D1): Epic 2 — idempotency + archive-schema preservation
 - NFR9 (D2): Epic 5 — release ceremony (version bump, CHANGELOG)
-- NFR10 (V1): Epic 3
+- NFR10 (V1): Epic 4 (Story 4.0; moved from Epic 3, sprint-change-proposal-2026-10-07)
 
 ## Epic List
+
+Execution order (owner decision 2026-10-07, `sprint-change-proposal-2026-10-07.md`): Epic 4 runs before Epic 3; numbering is unchanged.
 
 ### Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 Users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by a regression suite that every later epic builds on. **Story 1 is the toolchain foundation: migrate `rolldown-vite` shim → `vite@^8` + Vitest + CI test gate — done now, off-peak, while no release pressure exists** (owner decision 2026-09-25; satisfies the spine's "migrate at next dependency touch" and retires the Deferred test-compat question). Then: AD-2 contract consolidation (`_shared/contract.ts`, stale unions deleted), FR-8 error-state overhaul (invalid-input vs service-failure), regression tests on the four highest-risk paths, documented failure-case catalog + manual QA matrix. All new/changed UI carries an AA-clean AC (Radix primitives, contrast tokens, keyboard/screen-reader).
@@ -158,12 +160,12 @@ During the 2027 window, Active Series reflect the latest results with zero manua
 **FRs covered:** FR-2, FR-10, FR-11, FR-12, FR-19, FR-20, FR-21; NFRs D1, R1, A1 (Story 2.9's league chip and 2.10's conditional chip + record gloss only). Story 2.0 also carries the server-side half of FR-30's gate (AD-2 producer-side enforcement, `deferred-work.md` D1/D2 — owner decision 2026-09-30).
 
 ### Epic 3: Owner Operations — Measurable and Contactable
-The owner can read every Traffic Gate figure programmatically and never misses a contact submission; PostHog is one module away from removable. AD-1 analytics port (`src/lib/analytics/`: EVENTS registry, track/identify/resetUser/captureError, provider bootstrap) — **every port story carries a measurement-continuity AC: events fire at identical trigger points, verified in PostHog live view before/after deploy** (owner decision 2026-09-25; protects the SM-2 baseline from splitting into two measurement regimes). AD-3 `handle-contact` migration + Resend provisioning (free tier, server-side key) + `_started`/`_failed` events + inline form UX (FR-17). FR-25 reporting surface (owner-local query execution, personal API key never bundled) + SM-1 unique-visitor definition pinned in module docs before Apr 2027.
-**FRs covered:** FR-16 (preserved), FR-17, FR-24, FR-25; NFRs S2, V1.
+The owner can read every Traffic Gate figure programmatically and never misses a contact submission. (The AD-1 port that makes PostHog one module away from removable moved to Epic 4 as Story 4.0 — `sprint-change-proposal-2026-10-07.md`.) AD-3 `handle-contact` migration + Resend provisioning (free tier, server-side key) + `_started`/`_failed` events + inline form UX (FR-17). FR-25 reporting surface (owner-local query execution, personal API key never bundled) + SM-1 unique-visitor definition pinned in module docs before Apr 2027.
+**FRs covered:** FR-16 (preserved), FR-17, FR-25; NFRs S2.
 
 ### Epic 4: Shareable, Indexable Predictions
-A completed prediction becomes a circulating artifact: copied links unfurl as OG cards and land on a working page; the archive indexes as 182 static per-series pages (172 full-record non-flagship pages + a preview/result pair for each of the 5 flagships; Active-series pairs added inseason). `share-og` Edge Function (anonymous — no JWT; `@vercel/og` card; `SharePayload` from `_shared/contract.ts`; redirect with `utm_source=share`) → **`404.html` SPA fallback with a live-deploy AC: cold GET on the real `gh-pages` URL loads the app under the `/predictgame7/` basename** (owner decision 2026-09-25; never tested against pushState routing on this deploy) → `/series/<id>` route + AD-7 prerender step in `predeploy` (route list from DB; series facts only) → Share button UI + attribution hook into Epic 3's port → **flagship-five content pilot (FR-13, owner decision 2026-09-25): optional per-series editorial content (write-up + YouTube-embed video) rendered and prerendered for 5 pinned flagship series (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs); all other series stay bare; each flagship ships as a **spoiler-free preview + revealed result pair** (AD-7 amendment, `sprint-change-proposal-2026-09-25.md`); doubles as marketing material**. **Calendar-critical: this epic must be DEPLOYED ≥ 6–8 weeks before Apr 2027 so crawlers index before the spike — its position in the list is not its deadline** (owner decision 2026-09-25).
-**FRs covered:** FR-31, FR-13 (scoped pilot) (+ FR-10/11 prerender surfaces); NFRs P1 (share-og timing), A1 (partial), U1 (partial — flagship page layouts).
+A completed prediction becomes a circulating artifact: copied links unfurl as OG cards and land on a working page; the archive indexes as 182 static per-series pages (172 full-record non-flagship pages + a preview/result pair for each of the 5 flagships; Active-series pairs added inseason). **Story 4.0 — the AD-1 analytics port** (`src/lib/analytics/`: EVENTS registry, track/identify/resetUser/captureError, provider bootstrap; moved from Epic 3 by `sprint-change-proposal-2026-10-07.md`, so every Epic 4 surface is instrumented through the port from its first deploy; carries the measurement-continuity AC — events fire at identical trigger points, verified in PostHog live view before/after deploy, owner decision 2026-09-25) → `share-og` Edge Function (anonymous — no JWT; `@vercel/og` card; `SharePayload` from `_shared/contract.ts`; redirect with `utm_source=share`) → **`404.html` SPA fallback with a live-deploy AC: cold GET on the real `gh-pages` URL loads the app under the `/predictgame7/` basename** (owner decision 2026-09-25; never tested against pushState routing on this deploy) → `/series/<id>` route + AD-7 prerender step in `predeploy` (route list from DB; series facts only) → Share button UI + attribution hook into Story 4.0's port → **flagship-five content pilot (FR-13, owner decision 2026-09-25): optional per-series editorial content (write-up + YouTube-embed video) rendered and prerendered for 5 pinned flagship series (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs); all other series stay bare; each flagship ships as a **spoiler-free preview + revealed result pair** (AD-7 amendment, `sprint-change-proposal-2026-09-25.md`); doubles as marketing material**. **Calendar-critical: this epic must be DEPLOYED ≥ 6–8 weeks before Apr 2027 so crawlers index before the spike — its position in the list is not its deadline** (owner decision 2026-09-25).
+**FRs covered:** FR-24, FR-31, FR-13 (scoped pilot) (+ FR-10/11 prerender surfaces); NFRs V1, P1 (share-og timing), A1 (partial), U1 (partial — flagship page layouts).
 
 ### Epic 5: Release-Quality Polish — the Major Release Itself
 The site reads and feels professional everywhere and ships as the pre-playoff major release. Copy pass (FR-18 / issue #4: Home hero, Insights labels, contact copy, empty/error states; zero mojibake; voice anchors from addendum §H; owner sign-off per surface) → WCAG 2.1 AA verification + remediation across all six surfaces (NFR-A1) → whole-site mobile/desktop responsiveness matrix (NFR-U1) → release ceremony: version bump (minor, NFR-D2), CHANGELOG entry, final `npm run build` + Biome gate. Epic goal note (owner decision 2026-09-25): the AA pass is verification + remediation of what Epics 1–4 built AA-clean; structural accessibility failures found here are recorded as findings against the epic that introduced them, not silently absorbed.
@@ -700,24 +702,13 @@ No agent fetches ESPN.
 **And** in that same change, `seriesdatasource-port.md`'s `espn` section describes the backfill and the re-read
 **And** no change to the RPCs, migrations, crons or Edge Functions; `npm run gate` passes
 
-## Epic 3: Owner Operations — analytics you can trust, contacts you never miss, gate numbers you can read
+## Epic 3: Owner Operations — contacts you never miss, gate numbers you can read
 
-Covers FR-17 (contact delivery, issue #2 phases 2–3), FR-24/NFR-V1 (analytics isolation, AD-1), FR-25 (Traffic Gate reporting). This is the observability backbone SM-1 measurement depends on — every later epic's events flow through what lands here. Owner note (2026-09-25): analytics acceptance is "seeing it in action" — Story 3.5 requires the owner personally observing live events in PostHog, not a proxy report.
+Covers FR-17 (contact delivery, issue #2 phases 2–3) and FR-25 (Traffic Gate reporting). Runs **after Epic 4** (owner decision 2026-10-07); the AD-1 analytics port it used to open with is Story 4.0, so every event here emits through a port that is already live. Owner note (2026-09-25): analytics acceptance is "seeing it in action" — Story 3.5 requires the owner personally observing live events in PostHog, not a proxy report; the 10-event continuity proof itself is Story 4.7's.
 
-### Story 3.1: Analytics isolation layer (AD-1 port)
+### ~~Story 3.1~~ → moved to Story 4.0 (2026-10-07)
 
-As the owner,
-I want all analytics code — SDK init, the 10 event definitions, `captureError`, metric queries — moved behind a single port at `src/lib/analytics/`, with feature code emitting events declaratively through it,
-so that NFR-V1's isolation invariant becomes real and FR-25 reporting has one place to read from.
-
-**Acceptance Criteria:**
-
-**Given** the port lands with the existing 10 event names verbatim (addendum §A.1 preserved until FR-25 metrics are re-pointed)
-**When** every direct `posthog-js` import in feature code is replaced by port calls
-**Then** zero direct SDK imports remain outside `src/lib/analytics/`
-**And** measurement continuity: identical event trigger points pre/post refactor — verified in PostHog live view side-by-side (same events, same properties, same firing conditions) before and after deploy
-**And** the owner's personal PostHog API key is used only in owner-local query tooling, never bundled into the client (NFR-S1)
-**And** build/lint/test green; Epic 1's Story 1.3 error events (`captureError`) now route through the port
+*Moved to Epic 4 by `sprint-change-proposal-2026-10-07.md`. Historical records written before 2026-10-07 cite it as Story 3.1.*
 
 ### Story 3.2: Reliable contact delivery via Resend (FR-17, issue #2 phase 2)
 
@@ -731,7 +722,7 @@ so that the site's only inbound route to me stops being silent-failure-prone.
 **When** `handle-contact` accepts a valid submission
 **Then** the email arrives at the owner address and the submission is stored server-side as today — honeypot + timing checks + validation unchanged, direct public inserts still blocked (NFR-S1)
 **And** `handle-contact` migrates to the Deno.serve + jsr convention (AD-3)
-**And** contact events emit `contact_form_submitted` (existing) plus new `_started` / `_failed` variants with failure-reason categories, through the Story 3.1 port
+**And** contact events emit `contact_form_submitted` (existing) plus new `_started` / `_failed` variants with failure-reason categories, through the Story 4.0 port (was Story 3.1; sprint-change-proposal-2026-10-07)
 **And** an email-send failure does not lose the submission — it's in `contact_submissions` and the failure is visible via the `_failed` event
 
 ### Story 3.3: Contact form feedback (FR-17, issue #2 phase 3)
@@ -756,14 +747,14 @@ so that the Apr–Jun 2027 gate decision is a number I read, not a number I argu
 
 **Acceptance Criteria:**
 
-**Given** the analytics port from Story 3.1
+**Given** the analytics port from Story 4.0 (and Story 4.4's share attribution, already emitting)
 **When** the reporting queries land in `_bmad-output/implementation-artifacts/` (or a small owner-local script)
 **Then** SM-1 is defined precisely: unique visitors within the Apr 1–Jun 30 2027 window, counted via PostHog with a documented distinct-id/dedup rule
 **And** queries run owner-local against the personal PostHog API key — never bundled, never deployed to the client (NFR-S1)
-**And** each of SM-1..SM-4 has a runnable query + interpretation note; SM-3 (share-link arrivals) is registered as "wires up when Epic 4 ships share attribution" — query shape defined now, data flows later
+**And** each of SM-1..SM-4 has a runnable query + interpretation note; SM-3 (share-link arrivals) runs against the attribution Story 4.4 already ships — the query returns real data on its first run
 **And** an ad-blocker blind-spot caveat is documented (SPEC.md constraint)
 
-### Story 3.5: Epic verification — continuity proof + delivery drill
+### Story 3.5: Epic verification — delivery drill + gate numbers
 
 As the owner,
 I want to see the epic working with my own eyes before it closes,
@@ -771,16 +762,33 @@ so that measurement integrity during the gate window is established fact, not a 
 
 **Acceptance Criteria:**
 
-**Given** Stories 3.1–3.4 complete
+**Given** Stories 3.2–3.4 complete (the port is Story 4.0, verified by Story 4.7)
 **When** the verification pass runs
-**Then** the owner personally observes PostHog live view while exercising the deployed site: all 10 preserved events + new contact variants fire with correct names and properties
+**Then** the owner personally observes PostHog live view while exercising the deployed site: the contact events (`contact_form_submitted` + the new `_started`/`_failed` variants) fire with correct names and properties — the 10-event continuity proof was Story 4.7's
 **And** a contact delivery drill: real test submission → email received → success state rendered; a forced failure → `_failed` event with reason category
 **And** the SM-1 query returns a plausible number against current live traffic
 **And** results recorded in `_bmad-output/implementation-artifacts/`; failures fixed or filed before the epic is marked done
 
 ## Epic 4: Sharing & SEO — results that travel, series pages that rank
 
-Covers FR-31 (share links + OG cards, AD-6), CAP-8 (prerendered series pages, AD-7), and the FR-13 flagship-five content pilot (owner decision 2026-09-25; Q-5 resolved as external YouTube embeds; the five pinned in Story 4.6). **Calendar-critical: everything here must be DEPLOYED ≥6–8 weeks before the Apr 2027 playoff window** — OG cards need social-platform cache warm-up and prerendered pages need crawl/index lead time to pay off during the gate window. SM-3 (share-link arrivals) attribution lands here.
+Covers FR-31 (share links + OG cards, AD-6), CAP-8 (prerendered series pages, AD-7), and the FR-13 flagship-five content pilot (owner decision 2026-09-25; Q-5 resolved as external YouTube embeds; the five pinned in Story 4.6). **Calendar-critical: everything here must be DEPLOYED ≥6–8 weeks before the Apr 2027 playoff window** — OG cards need social-platform cache warm-up and prerendered pages need crawl/index lead time to pay off during the gate window. SM-3 (share-link arrivals) attribution lands here, and so does the AD-1 analytics port (Story 4.0) every Epic 4 event emits through.
+
+### Story 4.0: Analytics isolation layer (AD-1 port)
+
+*Moved from Epic 3 (was Story 3.1) by `sprint-change-proposal-2026-10-07.md`, owner decision 2026-10-07: it runs first because every Epic 4 surface emits through it.*
+
+As the owner,
+I want all analytics code — SDK init, the 10 event definitions, `captureError`, metric queries — moved behind a single port at `src/lib/analytics/`, with feature code emitting events declaratively through it,
+so that NFR-V1's isolation invariant becomes real and FR-25 reporting has one place to read from.
+
+**Acceptance Criteria:**
+
+**Given** the port lands with the existing 10 event names verbatim (addendum §A.1 preserved until FR-25 metrics are re-pointed)
+**When** every direct `posthog-js` import in feature code is replaced by port calls
+**Then** zero direct SDK imports remain outside `src/lib/analytics/`
+**And** measurement continuity: identical event trigger points pre/post refactor (the one deliberate addition is the archive reset's `historical_filter_applied {filter_type:'reset'}`, owner decision D1 2026-10-07) — proven before merge by the gate plus a headless before/after event walk (PostHog answered locally); the owner records the **before** leg in PostHog live view (the 10 events on the then-live site) **before the first release carrying this story**, and Story 4.7 records the after leg and the comparison
+**And** the owner's personal PostHog API key is used only in owner-local query tooling, never bundled into the client (NFR-S1)
+**And** build/lint/test green; Epic 1's Story 1.3 error events (`captureError`) now route through the port
 
 ### Story 4.1: Series deep-links + 404 SPA fallback
 
@@ -842,7 +850,7 @@ so that settling the debate takes one tap — and arrivals from my link are coun
 **Given** a completed prediction
 **When** Share is tapped
 **Then** a stable URL per AD-6 (`/series/<id>?method=<slug>`; custom matchups encode via the AD-2 SharePayload contract — if encoded URLs grow ugly-long, the encoding scheme is a build-time design detail, flagged not decided here) is copied/offered with native share where available
-**And** the share action emits through the Story 3.1 analytics port, and arriving visits are attributable — the SM-3 query from Story 3.4 now returns real data
+**And** the share action emits through the Story 4.0 analytics port, and arriving visits are attributable (`utm_source=share` reaches PostHog on the landing `$pageview`) — Story 3.4's SM-3 query, which runs after this epic, reads that data on its first run
 **And** the Share button is AA-clean: keyboard-reachable, announced, contrast-compliant
 **And** shared-link round-trip verified: link from a completed prediction reproduces the same series+method state on open in a fresh browser profile
 **And** this story inherits deferred-work **D3**, the `PredictPage` request-path rebuild its Share button sits on top of (owner decision 2026-09-29, Epic 1 retro §F). Four things, one change: a derived `Partial<PredictionInput>` form type exported from the frontend door plus typed payload builders, retiring `seriesInput: any`, the two `as PredictionInput` casts and the twelve `undefined as any` custom-form fields; the method-card `switch (selectedMethod)` description moved into a `Record<MethodSlug, string>` in `src/lib/method-display.ts`; the dead `PredictionFailure['invalid-input']` arm deleted or wired, with the Story 1.3 Spec Change Log annotated to match; and the duplicated validation and advisory-string paths (`validateScores` in `PredictPage.tsx` vs `src/lib/custom-matchup.ts`) collapsed to one request path and one failure vocabulary
@@ -888,9 +896,10 @@ so that sharing and indexing work when playoff traffic actually arrives.
 
 **Acceptance Criteria:**
 
-**Given** Stories 4.1–4.6 deployed
+**Given** Stories 4.0–4.6 deployed
 **When** the drill runs
 **Then** results recorded in `_bmad-output/implementation-artifacts/`: cold deep-link GET, OG debugger card render, JS-disabled prerendered page fetch (one bare + one flagship preview — verified spoiler-free — + its result page), share round-trip with SM-3 event observed in PostHog live view
+**And** measurement continuity for Story 4.0's port: the owner observes PostHog live view on the deployed site — the 10 addendum §A.1 events fire with the same names, properties and firing conditions as the **before** leg Story 4.0 recorded (only D1's archive-reset emission is new) — recorded side-by-side with that before leg
 **And** a sitemap/crawl spot-check: a sample of prerendered series URLs resolves 200 on the live domain
 **And** deploy date recorded against the ≥6–8-week pre-window target; if slipping, owner escalation noted
 
