@@ -16,8 +16,8 @@
 #
 # This file is the operator's live data, not an example: an apply run writes
 # exactly these rows to production, and a fabricated row becomes a real Active
-# Series the moment it exists. Rows are committed during a playoff and npm test validates
-# them (Story 2.17); header-only is the offseason state (an empty plan writes zero rows).
+# Series the moment it exists. Committed playoff rows are validated by npm test (Story 2.17),
+# and header-only is the offseason state. run.ts defaults to manual_csv and writes unless --dry-run.
 # See series_manual.example.csv beside it for the row shape and cadence.
 # Playoff procedure (births by hand, late births, recovery, offseason reset): docs/PLAYOFF_RUNBOOK.md
 year,round,game_number,home_team,away_team,home_score,away_score

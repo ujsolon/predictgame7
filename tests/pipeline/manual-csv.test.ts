@@ -57,6 +57,12 @@ describe('parseManualCsv — the shipped example file', () => {
     expect(liveGames.map((g) => g.game_number)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it('is valid operator data, since the live file sends the operator here for row shape', () => {
+    // `series_manual.csv` points at this file "for the row shape and cadence",
+    // so an example the gate rejects is a red `npm run gate` mid-playoff.
+    expect(() => assertValidOperatorCsv(EXAMPLE_CSV, 'series_manual.example.csv')).not.toThrow();
+  });
+
   it('emits rows keyed by the ordered identity pair with resolved team ids', () => {
     const { statuses, scores } = parseManualCsv(csv(...FINAL_ROWS), 'x.csv', lookup);
     expect(statuses[0].round).toBe('NBA Finals');
@@ -97,6 +103,15 @@ function assertValidOperatorCsv(text: string, name: string): void {
 }
 
 describe('the committed operator file', () => {
+  // Non-vacuity for the vocabulary the check reads. A label dropped from
+  // `CANONICAL_ROUND_LABELS` shrinks the rule and the test together, and in the
+  // offseason — when the committed file is header-only — nothing else notices.
+  // The seed size needs no twin pin here: `parseTeamsSeed` refuses any seed but
+  // the 59-team one, and the message names the count it found.
+  it('reads the four canonical labels spelled literally', () => {
+    expect([...CANONICAL_ROUND_LABELS]).toEqual(['First Round', 'Conference Semifinals', 'Conference Finals', 'NBA Finals']);
+  });
+
   it('is valid: real team codes, a plan the runner accepts, canonical rounds (header-only is the offseason state)', () => {
     expect(() => assertValidOperatorCsv(LIVE_CSV, 'series_manual.csv')).not.toThrow();
   });

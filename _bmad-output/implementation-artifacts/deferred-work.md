@@ -605,6 +605,12 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
   summary: Story 2.18's reversal was not swept through the documents Story 2.15 corrected. Still reading as if births are hand-curated only: F2 in `drill-2-7-results.md:62` and `deferred-work.md:552` ("the real `espn` feed's first write is therefore the completion only"), the `epics.md:253` epic-goal bracket ("Births are curated by owner call 2026-10-04 … added by hand"), and `epic-2-context.md` — whose visible Goal (`:7`) still says "zero manual editing" with the caveat confined to the line-3 HTML comment, whose Story 2.15 bullet (`:27`) says births are curated, and whose `:79` still describes Story 2.18 as "Detection and alert only".
   evidence: Story 2.15 external review, verdict low-to-medium as documentation drift. Correct as built (commit `e7ba090`, owner call 2026-10-04 standing then); superseded same day by `4eec447`, which rewrote `docs/PLAYOFF_RUNBOOK.md`, `epics.md`'s Story 2.18 section and `CURRENT_DATA_MODEL.md`, but none of the four texts above. Owner: Story 2.18's review record (its deferred section already sits in this file), before 2027-04-12.
 
+## Deferred from: code review of spec-2-17-live-operator-csv-carries-playoff-rows.md, pass 2 (2026-10-07)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-17-live-operator-csv-carries-playoff-rows.md`
+  summary: The story's headline scenario — pushing a `series_manual.csv` that actually holds playoff rows — has never been exercised end-to-end. The live file is still header-only, so `tests/pipeline/manual-csv.test.ts`'s committed-file case passes trivially today, and `.githooks/pre-push` has never validated a CSV carrying data rows.
+  evidence: Story 2.17 pass-2 review (Blind Hunter), verdict low. Deferred as not actionable now: fabricating rows in the committed file would contradict the story's own "the live file is never edited" rule, and the playoff-rows state is covered by the temporary-text acceptance cases running the same `assertValidOperatorCsv`. Trigger that settles it: the first real committed 3–3 in the 2027 window — `docs/PLAYOFF_RUNBOOK.md` step 2 puts those rows in this file and step 4's push runs the hook on them.
+
 ## Deferred from: code review of spec-2-16-nba-com-retirement.md, pass 2 (2026-10-06)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-16-nba-com-retirement.md`
