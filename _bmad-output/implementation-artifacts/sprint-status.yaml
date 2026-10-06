@@ -47,7 +47,7 @@ development_status:
   1-5-manual-qa-matrix-epic-verification-pass: done
   epic-1-retrospective: done
 
-  epic-2: done
+  epic-2: in-progress
   2-0-gate-the-server-side-edge-function-type-check-and-input-validation: done
   2-1-q-4-data-source-feasibility-spike: done
   2-2-schema-prerequisites-derived-phase-on-the-read-path: done
@@ -320,6 +320,12 @@ development_status:
   # OWNER-OWED: F1 first scheduled cron (2027-04-16) and F2 first real espn write.
   2-7-epic-verification-simulated-playoff-week: done
   epic-2-retrospective: done
+  # 2026-10-06: owner decision -- the Epic 2 retro's action items become Epic 2 stories,
+  # numbered append-only, so epic-2 is back to in-progress until they close. 2-14 = retro
+  # items 2 + 10 (W1, W3, W4, A2); 2-15 = retro item 1 (R1, due before 2027-04-12).
+  # Record: epic-2-retro-2026-10-06.md; stories in epics.md after Story 2.11.
+  2-14-pipeline-runner-hardening: backlog
+  2-15-playoff-birth-runbook: backlog
 
   epic-3: backlog
   3-1-analytics-isolation-layer-ad-1-port: backlog
