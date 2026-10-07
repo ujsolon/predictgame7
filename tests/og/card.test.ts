@@ -2,9 +2,10 @@
 // No network and no database: `renderCard` is pure over its inputs, and the
 // build step's DB read is injected (`fetchSeries`) in the run tests.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -22,7 +23,7 @@ import {
   TAGLINE,
   WORDMARK,
 } from '../../scripts/og/card.ts';
-import { type OgSeriesRow, runOgCards } from '../../scripts/og/render.ts';
+import { DEFAULT_OUT_DIR, REPO_ROOT, type OgSeriesRow, runOgCards } from '../../scripts/og/render.ts';
 import type { SeriesGameScore } from '../../src/types/types.ts';
 
 const PUBLIC_DIR = join(import.meta.dirname, '..', '..', 'public');
@@ -301,11 +302,16 @@ describe('runOgCards', () => {
     expect(existsSync(out)).toBe(false);
   }, 30_000);
 
-  it('fails loud with no env, and when the DB read fails', async () => {
+  it('fails loud with no env without touching the previous output, and when the DB read fails', async () => {
     const errors: string[] = [];
-    const noEnv = await runOgCards({ env: {}, outDir: outDir(), log: () => {}, logError: (line) => errors.push(line) });
+    // A no-env run must not delete the cards a successful run already wrote.
+    const keep = outDir();
+    mkdirSync(keep, { recursive: true });
+    writeFileSync(join(keep, 'previous.png'), 'from an earlier run');
+    const noEnv = await runOgCards({ env: {}, outDir: keep, log: () => {}, logError: (line) => errors.push(line) });
     expect(noEnv).not.toBe(0);
     expect(errors.join('\n')).toMatch(/VITE_SUPABASE_URL/);
+    expect(existsSync(join(keep, 'previous.png'))).toBe(true);
 
     const out = outDir();
     const unreachable = await runOgCards({
@@ -369,16 +375,54 @@ describe('runOgCards', () => {
 });
 
 describe('the entry script (spawned, as `npm run og:cards` runs it)', { timeout: 30_000 }, () => {
+  it('defaults write to <repo root>/dist/og, the directory `gh-pages -d dist` publishes', () => {
+    // The seam the whole story ships on: no injected `outDir` covers it, so a
+    // mis-derived repo root would publish a site with no `og/` at all. REPO_ROOT
+    // is checked against a second, independent derivation from this test file.
+    const testRepoRoot = resolve(import.meta.dirname, '..', '..');
+    expect(REPO_ROOT).toBe(testRepoRoot);
+    expect(existsSync(join(REPO_ROOT, 'package.json'))).toBe(true);
+    expect(DEFAULT_OUT_DIR).toBe(join(testRepoRoot, 'dist', 'og'));
+  });
+
   it('auto-runs as the entry and exits 2 naming VITE_SUPABASE_URL when the env is absent', () => {
+    // The argv comes from package.json's own `og:cards` line, so a script path or
+    // node-flag move is caught here rather than at deploy time.
+    const scripts = (JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as { scripts: Record<string, string> })
+      .scripts;
+    const tokens = scripts['og:cards'].split(' ');
+    expect(tokens[0]).toBe('node');
+    // The repo checkout has a real `.env`; pointing the flag at an empty file keeps
+    // this test off the live database without changing which flags node is given.
+    const emptyEnv = join(mkdtempSync(join(tmpdir(), 'og-env-')), 'empty.env');
+    writeFileSync(emptyEnv, '');
+    const argv = tokens.slice(1).map((token) => (token.startsWith('--env-file') ? token.replace(/=.*$/, `=${emptyEnv}`) : token));
+    expect(argv[argv.length - 1]).toBe('scripts/og/render.ts');
+
     const env = { ...process.env };
     delete env.VITE_SUPABASE_URL;
     delete env.VITE_SUPABASE_ANON_KEY;
-    const res = spawnSync(process.execPath, ['scripts/og/render.ts'], {
-      env,
-      cwd: join(import.meta.dirname, '..', '..'),
-      encoding: 'utf8',
-    });
+    const res = spawnSync(process.execPath, argv, { env, cwd: REPO_ROOT, encoding: 'utf8' });
+    rmSync(join(emptyEnv, '..'), { recursive: true, force: true });
     expect(res.status).toBe(2);
     expect(res.stderr).toMatch(/VITE_SUPABASE_URL/);
+  });
+
+  it('exits non-zero rather than quietly skipping the run when the launcher path does not resolve', () => {
+    // The guard comparing `argv[1]` must fail loud: a version that tested
+    // `existsSync(argv[1])` first returned false here, and the step exited 0
+    // having written nothing, with `predeploy` green.
+    const bogus = join(mkdtempSync(join(tmpdir(), 'og-launcher-')), 'gone.js');
+    const moduleUrl = pathToFileURL(join(REPO_ROOT, 'scripts', 'og', 'render.ts')).href;
+    const env = { ...process.env };
+    delete env.VITE_SUPABASE_URL;
+    delete env.VITE_SUPABASE_ANON_KEY;
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e', `process.argv[1] = ${JSON.stringify(bogus)}; await import(${JSON.stringify(moduleUrl)});`], {
+      env,
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toMatch(/ENOENT/);
   });
 });

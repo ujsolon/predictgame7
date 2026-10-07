@@ -7,15 +7,15 @@
  * `dist/og/<series-id>.png` plus `dist/og/fallback.png` (1200×630 each).
  *
  * Runs in `predeploy` after the gate, never inside it: the gate and CI have no
- * Supabase secrets. Any failure — no env, DB unreachable, a missing or
- * undecodable logo, a series render that throws — exits non-zero after
- * listing every failure, and `dist/og` is removed so no partial output can
- * ship by accident.
+ * Supabase secrets. Any failure — DB unreachable, a missing or undecodable
+ * logo, a series render that throws — exits non-zero after listing every
+ * failure, and the output directory is removed so no partial output can ship by
+ * accident. A run that never got past the env check touches nothing on disk.
  *
  * Operator usage:
  *   npm run og:cards        (= node --env-file-if-exists=.env scripts/og/render.ts)
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
@@ -23,7 +23,11 @@ import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-p
 import { SERIES_SELECT } from '../../src/lib/series-query.ts';
 import { normaliseLogo, renderCard } from './card.ts';
 
-const repoRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+/** Repo root, derived from this file's location; pinned by `tests/og/card.test.ts`. */
+export const REPO_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+
+/** The directory `gh-pages -d dist` publishes the cards from. Exported so its seam is testable. */
+export const DEFAULT_OUT_DIR = join(REPO_ROOT, 'dist', 'og');
 
 export const ENV_SUPABASE_URL = 'VITE_SUPABASE_URL';
 export const ENV_ANON_KEY = 'VITE_SUPABASE_ANON_KEY';
@@ -65,21 +69,24 @@ async function fetchSeriesAnon(url: string, anonKey: string): Promise<OgSeriesRo
 export async function runOgCards(deps: OgRunDeps): Promise<number> {
   const log = deps.log ?? ((line: string) => console.log(line));
   const logError = deps.logError ?? ((line: string) => console.error(line));
-  const publicDir = deps.publicDir ?? join(repoRoot, 'public');
-  const outDir = deps.outDir ?? join(repoRoot, 'dist', 'og');
+  const publicDir = deps.publicDir ?? join(REPO_ROOT, 'public');
+  const outDir = deps.outDir ?? DEFAULT_OUT_DIR;
   const readFile = deps.readFile ?? ((path: string) => readFileSync(path));
   const fetchSeries = deps.fetchSeries ?? fetchSeriesAnon;
+
+  // Checked before anything is deleted, so a run with no env leaves the previous
+  // output alone instead of destroying it on the way out.
+  const url = deps.env[ENV_SUPABASE_URL];
+  const anonKey = deps.env[ENV_ANON_KEY];
+  if (!url || !anonKey) {
+    logError(`${ENV_SUPABASE_URL} and ${ENV_ANON_KEY} must be set (put them in .env and run npm run og:cards)`);
+    return 2;
+  }
 
   // A stale or partial `dist/og` must never outlive a failed run.
   rmSync(outDir, { recursive: true, force: true });
 
   try {
-    const url = deps.env[ENV_SUPABASE_URL];
-    const anonKey = deps.env[ENV_ANON_KEY];
-    if (!url || !anonKey) {
-      throw new Error(`${ENV_SUPABASE_URL} and ${ENV_ANON_KEY} must be set (put them in .env and run npm run og:cards)`);
-    }
-
     const started = performance.now();
     const rows = await fetchSeries(url, anonKey);
     if (rows.length === 0) {
@@ -196,11 +203,10 @@ function messageOf(error: unknown): string {
 // Only auto-run when executed as the entry script; importing it has no side effects.
 // realpathSync on both sides (as scripts/measure-predict-latency.mjs does): Node
 // realpaths the main module, so a plain resolve() can miss through a symlink or
-// a case-differing path and the step would exit 0 having written nothing.
-const isEntry =
-  process.argv[1] !== undefined &&
-  existsSync(process.argv[1]) &&
-  realpathSync(resolve(process.argv[1])).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase();
-if (isEntry) {
+// a case-differing path and the step would exit 0 having written nothing. An
+// unresolvable argv[1] throws rather than quietly skipping the run — a step that
+// exits 0 with no cards is the failure this guard exists to prevent.
+const entryPath = realpathSync(fileURLToPath(import.meta.url)).toLowerCase();
+if (process.argv[1] !== undefined && realpathSync(resolve(process.argv[1])).toLowerCase() === entryPath) {
   process.exitCode = await runOgCards({ env: process.env });
 }

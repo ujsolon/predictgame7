@@ -53,7 +53,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
   - The build emits `404.html` as the SPA fallback.
 - **OG meta never comes from an Edge Function.** Supabase rewrites `text/html` responses to `text/plain`. The `share-og` function is retired, and **no Edge Function is added in this epic**.
 - **OG cards** are static 1200×630 PNGs rendered at build time in the `predeploy` chain:
-  - one `dist/og/<series-id>.png` per archived series, plus `dist/og/fallback.png`;
+  - one `dist/og/<series-id>.png` per phase-deriving series — archive **and** pending, never `status`, dates or `league` — plus `dist/og/fallback.png`;
   - the step uses satori + `@resvg/resvg-js` + `sharp` as devDependencies and must be type-checked and linted by the gate (not an unchecked `.mjs`);
   - `sharp` normalises every logo to PNG, because `.webp`, `.gif` and `.avif` logos otherwise render blank;
   - round names keep their stored wording and wrap in a center slot of about 296px;
@@ -107,6 +107,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
   - Each page has a distinct document title. Preview titles are winner-free; result and non-flagship titles include the outcome.
   - OG title format: "{TeamA} vs {TeamB} — Game 7, {Year} {Round}".
   - The fallback title is "PredictGame7 — Where data meets playoff drama".
+  - The per-variant `og:title` and `og:description` strings are fixed in `EXPERIENCE.md · Voice and Tone · OG meta copy`. This doc does not restate the descriptions.
 - **404 treatment.** The heading reads "This series doesn't exist.", followed by one line and a link to the Historical archive. Focus moves to the heading.
 - **Share.**
   - A single affordance: `navigator.share` where available, otherwise the clipboard.
@@ -114,7 +115,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
   - If the clipboard is blocked, the toast reads "Couldn't copy — long-press the address bar to share."
   - The button is icon-only (ghost) in the series header and labelled with an outline in the Predict detailed view.
 - **Video.** A 16:9 facade with a labelled play button, which is its only activation control. The iframe replaces the facade and takes focus. The facade and its creator credit are prerendered.
-- **Token floor.** Small text uses `#767676`, never `#808080`. Other tokens: `destructive-text #B91C1C`, `on-muted #595959`. The UI is light mode only. Motion sits behind `prefers-reduced-motion`.
+- **Token floor.** Small text uses `#767676`, never `#808080`. Other tokens: `destructive-text #B91C1C`, `on-muted #595959`, `form-border #949494`. The UI is light mode only, these surfaces add no new radius, elevation or color token, and motion sits behind `prefers-reduced-motion`.
 
 ## Cross-Story Dependencies
 
