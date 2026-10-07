@@ -673,3 +673,15 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-2-og-card-rendering-build-time.md`
   summary: The spec's frozen "Always" clause requires the card to match DESIGN.md · OG card **and `mockups/key-og-card.html`**, but that mockup is titled "3 variants" and still renders the custom-matchup eyebrow/VS block and the "MODEL: {METHOD}" band line that AD-6's 2026-10-07 amendment dropped. The code follows DESIGN.md:150, which records the drop, so the implementation is right and the frozen clause's second reference is stale.
   evidence: Review pass 2, acceptance-auditor. Settles against `DESIGN.md:150` ("dropped 2026-10-07") versus the mockup's own variant list. Fixing it means a provenance note on a design-phase artifact and an owner renegotiation of the spec's frozen block — neither is a story-level code change.
+
+## Deferred from: code review of spec-4-3-series-pages.md (2026-10-07)
+
+- source_spec: `spec-4-3-series-pages.md`
+  summary: **Team order leaked the Game 7 winner on winner-free surfaces.** Archived rows store the eventual winner as `team_a` in 177/178 series (AGENTS.md), and the series preview's headline and title, plus Story 4.2's OG card, put `team_a` first.
+  evidence: Review pass 1, edge-case-hunter (row E14), verified against AGENTS.md's measured `team_a`-is-winner rule, and deferred for an owner decision. **RESOLVED 2026-10-08 (owner decision: option A, alphabetical by nickname).**
+    - The preview half landed in `a9c9334` (`spoilerNeutralView`) and the card half in the following commit (`scripts/og/render.ts` via `neutralPair`). Both go through `src/lib/spoiler-neutral.ts`.
+    - Tests: `src/lib/__tests__/spoiler-neutral.test.ts` and `tests/og/card-order.test.ts`.
+    - The regenerated 2026 OKC–SAS card shows SAS left and OKC right, matching the preview's "Spurs and Thunder".
+- source_spec: `spec-4-3-series-pages.md`
+  summary: **Story 4.8 must not serialise a flagship preview's outcome into prerendered HTML.** The preview fetches the full `SERIES_SELECT` row (Game 7 score row + `winner_team`) and renders none of it. A prerender that embeds the loaded row as hydration data would ship the Game 7 result in the page source of a "spoiler-free" page.
+  evidence: Review pass 1, blind-hunter (row B10). True for 4.8's design, while 4.3's DOM spoiler test holds. **Owner: Story 4.8.** Its spec must strip the Game 7 score row and the winner from any preloaded or serialised data for preview pages (flagship and pending), and assert it: preview HTML source contains no Game 7 score digits and no winner name.

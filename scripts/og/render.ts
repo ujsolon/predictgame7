@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-phase.ts';
 import { SERIES_SELECT } from '../../src/lib/series-query.ts';
+import { neutralPair } from '../../src/lib/spoiler-neutral.ts';
 import { normaliseLogo, renderCard } from './card.ts';
 
 /** Repo root, derived from this file's location; pinned by `tests/og/card.test.ts`. */
@@ -33,6 +34,9 @@ export const ENV_SUPABASE_URL = 'VITE_SUPABASE_URL';
 export const ENV_ANON_KEY = 'VITE_SUPABASE_ANON_KEY';
 
 interface TeamRow {
+  id?: number | string;
+  full_name?: string | null;
+  nickname?: string | null;
   abbreviation: string;
   logo_url: string | null;
 }
@@ -152,12 +156,23 @@ export async function runOgCards(deps: OgRunDeps): Promise<number> {
           logoFor(row.id, 'team_a', row.team_a),
           logoFor(row.id, 'team_b', row.team_b),
         ]);
+        // Spoiler-neutral order (owner decision 2026-10-07): stored order puts
+        // the eventual winner first in 177/178 archived rows, and the card is
+        // winner-free — so the left/right sides follow `neutralPair`, never
+        // team_a/team_b.
+        const side = (team: TeamRow | null | undefined, logoPng: Buffer) => ({
+          id: team?.id ?? '',
+          full_name: team?.full_name ?? team?.abbreviation ?? '',
+          nickname: team?.nickname ?? null,
+          card: { abbreviation: team?.abbreviation ?? '', logoPng },
+        });
+        const [left, right] = neutralPair(side(row.team_a, logoA), side(row.team_b, logoB));
         const png = await renderCard({
           kind: 'series',
           year: row.year,
           round: row.round,
-          teamA: { abbreviation: row.team_a?.abbreviation ?? '', logoPng: logoA },
-          teamB: { abbreviation: row.team_b?.abbreviation ?? '', logoPng: logoB },
+          teamA: left.card,
+          teamB: right.card,
         });
         write(`${row.id}.png`, png);
         seriesCards += 1;

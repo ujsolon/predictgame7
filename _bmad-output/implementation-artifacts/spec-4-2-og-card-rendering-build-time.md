@@ -162,6 +162,8 @@ Pass 2 (2026-10-07). Layers: blind-hunter (B), edge-case-hunter (E), verificatio
 - **Not run:** `npm run og:cards` — it needs the live anon read and `.env`, and the owner had not asked for a release. Pass 1's local run (179 PNGs, 39–49 s, 16.29 MB) is the recorded evidence for that command; pass 2 changed only the entry guard's ordering and its seam tests, not the card tree or the read.
 - **Collateral to record:** `dist/og/` (the 179 PNGs from the 20:22 local run) is absent. It is gitignored build output, regenerable with `npm run og:cards` (~40 s, live anon read), and no `gh-pages` branch was touched. Two writers could account for the deletion in the 20:48–21:11 window — the parallel session running `npm test` against the pre-fix spawn test (which is exactly pass 2's P1 footgun, occurring for real), or this session's `rmSync`-ordering mutation probe. Not attributed; recorded either way.
 
+- **2026-10-08, owner decision (Story 4.3 review row E14, option A):** the card's left/right sides follow `neutralPair()` (`src/lib/spoiler-neutral.ts`: alphabetical by nickname, then full name, then id), never `team_a`/`team_b`, because stored order names the eventual winner first in 177/178 archived rows. `TeamRow` gains `id`, `full_name` and `nickname` (already in `SERIES_SELECT`). Test: `tests/og/card-order.test.ts`.
+
 ## Spec Change Log
 
 - 2026-10-07, from review: the `og:cards` script uses `node --env-file-if-exists=.env`, not the Code Map's `--env-file=.env`. With no `.env`, plain `--env-file` makes Node fail before the step can print its own missing-env message. Also from review: a run where every row is skipped now exits 2, the same as an empty read, so a fallback-only set cannot ship.
