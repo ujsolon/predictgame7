@@ -30,9 +30,43 @@
 The edge PNG is 1200×630 RGBA and 63.8 KB. It is visually identical to the local render.
 
 **Findings that bind whichever path is chosen:**
-1. **A raw webp logo renders blank, with no error.** satori embeds the `data:image/webp` image, and resvg then draws an empty box. 8 of the 57 `teams.logo_url` files are `.webp` (Denver Rockets, Minneapolis Lakers, Minnesota Pipers, New Orleans Hornets, New York Nets, …). They must be PNG or JPEG at render time.
+1. **A raw webp logo renders blank, with no error.** satori embeds the `data:image/webp` image, and resvg then draws an empty box. 8 of the 57 `teams.logo_url` files are `.webp` (**corrected by the full sweep below: 10 of 59, with one `.gif` and one `.avif` as well**) (Denver Rockets, Minneapolis Lakers, Minnesota Pipers, New Orleans Hornets, New York Nets, …). They must be PNG or JPEG at render time.
 2. **Long round names break the layout.** "ABA Western Division Semifinals" pushes the right-hand team off the canvas. The center slot needs a fixed width (≈300 px) with wrapping.
 3. **`teams.logo_url` is a site-relative path** (`assets/teams/hawks.png`). An edge render has to fetch every logo from GitHub Pages; a build-time render reads the files from disk.
+
+## Full sweep (same day, owner follow-up: "are these the only issues?")
+
+The first pass rendered 6 logos and 4 round names. The sweep covered **every archived series (178), every team (59) and every distinct round name (17)** from the live tables (anon read). `sweep.mjs` is in the scratchpad.
+
+**Logos: 10 render blank, not 8.**
+- 8 are `.webp`.
+- **BLB is a `.gif`** (`assets/teams/Baltimore Bullets.gif`, with a space in the filename).
+- **KCK is an `.avif`** (`assets/teams/kansascity.avif`).
+
+All 10 render as an empty white chip with no error. The first count matched only `.png/.svg/.jpg/.jpeg/.webp` and missed the other two formats. Converting all 10 to PNG (`sharp`, a one-off) fixes them. After conversion, all 178 cards rendered with zero failures in 46.6 s.
+
+**Round names: the problem is general, not one header.** The center slot is 296 px wide (1200 − 2×64 padding − 2×340 team columns − 2×48 gaps). Measured with the card's font (Montserrat 600, 30 px, uppercase, 3 px tracking):
+- **15 of 17 round names do not fit on one line.** Only "Finals" (127 px) and "Semifinals" (216 px) do.
+- **Every name wraps cleanly**, because the longest single word, "CONFERENCE", is 245 px.
+
+| Lines when wrapped | Round names |
+|---|---|
+| 1 | "Finals", "Semifinals" |
+| 2 | the "Conf"/"Div" forms: "Eastern Conf Semifinals", "Western Conf First Round", "Eastern Div Finals", … |
+| 3 | "Western Conference Finals", "Western/Eastern Division Semifinals", "Western/Eastern Division Finals" |
+
+Rendered checks (1969 OAK–DNR "Western Division Semifinals", 2026 OKC–SAS "Western Conference Finals") show three centered lines inside the slot, clear of both logos. So a fixed-width, wrapping center slot is enough, and no abbreviation is required. A short form (e.g. "Semifinals" → "Semis") is a style choice, not a fix.
+
+**Logo legibility (cosmetic, not a failure).** On the contact sheet of all 59 chips, a few historic marks read faint or small on the white chip:
+- FWP and SLH: thin line art;
+- SLB, CPB and UTS: wide wordmarks shrunk to the chip's width.
+
+They are recognisable, and none vanishes. An automated "mostly near-white pixels" check flagged 13 logos, but on the sheet those are colour logos with white fills, so it is not a useful signal.
+
+**Other checks, all clean:**
+- every team has a `logo_url`;
+- every abbreviation is 3 characters, so the 64 px mono line always fits;
+- every round name is ASCII, so latin font subsets suffice.
 
 ## What the numbers say
 
