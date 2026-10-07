@@ -119,7 +119,12 @@ context:
   - Three findings deferred to `deferred-work.md`. The 4.4 note there covers `utm_source` on `/series/<id>`.
   - Orchestrator re-check: `npm run gate` exit 0 (27 files / 602 tests); probe GREEN on `vite preview :4327`.
 - **Built in a worktree** (`../pg7-story-4-1`, branch `story-4-1` from `b67686e`) while a parallel session reviewed Story 4.0 in the main checkout. The branch merges to `master` once that session is done.
-- **Still owed (D2):** release 0.2.8, then `node scripts/probe-deep-links.mjs https://ujsolon.github.io/predictgame7/`, recorded here with its date. The sprint row stays `review` until then.
+- **Live probe, D2 satisfied (2026-10-07T00:40:30Z, owner-run).** `node scripts/probe-deep-links.mjs https://ujsolon.github.io/predictgame7/` ran against the deployed `bac0e3f` build, bundle `index-DVoJqY8d.js` (`gh-pages` `d6e321a`, 2026-10-07 08:39 +0800). Result: **GREEN**, every row `ok`.
+  - `404.html` served and byte-identical to the shell (468 bytes).
+  - Cold GETs on `/predict`, `/historical`, `/insights`, `/maths` and both `/series/<id>` URLs return the SPA shell with **HTTP 404**, as recorded in deferred-work B14, and each renders its route.
+  - The share arrival lands on `/predict?series=f16779ed-…&method=elo` with PHI vs BOS and Elo Rating selected, and nothing runs (D1).
+  - Unknown and malformed ids get the 404 headline, title and focus; the line is 7.00:1 and the Historical link is 44px tall with a focus ring.
+  - The release record (0.2.8 bump + CHANGELOG) was written after the deploy, which the owner ran from `bac0e3f`.
 
 ## Spec Change Log
 
