@@ -14,6 +14,7 @@
  *   `null`, which the routes render as the 404.
  */
 import { deriveSeriesPhase, type SeriesPhase } from '@/lib/series-phase';
+import { shouldSwapForNeutralOrder } from '@/lib/spoiler-neutral';
 import type { Series, Team } from '@/types/types';
 
 export interface GameView {
@@ -89,6 +90,28 @@ export function toSeriesView(series: Series): SeriesView | null {
     games,
     winner,
     loser,
+  };
+}
+
+/**
+ * The same view with the two teams in spoiler-neutral order (owner decision
+ * 2026-10-07, `src/lib/spoiler-neutral.ts`): stored order puts the eventual
+ * winner first in 177/178 archived rows, so a winner-free surface must not
+ * use it. Scores and per-game winners swap with the teams; `winner`/`loser`
+ * are untouched (the preview never renders them).
+ */
+export function spoilerNeutralView(view: SeriesView): SeriesView {
+  if (!shouldSwapForNeutralOrder(view.teamA, view.teamB)) return view;
+  return {
+    ...view,
+    teamA: view.teamB,
+    teamB: view.teamA,
+    games: view.games.map((g) => ({
+      number: g.number,
+      scoreA: g.scoreB,
+      scoreB: g.scoreA,
+      winner: g.winner === 'a' ? 'b' : g.winner === 'b' ? 'a' : null,
+    })),
   };
 }
 

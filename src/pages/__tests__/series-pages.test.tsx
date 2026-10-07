@@ -249,19 +249,19 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
 describe('/series/:id — pending series', () => {
   it('renders the preview with no reveal; its /result is the 404', async () => {
     renderApp(`/series/${PENDING_ID}`);
-    await headline('Thunder and Spurs stand three games apiece');
+    await headline('Spurs and Thunder stand three games apiece');
     expect(gameRows()).toHaveLength(6);
     expect(text()).not.toContain('See how the series ended');
     expect(text()).not.toContain('Spoilers');
     expect(anchors().filter((a) => a.getAttribute('href')?.includes('method='))).toHaveLength(4);
     await waitFor(() =>
-      expect(document.title).toBe('Oklahoma City Thunder vs San Antonio Spurs — Game 7, 2026 Western Conference Finals · PredictGame7')
+      expect(document.title).toBe('San Antonio Spurs vs Oklahoma City Thunder — Game 7, 2026 Western Conference Finals · PredictGame7')
     );
   });
 
   it('a pending non-flagship series renders the preview with no reveal; its /result is the 404 with no request', async () => {
     renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}`);
-    await headline('Celtics and Cavaliers stand three games apiece');
+    await headline('Cavaliers and Celtics stand three games apiece');
     expect(gameRows()).toHaveLength(6);
     expect(text()).not.toContain('See how the series ended');
     expect(db.from).toHaveBeenCalledTimes(1);

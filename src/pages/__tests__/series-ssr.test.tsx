@@ -48,7 +48,7 @@ describe('series pages render without a browser (SSR)', () => {
 
   it('pending preview renders without a reveal', () => {
     const { html } = ssr('/series/x', <SeriesPreview series={pending2026} />);
-    expect(html).toContain('Thunder and Spurs stand three games apiece');
+    expect(html).toContain('Spurs and Thunder stand three games apiece');
     expect(html).not.toContain('See how the series ended');
   });
 

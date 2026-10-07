@@ -16,6 +16,7 @@ import {
   resultHref,
   seriesEyebrow,
   teamWord,
+  spoilerNeutralView,
   toSeriesView,
 } from './series-view';
 
@@ -31,7 +32,9 @@ const METHOD_SLUGS = Object.keys(METHOD_LABELS) as MethodSlug[];
  * the document title is winner-free.
  */
 export default function SeriesPreview({ series }: { series: Series }) {
-  const view = toSeriesView(series);
+  // Winner-free surface: never the stored order, which names the winner first (owner decision 2026-10-07).
+  const stored = toSeriesView(series);
+  const view = stored && spoilerNeutralView(stored);
   if (!view) return <SeriesNotFound headingLevel="h1" />;
 
   // Only an archived flagship has a result page to reveal; a pending series has none.

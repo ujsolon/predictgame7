@@ -141,6 +141,11 @@ context:
 - **Orchestrator re-check (2026-10-07):** `npm run gate` exit 0 on the combined tree: 32 files / 655 tests, including a parallel session's in-flight 4.2 edits.
 - **Deferred, not yet in `deferred-work.md`:** the triage log's two `defer` rows, E14 (team order leaks the winner: owner decision) and B10 (4.8 must not serialise the Game 7 row into preview HTML). They are appended to `deferred-work.md` once the parallel 4.2 session commits its pending edits to that file, so the two sessions' changes are not mixed.
 
+- **Owner decision 2026-10-07, review row E14, option A: spoiler-neutral team order.**
+  - Stored order names the eventual winner first in 177/178 archived rows. The preview's headline, title, description and game rows therefore use `spoilerNeutralView()`, which orders the teams alphabetically by nickname, then full name, then id (`src/lib/spoiler-neutral.ts`). Outcome pages keep the stored order.
+  - Tests: `src/lib/__tests__/spoiler-neutral.test.ts`, plus updated headlines ("Spurs and Thunder", "Cavaliers and Celtics") and the flipped title.
+  - **The OG card half (Story 4.2's `scripts/og/render.ts`) is pending** until the parallel 4.2 review session commits its edits to that file. The card must adopt the same `neutralPair()`.
+
 ## Spec Change Log
 
 ## Review Triage Log
