@@ -4,14 +4,17 @@
 
 ## Goal
 
-This epic turns a completed prediction into something people pass around, and it makes the archive crawlable before the Apr–Jun 2027 Traffic Gate window. When someone shares a copied site link, it unfurls with a series-specific card and opens a working page. Every archived series gets a static page that search engines can index. Five flagship series also carry editorial write-ups and video, split into a spoiler-free preview page and a separate result page. Share arrivals become countable for the gate's share-link metric. The analytics port went first, so every new surface is instrumented from its first deploy. Epic 4 runs before Epic 3. Stories 4.0 and 4.1 are done. The deadline is a calendar one: the whole epic must be deployed at least 6–8 weeks before Apr 2027, so social caches warm and crawlers index the pages before the playoffs.
+Make a completed prediction a circulating artifact and the Game 7 archive a crawlable SEO asset. Shared links unfurl as series-specific OG cards and land on a working page. Every archived series gets a prerendered static page, with spoiler-free preview/result pairs for the five flagship series and any Active series. Arrivals from shares are attributable (SM-3). All of this is instrumented through a single analytics port. The epic is calendar-critical: it must be **deployed 6–8 weeks before the Apr 1, 2027 Traffic Gate window (about Feb 4–18, 2027)**, so social caches warm and crawlers index before playoff traffic arrives. Epic 4 runs before Epic 3.
 
 ## Stories
 
-- Story 4.0: Analytics isolation layer (AD-1 port) — done
-- Story 4.1: Series deep-links + 404 SPA fallback — done
+In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.2.9 follows 4.8, because 4.8's live checks need a deploy.
+
+- Story 4.0: Analytics isolation layer (AD-1 port)
+- Story 4.1: Series deep-links + 404 SPA fallback
 - Story 4.2: OG card rendering — build-time card renderer
-- Story 4.3: Prerendered series pages (SEO)
+- Story 4.3: Series pages — preview, result and full record (client-side routes)
+- Story 4.8: Prerendered series pages, OG meta, route shells and sitemap
 - Story 4.4: Share button + attribution
 - Story 4.5: Series editorial content model (FR-13 pilot)
 - Story 4.6: Flagship five content load
@@ -19,122 +22,107 @@ This epic turns a completed prediction into something people pass around, and it
 
 ## Requirements & Constraints
 
-- **Share links** reproduce the series or matchup and the Method with zero re-entry. They carry `utm_source=share`, which must reach PostHog on the landing `$pageview`. Any client redirect must preserve `utm_source` and every other query param except `series`/`method`.
-- **Unfurl scope (owner-accepted narrowing):**
-  - An archive-series link previews with that series' own card.
-  - A custom-matchup link previews with the generic fallback card and meta. Static hosting cannot vary meta by query string.
-  - Cards are per series, not per method.
-- **Spoiler discipline:**
-  - The Game 7 outcome never appears in a preview page's DOM or meta, or on any OG card.
-  - Pre-reveal copy never hints at the outcome in the past tense.
-  - Cards and pages never show prediction outputs.
-- **Prerendered pages** must:
-  - carry their full content with JS disabled
-  - each have a distinct title and meta
-  - fail the build non-zero if any expected page is missing or empty
-- **Card build step** must also fail non-zero on any card it cannot render, including an undecodable logo. A deploy never ships a blank chip or a missing card.
-- **FR-13 pilot:**
-  - The flagships are 2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers and 2026 Thunder–Spurs. Every other series stays bare.
-  - Video is external YouTube embeds only, with no media hosting and no Supabase Storage.
-- **Analytics:** the 10 existing event names stay verbatim. Share emits through `@/lib/analytics`, and there is no second tracker.
-- **Accessibility and layout:** WCAG 2.1 AA, responsive on desktop and mobile, and a hit area of at least 44×44px on every new interactive target.
-- **Copy:** never use "oracle", "guarantee" or "lock", or any accuracy claim, in microcopy, OG meta or CTAs.
+- **Share links** reproduce the series, Method and result state with zero re-entry when opened in a fresh browser. They carry `utm_source=share`, and that parameter must survive every client redirect so it reaches the landing `$pageview`.
+- **Custom-matchup shares** unfurl with the generic fallback card. This narrowing was accepted by the owner.
+- **Spoiler discipline.** A preview page (flagship or pending) must never carry the Game 7 outcome in its DOM, `<title>`, meta or OG card. The historic OG card never shows the series score or winner, and it never shows prediction outputs.
+- **No baked predictions.** Prerendered pages hold series facts only. Method links are deep-links (`/predict?series=<id>&method=<slug>`), never computed results.
+- **Fail loud at build time.** A missing or empty prerendered page, an unrenderable card, or an undecodable logo fails the build non-zero. No deploy may ship a partial result.
+- **Flagship five** (pinned by the owner): 2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs.
+  - Until the `is_featured` flag lands, the flagships come from a pinned id list.
+  - Every other series stays bare. It renders with no empty sections or placeholders.
+- **Video** is YouTube external embeds only. There is no media hosting and no Supabase Storage.
+- **Accessibility and layout.** Every new surface meets WCAG 2.1 AA and is responsive on mobile and desktop:
+  - hit areas of at least 44×44px;
+  - visible focus;
+  - an accessible name on the Share button ("Share this series");
+  - iframe titles on video embeds.
+- **Voice.** Never use "oracle", "guarantee", "lock" or accuracy-claiming framing in microcopy, meta or CTAs.
+- **Analytics.** The 10 existing event names are preserved verbatim. The one deliberate addition is the archive reset's `historical_filter_applied {filter_type:'reset'}`. Story 4.0 recorded the measurement-continuity before leg; Story 4.7 records the after leg and the side-by-side comparison.
+- **Live verification is an acceptance criterion, not a follow-up.** Record each check with its date:
+  - a cold deep-link GET;
+  - a platform OG debugger check on a series URL;
+  - a JS-disabled fetch of the prerendered pages;
+  - a sitemap 200 spot-check.
 
 ## Technical Decisions
 
-- **Hosting is static GitHub Pages only.** OG meta must come from prerendered HTML.
-  - Supabase rewrites `text/html` to `text/plain`, so no Edge Function can serve meta.
-  - The `share-og` Edge Function is retired, and Epic 4 adds no Supabase function. Nothing deploys outside `npm run deploy`.
-- **URL shapes:**
-  - `/series/<id>?method=<slug>` client-redirects to `/predict?series=<id>&method=<slug>`. This shipped in 4.1.
-  - Custom matchups use `/predict?custom=<url-safe base64>`, following the `SharePayload` schema in `supabase/functions/_shared/contract.ts`. The encoder and the decoder both derive from that one schema.
-  - `/series/<id>` and `/series/<id>/result` are real router routes that the SPA also serves.
-  - `dist/404.html` is the SPA fallback. It shipped in 4.1.
-- **Card renderer (4.2):**
-  - It is a Node step in the `predeploy` chain, using satori, `@resvg/resvg-js` and `sharp` as devDependencies. It must be TypeScript under the gate (type-checked and linted), not an unchecked `.mjs`.
-  - It reads series with the anon key and logos from `public/` on disk.
-  - It writes `dist/og/<series-id>.png` for every archived series, plus `dist/og/fallback.png`. Each card is 1200×630.
-- **Measured constraints from the spike:**
-  - 10 of 59 logos (8 `.webp`, BLB `.gif` with a space in the filename, KCK `.avif`) render as blank chips with no error. Normalise every logo to PNG with `sharp` at render time, and leave the site files and `teams.logo_url` unchanged.
-  - 15 of 17 stored round names overflow one line. Put them in a fixed ≈296px center slot that wraps; they all fit in at most 3 lines, because the longest word is 245px. Never abbreviate them.
-  - The tests must render "Western Division Semifinals", "Western Conference Finals" and one converted logo, then assert the PNG dimensions and that the logo region is not blank.
-  - The spike measured about 258 ms per card, about 46 s per full build and about 10 MB total. Record the actual render time and output size, with the date.
-  - The fonts are Montserrat and JetBrains Mono. All round names are ASCII, so latin subsets suffice.
-- **Prerender (4.3):**
-  - It runs in `predeploy`, with the route list taken from the DB.
-  - The archive set is `winner_team_id IS NOT NULL`. Never derive it from `status`, dates or `league`.
-  - All 178 series get pages, the 18 ABA series included. Compute the non-flagship count as all series minus the flagships; don't hard-code 172.
-  - Non-flagship series get one full-record page with outcome-inclusive meta.
-  - Flagships, and any Active series inseason, get two pages: a winner-free preview at `/series/<id>` and a full record at `/series/<id>/result`.
-  - Every page carries:
-    - `og:title`
-    - `og:description`
-    - `og:url`
-    - `twitter:card=summary_large_image`
-    - an absolute `og:image` pointing at `https://ujsolon.github.io/predictgame7/og/<id>.png`
-  - Static shells with generic meta and `og/fallback.png`, answering HTTP 200, cover `/predict`, `/historical`, `/insights` and `/maths`.
-  - Pages hold series facts only, with no baked predictions. They hydrate the same components; the app is not forked.
-  - New Active series get pages through pipeline data and then the next build.
-- **Editorial model (4.5):**
-  - Each series has a before part and a resolution part. Each part has a headline, a markdown write-up and images. The model also holds YouTube embed URLs with title and credit, and an `is_featured` flag.
-  - You choose the table or column shape at build time.
-  - Writes go through an owner script or SQL only. The client stays read-only.
-  - Update `docs/CURRENT_DATA_MODEL.md` in the same commit as the schema change. Confirm the migration with the owner first.
-- **4.4 inherits deferred-work D3, the `PredictPage` request-path rebuild:**
-  - add a typed `Partial<PredictionInput>` form type and payload builders that retire the `any` casts
-  - move the method descriptions into a `Record<MethodSlug,string>` in `src/lib/method-display.ts`
-  - delete or wire the dead `invalid-input` arm, and annotate Story 1.3's Spec Change Log to match
-  - collapse the duplicate validation into one request path
-- **Conventions:**
+- **Analytics port (AD-1).** `posthog-js` / `@posthog/react` may be imported only inside `src/lib/analytics/`. Feature code calls `track` / `identify` / `resetUser` / `captureError` from `@/lib/analytics`. The owner's personal PostHog key stays in owner-local tooling only and is never bundled.
+- **Share links (AD-6).**
+  - `/series/<id>?method=<slug>` client-redirects to `/predict?series=<id>&method=<slug>` and carries any other query params through.
+  - `/predict?custom=<url-safe base64>` follows the `SharePayload` schema in `supabase/functions/_shared/contract.ts` (AD-2), which is the single source for both the encoder and the decoder.
+  - The build emits `404.html` as the SPA fallback.
+- **OG meta never comes from an Edge Function.** Supabase rewrites `text/html` responses to `text/plain`. The `share-og` function is retired, and **no Edge Function is added in this epic**.
+- **OG cards** are static 1200×630 PNGs rendered at build time in the `predeploy` chain:
+  - one `dist/og/<series-id>.png` per archived series, plus `dist/og/fallback.png`;
+  - the step uses satori + `@resvg/resvg-js` + `sharp` as devDependencies and must be type-checked and linted by the gate (not an unchecked `.mjs`);
+  - `sharp` normalises every logo to PNG, because `.webp`, `.gif` and `.avif` logos otherwise render blank;
+  - round names keep their stored wording and wrap in a center slot of about 296px;
+  - cards are per series, not per method;
+  - a full build takes about 46 s, and the output is about 10 MB.
+- **Prerender (AD-7).**
+  - The route list comes from the database at build time through the derived phase (AD-4): `winner_team_id IS NULL` means pending, `IS NOT NULL` means archive. Never read `series.status`, `league` or dates.
+  - Derive the route set from the live archive (measured at 178 rows) plus the flagship list. Do not reuse the "172 + 5" arithmetic. All 178 series are included, the 18 ABA series among them.
+  - A non-flagship series gets one page at `dist/series/<id>/index.html`.
+  - A flagship or Active series gets a pair: `/series/<id>/index.html` (preview) and `/series/<id>/result/index.html`.
+  - The same routes and components serve the SPA, with hydration only and no fork of the app. Page components must render without `window` / `document` access.
+  - The prerender also writes static shells for `/predict`, `/historical`, `/insights` and `/maths`. They carry generic meta, use `og:image` = `og/fallback.png` and answer HTTP 200.
+  - It also writes `dist/sitemap.xml`, with absolute URLs under `https://ujsolon.github.io/predictgame7/`, and a `robots.txt` that points to the sitemap.
+- **OG tags.** Every emitted page carries `og:title` / `og:description` / `og:url`, `twitter:card=summary_large_image`, and an absolute `og:image`.
+- **Data boundary (AD-8).**
+  - The client reads only through `src/db/supabase.ts` (anon key).
+  - The build steps read series data with the anon key.
+  - Editorial content is written only by owner-side scripts or SQL.
+  - A schema change updates `docs/CURRENT_DATA_MODEL.md` in the same commit.
+- **Frontend conventions (AD-9).**
   - Use the `@/` alias.
-  - Use sonner for one-off notices and the retry panel for regions a user can re-attempt.
-  - Use RHF + zod for new forms.
-  - Never import `AuthContext`, `RouteGuard` or `SamplePage`.
+  - A re-attemptable fetch failure renders the in-place retry panel, not a toast. Sonner is used for one-off notices.
+  - New forms use react-hook-form + zod.
+- **Deploys.** Everything ships through `npm run deploy` (gh-pages). Nothing is deployed outside it, and deploys run only when the owner asks for a release.
 
 ## UX & Interaction Patterns
 
-- **OG card:**
-  - Ink field, with the lower band holding the wordmark and "Where data meets playoff drama".
-  - Each team block is the logo on a white chip (`#FFFFFF`, 28px radius) plus the abbreviation in 64px mono.
-  - The center slot reads "{YEAR}" over the round name over "GAME 7" (20px, `#8A8A8A`).
-  - Essential content stays inside the 1080×540 safe zone.
-  - There are two variants: historic and fallback. The fallback card is the wordmark and tagline only.
-  - The card is decorative to screen readers.
-- **OG meta copy:**
-  - Historic title: "{TeamA} vs {TeamB} — Game 7, {Year} {Round}".
-  - Fallback title: "PredictGame7 — Where data meets playoff drama".
-  - Preview pages use winner-free titles. Result pages and non-flagship pages use outcome-inclusive titles.
-- **Preview page:**
-  - Section order: hero → score strip for Games 1–6 only → before write-up → method deep-links → Predict CTA → reveal link "See how the series ended →".
-  - The reveal is a text link, not a button.
-  - On arriving at the result page, focus moves to `<h1 tabindex="-1">` and `<title>` updates.
-- **Result page:** final score, the Game 7 box, all seven games, the resolution write-up, video and a "Model it yourself" CTA. It has no per-method links.
-- **Bare series** render the hero, the score strip and the CTA only, with no empty placeholders.
-- **Video:**
-  - A prerendered facade whose labeled play button is the only control.
-  - On activation, the iframe (titled "{title} — via {creator}") replaces the facade and receives focus.
-  - The caption reads "Highlights via [Creator] ↗".
-- **Share:**
-  - One affordance: `navigator.share` where available, otherwise the clipboard.
-  - On copy, a toast reads "Link copied." (2s). When the clipboard is blocked, it reads "Couldn't copy — long-press the address bar to share."
-  - The accessible name is "Share this series".
-  - It is an icon-only ghost button in the series header and an outline button labeled "Share" in Predict's detailed view.
-- **Error states:**
-  - **Unknown id, or `/result` for a non-flagship:** a 404 whose `<h1>` reads "This series doesn't exist.", followed by one line and a link to Historical. The title updates and focus moves to the headline.
-  - **Fetch failure:** a retry panel replaces the content region, and the hero frame stays.
-- **Home highlight (4.5):** the pending Game 7 highlight is a div on Home, not a route. It links to the series preview page and into Predict, and it never reads `status`.
+- **Non-flagship full-record page** (`/series/<id>`):
+  - hero with an eyebrow (year · round) and a headline in team words;
+  - a mono score strip with all seven games and a Game 7 box;
+  - the winner;
+  - a Predict CTA with the series preloaded;
+  - no reveal control.
+- **Preview page** (flagship or pending), in this order:
+  - hero;
+  - score strip with games 1–6 only;
+  - the before write-up;
+  - four method links;
+  - Predict CTA;
+  - the reveal text link **"See how the series ended →"**, below the fold, styled as a link in ink and not as a button.
+
+  Copy is tension-forward and in the present tense ("Game 7 stands.").
+- **Result page** (`/series/<id>/result`):
+  - hero with the final score and Game 7 box;
+  - all seven games;
+  - the resolution write-up and video;
+  - a generic "Model it yourself" CTA, with no per-method links.
+
+  On arrival, focus moves to the `<h1>` (`tabindex="-1"`) and the `<title>` updates. A result URL for a non-flagship, pending or unknown id gets the 404 treatment.
+- **Titles and meta.**
+  - Each page has a distinct document title. Preview titles are winner-free; result and non-flagship titles include the outcome.
+  - OG title format: "{TeamA} vs {TeamB} — Game 7, {Year} {Round}".
+  - The fallback title is "PredictGame7 — Where data meets playoff drama".
+- **404 treatment.** The heading reads "This series doesn't exist.", followed by one line and a link to the Historical archive. Focus moves to the heading.
+- **Share.**
+  - A single affordance: `navigator.share` where available, otherwise the clipboard.
+  - On success the toast reads "Link copied." for 2s, with no action.
+  - If the clipboard is blocked, the toast reads "Couldn't copy — long-press the address bar to share."
+  - The button is icon-only (ghost) in the series header and labelled with an outline in the Predict detailed view.
+- **Video.** A 16:9 facade with a labelled play button, which is its only activation control. The iframe replaces the facade and takes focus. The facade and its creator credit are prerendered.
+- **Token floor.** Small text uses `#767676`, never `#808080`. Other tokens: `destructive-text #B91C1C`, `on-muted #595959`. The UI is light mode only. Motion sits behind `prefers-reduced-motion`.
 
 ## Cross-Story Dependencies
 
-- **4.0 (done)** carries all Epic 4 events. **4.1 (done)** provides the 404 fallback and the `/series` redirect that 4.3 and 4.4 sit on.
-- **4.2 → 4.3:** the pages' `og:image` points at the cards the build renders. Both steps run in the same `predeploy` chain.
-- **4.5 → 4.3 / 4.6:** the prerender picks up editorial content automatically, and `is_featured` drives the page pairing. 4.6 loads the content into 4.5's deployed model, and the result must be verified live before the pre-window cutoff.
-- **4.7** needs 4.0–4.6 deployed. It checks:
-  - a cold deep-link GET
-  - a platform OG debugger on a site series URL
-  - JS-disabled fetches of a bare page and a flagship preview/result pair
-  - the share round-trip, with the SM-3 event observed live
-  - port continuity against `analytics-continuity-before-4-0.md`
-  - the deploy date against the 6–8 week target
-- **Epic 3 runs after this epic.** Story 3.4's SM-3 query reads the attribution that 4.4 ships.
-- **Epic 5** verifies the AA and responsive behavior of these surfaces. Structural failures it finds are filed against Epic 4.
+- **4.0 is done.** Every Epic 4 event emits through its port. Story 3.4's SM-3 query, which runs after this epic, reads 4.4's attribution data.
+- **4.1 is done.** It shipped the 404 fallback and the `/series/<id>?method=` redirect. 4.3 replaces 4.1's interim bare-id redirect with real routes. 4.4 makes the redirect carry `utm_source`.
+- **4.2 is in review.** Its card PNGs are what 4.8's `og:image` references.
+- **4.3 → 4.8.** 4.8 prerenders 4.3's components, so 4.3 must keep page render free of browser access.
+- **4.4** builds Share on top of a rebuild of the `PredictPage` request path (deferred work D3): a typed form type and payload builders, a `Record<MethodSlug, string>` of method descriptions, and one validation and failure vocabulary.
+- **4.5** adds the content schema and `is_featured`, which replaces 4.3's pinned list. Content appears in the prerendered HTML automatically. 4.5 also owns the Home pending-Game-7 highlight: a div, not a route, linking to `/series/<id>`.
+- **4.6** depends on 4.5 being deployed.
+- **4.7** depends on 4.0–4.6 and 4.8 being deployed. Its sitemap spot-check samples 4.8's `sitemap.xml`.

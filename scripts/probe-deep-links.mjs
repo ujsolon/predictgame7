@@ -24,6 +24,16 @@
 //      (owner decision D1: nothing runs until Generate).
 //   4. `/series/<unknown uuid>` and `/series/abc` render the 404 treatment:
 //      the `<h1>`, the document title, focus on the headline, the Historical link.
+//   5. (Story 4.3) The five pinned flagship ids exist over anon REST, archived
+//      (winner set, games 1–7), with the expected team abbreviations.
+//   6. (Story 4.3) The 2016 Finals flagship preview at `/series/<id>`: games
+//      1–6 only, and `document.body.innerText` carries no Game 7 score (read
+//      over anon REST) and no "win Game 7"; a winner-free title. A real mouse
+//      click on "See how the series ended →" lands on `/series/<id>/result`,
+//      whose `<h1>` is `document.activeElement`, with the outcome title.
+//   7. (Story 4.3) An ABA archive series renders the single full-record page:
+//      "ABA" in the eyebrow, seven games, no home/away/venue wording.
+//      Its `/result` (non-flagship) renders the 404.
 //
 // PostHog traffic is answered locally by `openBrowserSession`, so no event from
 // this probe reaches the production project.
@@ -150,7 +160,9 @@ const READ_PRELOAD = `${WAIT}(() => {
 const READ_NOT_FOUND = `${WAIT}(() => {
   const n = ${norm};
   const h1 = document.querySelector("[data-series-not-found] h1");
-  if (!h1) return null;
+  // react-helmet-async writes the title a frame after the commit, so reading it
+  // in the same tick as the headline raced (measured: "" on one run, Story 4.3).
+  if (!h1 || !document.title) return null;
   const block = h1.closest("[data-series-not-found]");
   const link = block.querySelector("a");
   const linkBox = link ? link.getBoundingClientRect() : null;
@@ -168,6 +180,60 @@ const READ_NOT_FOUND = `${WAIT}(() => {
   };
 }, "the 404 headline", 30000)`;
 
+/** Story 4.3: the pinned 2016 Finals flagship (`src/lib/flagship-series.ts`). */
+const FLAGSHIP_2016 = "06715a85-ec33-46a4-8383-d058055eefe6";
+
+/** One row over anon REST, same embed syntax as `src/lib/series-query.ts`. Needs .env. */
+/** Rows over anon REST, same embed syntax as `src/lib/series-query.ts`. Needs .env. */
+async function restRows(filter, select) {
+  const env = readEnv();
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY) throw new Error("Story 4.3 rows need VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in .env");
+  const res = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/series?select=${select}&${filter}`, {
+    headers: { apikey: env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${env.VITE_SUPABASE_ANON_KEY}` },
+  });
+  if (!res.ok) throw new Error(`series lookup failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+async function restSeries(filter, select) {
+  const rows = await restRows(filter, select);
+  if (!rows.length) throw new Error(`no series row for ${filter}`);
+  return rows[0];
+}
+
+/** Story 4.3: every pinned flagship (`src/lib/flagship-series.ts`) with its expected teams, order-agnostic. */
+const FLAGSHIPS = [
+  ["dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a", 2013, ["MIA", "SAS"]],
+  [FLAGSHIP_2016, 2016, ["CLE", "GSW"]],
+  ["29638c4e-261a-4d09-81aa-5740f76175f5", 2019, ["TOR", "PHI"]],
+  ["626257bc-1678-4c88-84a6-37e0a6cdb49c", 2025, ["OKC", "IND"]],
+  ["6ecb170c-e781-47f8-b7ee-881ba719d6d5", 2026, ["OKC", "SAS"]],
+];
+
+/**
+ * Reads the series page whose `<h1>` matches `h1Pattern`, once `document.title`
+ * matches `titlePattern` — react-helmet-async writes the title a frame after the
+ * commit, and after a client navigation the previous page's title is still set.
+ * `mainText` is the page's own content (`<main>`), without the nav chrome.
+ */
+const READ_SERIES_PAGE = (h1Pattern, titlePattern = "/./") => `${WAIT}(() => {
+  const n = ${norm};
+  // The app shell carries its own wordmark <h1>s, so match the page's by text.
+  const h1 = Array.from(document.querySelectorAll("h1")).find((h) => ${h1Pattern}.test(n(h.textContent)));
+  const main = h1 && h1.closest("main");
+  if (!h1 || !main || !${titlePattern}.test(document.title)) return null;
+  return {
+    pathname: location.pathname,
+    h1: n(h1.textContent),
+    title: document.title,
+    focused: document.activeElement === h1,
+    innerText: document.body.innerText,
+    mainText: main.innerText,
+    games: Array.from(main.querySelectorAll("ol > li")).map((li) => n(li.textContent)),
+    eyebrow: n(h1.previousElementSibling && h1.previousElementSibling.textContent),
+  };
+}, "a series page headline matching ${h1Pattern}", 30000)`;
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help || !opts.base) {
@@ -177,7 +243,7 @@ async function main() {
   }
   const base = opts.base.endsWith("/") ? opts.base : `${opts.base}/`;
   const L = createLedger();
-  console.log(`Story 4.1 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
+  console.log(`Story 4.1/4.3 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
 
   // Row 1: the fallback file itself.
   const shellRes = await fetch(base).catch((e) => ({ ok: false, status: e.message }));
@@ -190,7 +256,13 @@ async function main() {
   // Row 2 (HTTP half): every cold GET answers with the SPA shell.
   const known = await readKnownSeries(opts.series);
   const unknownId = randomUUID();
-  const coldPaths = [...ROUTES.map((r) => r.path), `series/${known.id}?method=elo`, `series/${unknownId}`];
+  const coldPaths = [
+    ...ROUTES.map((r) => r.path),
+    `series/${known.id}?method=elo`,
+    `series/${unknownId}`,
+    `series/${FLAGSHIP_2016}`,
+    `series/${FLAGSHIP_2016}/result`,
+  ];
   for (const path of coldPaths) {
     const res = await fetch(`${base}${path}`);
     const body = Buffer.from(await res.arrayBuffer());
@@ -255,6 +327,86 @@ async function main() {
         !nf.error && nf.linkHref === `${new URL(base).pathname}historical` && nf.linkSize && nf.linkSize[1] >= 44,
         nf.error ?? `${nf.linkHref} ${JSON.stringify(nf.linkSize)}`
       );
+    }
+
+    // Row 5 (Story 4.3): the five pinned flagship ids exist live, archived, with the expected teams.
+    const flagRows = await restRows(
+      `id=in.(${FLAGSHIPS.map(([id]) => id).join(",")})`,
+      "id,year,winner_team_id,team_a:team_a_id(abbreviation),team_b:team_b_id(abbreviation),series_game_scores(game_number)"
+    ).catch((e) => ({ error: e.message }));
+    for (const [id, year, codes] of FLAGSHIPS) {
+      const row = Array.isArray(flagRows) ? flagRows.find((r) => r.id === id) : null;
+      const got = row ? [row.team_a?.abbreviation, row.team_b?.abbreviation] : [];
+      const games = row ? new Set((row.series_game_scores || []).map((g) => g.game_number)) : new Set();
+      const archived = !!row && row.winner_team_id != null && games.size === 7 && [1, 2, 3, 4, 5, 6, 7].every((g) => games.has(g));
+      L.check(
+        `flagship ${year} ${codes.join("–")} (${id}) exists, is archived and names the expected teams`,
+        !!row && row.year === year && archived && [...got].sort().join() === [...codes].sort().join(),
+        flagRows.error ?? (row ? `${row.year} ${got.join("–")} winner=${row.winner_team_id} games=${games.size}` : "no row")
+      );
+    }
+
+    // Row 6 (Story 4.3): the flagship preview is spoiler-free, and the reveal lands focus on the result <h1>.
+    let g7Scores = null;
+    try {
+      const flagship = await restSeries(`id=eq.${FLAGSHIP_2016}`, "id,series_game_scores(game_number,home_score,away_score)");
+      const g7 = (flagship.series_game_scores || []).find((g) => g.game_number === 7);
+      if (g7) g7Scores = [`${g7.home_score}–${g7.away_score}`, `${g7.away_score}–${g7.home_score}`];
+      L.check("the 2016 flagship's Game 7 row is readable over REST", !!g7Scores, g7Scores ? g7Scores[0] : "no Game 7 row");
+    } catch (e) {
+      L.check("the 2016 flagship's Game 7 row is readable over REST", false, e.message);
+    }
+    await S.navigate(`${base}series/${FLAGSHIP_2016}`);
+    const pv = await S.evaluate(READ_SERIES_PAGE("/stand three games apiece$/")).catch((e) => ({ error: e.message }));
+    console.log(`     flagship preview: ${pv.error ?? JSON.stringify({ h1: pv.h1, title: pv.title, games: pv.games })}`);
+    L.check("flagship preview renders games 1–6 only", !pv.error && pv.games.length === 6 && !pv.games.some((g) => g.startsWith("Game 7")), pv.error ?? `${pv.games.length} rows`);
+    L.check(
+      `flagship preview innerText carries no Game 7 score${g7Scores ? ` (${g7Scores[0]})` : ""} and no outcome copy`,
+      !pv.error && !!g7Scores && !g7Scores.some((x) => pv.innerText.includes(x)) && !/win Game 7|Final series|4–3/i.test(pv.innerText),
+      pv.error ?? (g7Scores ? "" : "no Game 7 score to check against")
+    );
+    L.check("flagship preview title is winner-free", !pv.error && / — Game 7, /.test(pv.title) && !/ win /.test(pv.title), pv.error ?? pv.title);
+    // A real pointer click on the reveal link (CDP mouse events, not element.click()).
+    const box = await S.evaluate(`(() => {
+      const a = Array.from(document.querySelectorAll("a")).find((el) => /See how the series ended/.test(el.textContent || ""));
+      if (!a) return null;
+      a.scrollIntoView({ block: "center" });
+      const r = a.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height, href: a.getAttribute("href") };
+    })()`).catch((e) => ({ error: e.message }));
+    const boxOk = !!box && !box.error && box.h >= 44 && typeof box.href === "string" && box.href.endsWith(`/series/${FLAGSHIP_2016}/result`);
+    L.check("the reveal link is present, >=44px tall, and points at /result", boxOk, JSON.stringify(box));
+    if (box && !box.error) {
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await S.cdp.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+      }
+    }
+    const rs = await S.evaluate(READ_SERIES_PAGE("/win Game 7$/", "/ win Game 7 · PredictGame7$/")).catch((e) => ({ error: e.message }));
+    console.log(`     after reveal: ${rs.error ?? JSON.stringify({ pathname: rs.pathname, h1: rs.h1, title: rs.title, focused: rs.focused })}`);
+    L.check("the reveal lands on /series/<id>/result", !rs.error && rs.pathname.endsWith(`/series/${FLAGSHIP_2016}/result`), rs.error ?? rs.pathname);
+    L.check("document.activeElement is the result <h1>", !rs.error && rs.focused);
+    L.check(
+      "the result shows all seven games, Game 7 included",
+      !rs.error && !!g7Scores && rs.games.length === 7 && g7Scores.some((x) => rs.games[6].includes(x)),
+      rs.error ?? rs.games[6]
+    );
+    L.check("the result title carries the outcome", !rs.error && / win Game 7 · PredictGame7$/.test(rs.title), rs.error ?? rs.title);
+
+    // Row 7 (Story 4.3): an ABA full-record page, then its /result (non-flagship) is the 404.
+    const aba = await restSeries("league=eq.ABA&winner_team_id=not.is.null&order=year.asc&limit=1", "id,year,round").catch((e) => ({ error: e.message }));
+    if (aba.error) {
+      L.check("an archived ABA series is readable over REST", false, aba.error);
+    } else {
+      await S.navigate(`${base}series/${aba.id}`);
+      const ab = await S.evaluate(READ_SERIES_PAGE("/win Game 7$/")).catch((e) => ({ error: e.message }));
+      console.log(`     ABA ${aba.id} (${aba.year} ${aba.round}): ${ab.error ?? JSON.stringify({ eyebrow: ab.eyebrow, h1: ab.h1, title: ab.title })}`);
+      L.check("ABA full record: eyebrow carries ABA", !ab.error && ab.eyebrow === `GAME 7 · ${aba.year} ABA ${aba.round}`.toUpperCase(), ab.error ?? ab.eyebrow);
+      L.check("ABA full record: seven games, no reveal", !ab.error && ab.games.length === 7 && !/See how the series ended/.test(ab.mainText));
+      L.check("ABA full record: no home/away/venue wording in the page content", !ab.error && !/\b(home|away|venue|arena)\b/i.test(ab.mainText));
+
+      await S.navigate(`${base}series/${aba.id}/result`);
+      const nr = await S.evaluate(READ_NOT_FOUND).catch((e) => ({ error: e.message }));
+      L.check("non-flagship /result renders the 404 with focus on the headline", !nr.error && nr.headline === HEADLINE && nr.focused, nr.error ?? nr.headline);
     }
   } finally {
     S.close();

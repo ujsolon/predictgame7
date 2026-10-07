@@ -4,12 +4,18 @@ import { HelmetProvider } from 'react-helmet-async';
 import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SERIES_SELECT } from '@/lib/series-query';
 import SeriesRoute from '@/pages/SeriesRoute';
 import { routes } from '@/routes';
 import { SERIES_ID } from './helpers';
+import { nonFlagship2018 } from './series-fixtures';
 
 // Story 4.1 · I/O matrix rows for `/series/:id` (every row except Cold GET,
-// which `scripts/probe-deep-links.mjs` measures against a real server).
+// which `scripts/probe-deep-links.mjs` measures against a real server). Since
+// Story 4.3 the route fetches the full `SERIES_SELECT` row and a bare id
+// renders the series page (`series-pages.test.tsx` covers the page variants);
+// the `?method=` share arrival still redirects.
+const KNOWN = { ...nonFlagship2018, id: SERIES_ID };
 const db = vi.hoisted(() => ({
   single: { data: null as unknown, error: null as unknown },
   from: vi.fn(),
@@ -25,7 +31,7 @@ vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException:
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.single = { data: { id: SERIES_ID }, error: null };
+  db.single = { data: KNOWN, error: null };
   db.eq.mockImplementation(() => ({ maybeSingle: () => Promise.resolve(db.single) }));
   db.select.mockImplementation(() => ({ eq: db.eq }));
   db.from.mockImplementation(() => ({ select: db.select }));
@@ -78,13 +84,13 @@ function byRoleText(role: 'button', expected: string, scope?: HTMLElement): HTML
   return matches[0];
 }
 
-describe('SeriesRoute (Story 4.1)', () => {
+describe('SeriesRoute (Story 4.1, as amended by Story 4.3)', () => {
   it('redirects a known id with a known method to Predict with both preloaded (matrix: share arrival)', async () => {
     renderRoute(`/series/${SERIES_ID}?method=elo`);
 
     expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}&method=elo`);
     expect(db.from).toHaveBeenCalledWith('series');
-    expect(db.select).toHaveBeenCalledWith('id');
+    expect(db.select).toHaveBeenCalledWith(SERIES_SELECT);
     expect(db.eq).toHaveBeenCalledWith('id', SERIES_ID);
     // Preloads emit nothing (D-continuity with Story 4.0).
     expect(db.capture).not.toHaveBeenCalled();
@@ -102,11 +108,13 @@ describe('SeriesRoute (Story 4.1)', () => {
     expect(db.from).toHaveBeenCalledTimes(1);
   });
 
-  it('redirects a bare known id to Predict with only the series (matrix: bare series link)', async () => {
+  it('renders the series page for a bare known id instead of redirecting (Story 4.3 replaces the 4.1 interim redirect)', async () => {
     renderRoute(`/series/${SERIES_ID}`);
 
-    expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}`);
-    expect(screen.getByTestId('predict-probe').textContent).not.toContain('method');
+    await waitFor(() => expect(document.querySelector('h1')?.textContent).toBe('Cavaliers win Game 7'));
+    expect(screen.queryByTestId('predict-probe')).toBeNull();
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.capture).not.toHaveBeenCalled();
   });
 
   it('drops an unknown method slug and still lands on the series (matrix: bad method)', async () => {
@@ -159,7 +167,7 @@ describe('SeriesRoute (Story 4.1)', () => {
     await waitFor(() => expect(db.from).toHaveBeenCalledTimes(2));
     await screen.findByText("Couldn't load this series.");
 
-    db.single = { data: { id: SERIES_ID }, error: null };
+    db.single = { data: KNOWN, error: null };
     fireEvent.click(byRoleText('button', 'Retry'));
     expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}&method=elo`);
     expect(db.from).toHaveBeenCalledTimes(3);

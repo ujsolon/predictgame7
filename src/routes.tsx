@@ -4,7 +4,19 @@ import HistoricalPage from './pages/HistoricalPage';
 import InsightsPage from './pages/InsightsPage';
 import MathsPage from './pages/MathsPage';
 import SeriesRoute from './pages/SeriesRoute';
-import type { ReactNode } from 'react';
+import SeriesResultRoute from './pages/SeriesResultRoute';
+import type { ComponentType, ReactNode } from 'react';
+import { useParams } from 'react-router-dom';
+
+/**
+ * Remounts a series route per `:id` (Story 4.3): its fetch state is local, so
+ * without the key an `/series/A` → `/series/B` navigation would paint A's page
+ * for a frame before B's fetch resets it.
+ */
+function KeyedById({ page: Page }: { page: ComponentType }) {
+  const { id = '' } = useParams();
+  return <Page key={id} />;
+}
 
 export interface RouteConfig {
   name: string;
@@ -47,11 +59,20 @@ export const routes: RouteConfig[] = [
     public: true,
   },
   {
-    // Story 4.1: the share/deep-link entry point. Not in the nav — `Layouts`
+    // Story 4.1: the share/deep-link entry point; Story 4.3: the series page
+    // (preview or full record). Not in the nav — `Layouts`
     // keeps its own list and never reads this array.
     name: 'Series',
     path: '/series/:id',
-    element: <SeriesRoute />,
+    element: <KeyedById page={SeriesRoute} />,
+    public: true,
+  },
+  {
+    // Story 4.3: a flagship's result page (the preview's reveal link). Every
+    // other id — non-flagship, pending, unknown — renders the 404 here.
+    name: 'Series result',
+    path: '/series/:id/result',
+    element: <KeyedById page={SeriesResultRoute} />,
     public: true,
   },
 ];
