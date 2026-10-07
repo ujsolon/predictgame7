@@ -2,7 +2,7 @@
 title: 'Story 4.3 — Series pages: preview, result and full record'
 type: 'feature'
 created: '2026-10-07'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'c8a7b1c974da4b7843dd06b3a332a8e431e9fdde'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -137,6 +137,9 @@ context:
 - **Eyebrow** is uppercased in the text itself (survives without CSS / in prerendered HTML); section labels stay sentence case in the DOM and are uppercased by CSS.
 - **Probe.** `scripts/probe-deep-links.mjs` gained Story 4.3 rows 5–7 (flagship preview innerText vs the live Game 7 score, a CDP mouse click on the reveal → `document.activeElement` is the result `<h1>`, an ABA full record, non-flagship `/result` 404) and two cold-GET paths. It now waits for `document.title` before reading a page: react-helmet-async writes it a frame after commit, and the 4.1 unknown-id title row read `""` once on this run. The app shell's own wordmark `<h1>`s mean the page `<h1>` is matched by text. Run 2026-10-07 against `vite preview --port 4318`: 43 ok, GREEN.
 - **Review fixes (same day).** Unshowable rows (`toSeriesView` → null) are now reported through `captureError` with the series id. Titles carry the non-NBA league (`yearRound`). Both series routes are keyed by `:id` (`KeyedById` in `routes.tsx`), so a history move from A to B never paints A. New tests: a pending non-flagship case and `isFlagship` (`src/lib/__tests__/flagship-series.test.ts`). Probe: a new row 5 checks the five pinned ids live (archived, expected teams); the ABA venue check is scoped to `<main>` with word boundaries; the result read waits for the outcome title; REST, Game 7 and reveal-href failures become ledger FAILs instead of aborting. Re-run: 49 ok, GREEN — all five flagships archived with the expected teams.
+
+- **Orchestrator re-check (2026-10-07):** `npm run gate` exit 0 on the combined tree: 32 files / 655 tests, including a parallel session's in-flight 4.2 edits.
+- **Deferred, not yet in `deferred-work.md`:** the triage log's two `defer` rows, E14 (team order leaks the winner: owner decision) and B10 (4.8 must not serialise the Game 7 row into preview HTML). They are appended to `deferred-work.md` once the parallel 4.2 session commits its pending edits to that file, so the two sessions' changes are not mixed.
 
 ## Spec Change Log
 
