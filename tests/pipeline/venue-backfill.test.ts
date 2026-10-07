@@ -637,6 +637,29 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
     expect(res.stdout.trim()).toBe('function function');
   });
 
+  // Story 4.1 pass 2: `probe-deep-links.mjs` copies that same `invokedDirectly`
+  // guard, and it is the sole evidence for the Cold GET row and for the story's
+  // live-deploy record — so it gets the same two halves pinned. A guard that
+  // goes false prints nothing and exits 0, and "exit 0, every row ok" would then
+  // be recorded from a run that measured nothing.
+  it('probe-deep-links.mjs runs main() when executed directly (--help prints the usage)', () => {
+    const script = fileURLToPath(new URL('../../scripts/probe-deep-links.mjs', import.meta.url));
+    const res = spawnSync(process.execPath, [script, '--help'], { encoding: 'utf8' });
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain('<base-url>');
+  });
+
+  it('probe-deep-links.mjs starts nothing when imported', () => {
+    const href = new URL('../../scripts/probe-deep-links.mjs', import.meta.url).href;
+    const res = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-e', `const m = await import(${JSON.stringify(href)}); console.log(Object.keys(m).length);`],
+      { encoding: 'utf8', timeout: 30000 },
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout.trim()).toBe('0');
+  });
+
   it('the espn probe refuses a bad flag with exit 2 before any fetch', () => {
     // `node --check` proves the file parses, nothing more, and the probe's live
     // legs run only on the owner's machine by policy — so the one thing that is

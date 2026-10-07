@@ -15,6 +15,7 @@ import {
   panel,
   pressRetry,
   renderPage,
+  renderPageWithNavigation,
   seriesFixture,
   submitPrediction,
   SERIES_ID,
@@ -61,19 +62,28 @@ beforeEach(() => {
 });
 
 describe('PredictPage error states (Story 1.3)', () => {
-  it('replaces the result region with the server envelope string, not raw JSON (matrix: function rejects)', async () => {
-    renderPage();
-    await chooseCustomMatchup();
-    await chooseMethod();
-    db.invoke.mockResolvedValue({ data: null, error: httpError(400, '{"error":"Team names are required"}') });
-    fillCustomForm();
-    submitPrediction();
+  // Per-case budget, not a global raise (the Story 2.12/2.13 precedent): this is
+  // the suite's heaviest case and it is load-sensitive, not slow — 609-686 ms
+  // standalone, 1872 ms in an uncontended full run, and 5177-5700 ms in the
+  // contended ones, which is how it blew the 5000 ms default and turned `npm run
+  // gate` red on a green tree. 30 s is ~5x the worst observed under load.
+  it(
+    'replaces the result region with the server envelope string, not raw JSON (matrix: function rejects)',
+    async () => {
+      renderPage();
+      await chooseCustomMatchup();
+      await chooseMethod();
+      db.invoke.mockResolvedValue({ data: null, error: httpError(400, '{"error":"Team names are required"}') });
+      fillCustomForm();
+      submitPrediction();
 
-    await waitFor(() => expect(screen.getByText("Couldn't generate the prediction.")).toBeInTheDocument());
-    expect(within(panel()).getByText('Team names are required')).toBeInTheDocument();
-    expect(panel().textContent).not.toContain('{"error"');
-    expect(db.captureException).toHaveBeenCalled();
-  });
+      await waitFor(() => expect(screen.getByText("Couldn't generate the prediction.")).toBeInTheDocument());
+      expect(within(panel()).getByText('Team names are required')).toBeInTheDocument();
+      expect(panel().textContent).not.toContain('{"error"');
+      expect(db.captureException).toHaveBeenCalled();
+    },
+    30_000,
+  );
 
   it('renders the service-unreachable copy for a transport failure (matrix: transport)', async () => {
     renderPage();
@@ -233,6 +243,52 @@ describe('PredictPage error states (Story 1.3)', () => {
     expect(heading).not.toHaveFocus();
     expect(db.toast.error).not.toHaveBeenCalled();
     expect(screen.queryByText("Couldn't load this series.")).toBeNull();
+    // The notice lands asynchronously, so the role is what announces it
+    // (WCAG 4.1.3). Asserted as an attribute, never as a computed name.
+    expect(document.querySelector('[data-series-not-found]')?.parentElement?.getAttribute('role')).toBe('status');
+    // Predict owns its own title: the 404 copy must never reach the tab.
+    expect(document.title).not.toBe("This series doesn't exist.");
+  });
+
+  it('reports an unknown ?series= arrival even while a stale selection is on screen (Story 4.1 review pass 2: the toast this replaced always did)', async () => {
+    const { goTo } = renderPageWithNavigation(`/predict?series=${SERIES_ID}`);
+    // The first preload lands and is selected — the fan has a series on screen.
+    await screen.findByText('BOS vs MIA');
+
+    db.single = { data: null, error: null };
+    // Home links `/predict?series=<id>` into the mounted page: `searchParams`
+    // change without a remount, so the old selection stays put. A cold render
+    // cannot produce this state, which is why the notice's own guard was
+    // invisible to every other test in the file.
+    goTo('/predict?series=00000000-0000-0000-0000-000000000000');
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-series-not-found] h2')?.textContent).toBe("This series doesn't exist."),
+    );
+    expect(screen.getByText('BOS vs MIA')).toBeInTheDocument();
+    expect(db.toast.error).not.toHaveBeenCalled();
+  });
+
+  it('leaves the notice standing when the fan picks a method, because only a series change retires it (Story 4.1 review pass 2)', async () => {
+    renderPage('/predict?series=abc');
+    await waitFor(() => expect(document.querySelector('[data-series-not-found]')).not.toBeNull());
+
+    await chooseMethod();
+
+    expect(document.querySelector('[data-series-not-found] h2')?.textContent).toBe("This series doesn't exist.");
+  });
+
+  it('replaces the notice with the retry panel when the next arrival errors, rather than rendering both (Story 4.1 review pass 2)', async () => {
+    const { goTo } = renderPageWithNavigation('/predict?series=abc');
+    await waitFor(() => expect(document.querySelector('[data-series-not-found]')).not.toBeNull());
+
+    db.single = { data: null, error: new Error('network miss') };
+    goTo(`/predict?series=${SERIES_ID}`);
+
+    await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
+    // One treatment per region: two `role="status"` blocks would also make the
+    // shared `panel()` helper throw on the double.
+    expect(document.querySelector('[data-series-not-found]')).toBeNull();
   });
 
   it('treats a malformed ?series= id as not found without querying it (Story 4.1 matrix: Predict malformed series)', async () => {

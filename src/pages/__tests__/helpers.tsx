@@ -4,8 +4,9 @@
 // registrations, the `beforeEach` stub wiring) stays in each suite; everything
 // that is plain DOM/RTL plumbing is defined exactly once here so the files
 // cannot drift.
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { HelmetProvider } from 'react-helmet-async';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import PredictPage from '@/pages/PredictPage';
 import type { Series, Team } from '@/types/types';
@@ -72,22 +73,54 @@ function LocationProbe() {
   return <span data-testid="location-probe">{`${location.pathname}${location.search}`}</span>;
 }
 
+// `main.tsx` mounts the whole app inside a `HelmetProvider`, so the harness does
+// too: a `PageMeta` rendered by any page is then checked rather than thrown on,
+// which is what makes Predict's "the 404 copy never reaches the tab" rule
+// assertable instead of incidentally protected (Story 4.1 review).
 export function renderPage(entry = '/predict') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <PredictPage />
-    </MemoryRouter>
+    <HelmetProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <PredictPage />
+      </MemoryRouter>
+    </HelmetProvider>
   );
 }
 
 /** Same page plus a probe that pins the router location (Story 1.4: 'New Prediction' keeps the URL). */
 export function renderPageWithLocationProbe(entry = '/predict') {
   return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <PredictPage />
-      <LocationProbe />
-    </MemoryRouter>
+    <HelmetProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <PredictPage />
+        <LocationProbe />
+      </MemoryRouter>
+    </HelmetProvider>
   );
+}
+
+/**
+ * PredictPage plus a `goTo` handle that performs a real in-app navigation.
+ * Home links `/predict?series=<id>` into an already-mounted page, so
+ * `searchParams` change without the page remounting and the previous selection
+ * stays on screen — the one arrival shape a cold single-entry render cannot
+ * produce (Story 4.1 review pass 2).
+ */
+export function renderPageWithNavigation(entry = '/predict') {
+  let navigate: ((to: string) => void) | undefined;
+  function Navigator() {
+    navigate = useNavigate();
+    return null;
+  }
+  render(
+    <HelmetProvider>
+      <MemoryRouter initialEntries={[entry]}>
+        <PredictPage />
+        <Navigator />
+      </MemoryRouter>
+    </HelmetProvider>
+  );
+  return { goTo: (to: string) => void act(() => navigate?.(to)) };
 }
 
 // Story 1.5 (Decisions 1-2) turned the three Predict surfaces into real

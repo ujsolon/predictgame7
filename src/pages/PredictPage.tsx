@@ -227,7 +227,14 @@ export default function PredictPage() {
       captureError(err);
       // A superseded preload still reports to analytics but must not mask
       // whatever the fan has on screen by the time it lands.
-      if (seq === seriesLoadSeq.current) setSeriesLoadFailed(true);
+      if (seq === seriesLoadSeq.current) {
+        // The panel and the not-found notice are alternative treatments of the
+        // same region: an in-app move from a dead `?series=` to one whose query
+        // errors would otherwise render both, and put two live regions on the
+        // page.
+        setSeriesNotFound(false);
+        setSeriesLoadFailed(true);
+      }
     }
   };
 

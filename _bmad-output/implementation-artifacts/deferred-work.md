@@ -649,3 +649,12 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-1-series-deep-links-404-spa-fallback.md`
   summary: The `else` branch in `PredictPage`'s `?series=` effect, which retires the not-found notice when the reader moves to plain `/predict`, has no test.
   evidence: Review pass 1, verification-gap (row V3), filed by that layer as defer. Cosmetic and recoverable through the picker. One router-navigation test (`/predict?series=abc` → `/predict`, then assert `[data-series-not-found]` is gone) would pin it.
+
+## Deferred from: code review of spec-4-1-series-deep-links-404-spa-fallback.md, pass 2 (2026-10-07)
+
+- source_spec: `spec-4-1-series-deep-links-404-spa-fallback.md`
+  summary: AGENTS.md's verification gate enumerates `scripts/probe-predict-contract.mjs` as the committed stateless probe for `predict-game-7`, but says nothing about `scripts/probe-deep-links.mjs`, the instrument that now carries Story 4.1's Cold GET row and every post-deploy re-run of it. A future agent reading only the gate would not know the deep-link probe exists or when to run it.
+  evidence: Review pass 2, blind-hunter. The invocation itself is documented — in the probe's own header (`node scripts/probe-deep-links.mjs <base-url> [--series=<uuid>]`, plus the live URL) and in this spec's Verification section — so nothing is lost today. Rejected as a code finding on that basis; deferred because the only file to change is an agent-context one. Natural owner: whoever next edits the AGENTS.md verification gate, or Story 4.7, which re-runs the cold GET against production.
+- source_spec: `spec-4-1-series-deep-links-404-spa-fallback.md`
+  summary: Outside the 404 treatment, nothing in the app sets a document title: `index.html` declares no `<title>`, and `PageMeta` is imported only by `SeriesNotFound.tsx` and the two dead template pages (`NotFound.tsx`, `SamplePage.tsx`), neither in `routes.tsx`. Story 4.1 makes the 404 copy the app's *only* title producer.
+  evidence: Review pass 2, verification-gap (filed under Other findings). Pre-existing, not caused by 4.1, and out of its scope. It matters twice downstream: it is what turns the h2-notice title regression into "404 copy in the tab" rather than "empty tab" (see the pass-2 patch finding about `helpers.tsx` and `HelmetProvider`), and Story 4.3's prerender/SEO work will read per-page titles as covered when they are not yet written. Natural owner: Story 4.3.
