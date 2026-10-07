@@ -124,6 +124,19 @@ export const pendingNonFlagship = series(PENDING_NON_FLAGSHIP_ID, 2027, 'Eastern
 export const BROKEN_ID = '1f2e3d4c-5b6a-4978-8a9b-0c1d2e3f4a5b';
 export const broken = { ...nonFlagship2018, id: BROKEN_ID, series_game_scores: nonFlagship2018.series_game_scores?.slice(1) };
 
+/**
+ * Non-reconciling on a **flagship** id (the pinned 2013 Finals). `BROKEN_ID`
+ * is non-flagship, so `/result` short-circuits before any request and never
+ * reaches `SeriesResultRoute`'s unshowable branch — only a flagship id fetches
+ * there, and only a flagship row that does not reconcile exercises its report.
+ */
+export const BROKEN_FLAGSHIP_ID = 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a';
+export const brokenFlagship = {
+  ...flagship2016,
+  id: BROKEN_FLAGSHIP_ID,
+  series_game_scores: flagship2016.series_game_scores?.slice(1),
+};
+
 export const FIXTURES: Record<string, Series> = {
   [FLAGSHIP_2016_ID]: flagship2016,
   [NON_FLAGSHIP_ID]: nonFlagship2018,
@@ -131,4 +144,5 @@ export const FIXTURES: Record<string, Series> = {
   [PENDING_ID]: pending2026,
   [PENDING_NON_FLAGSHIP_ID]: pendingNonFlagship,
   [BROKEN_ID]: broken,
+  [BROKEN_FLAGSHIP_ID]: brokenFlagship,
 };

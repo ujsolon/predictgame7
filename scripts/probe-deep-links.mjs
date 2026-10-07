@@ -183,7 +183,6 @@ const READ_NOT_FOUND = `${WAIT}(() => {
 /** Story 4.3: the pinned 2016 Finals flagship (`src/lib/flagship-series.ts`). */
 const FLAGSHIP_2016 = "06715a85-ec33-46a4-8383-d058055eefe6";
 
-/** One row over anon REST, same embed syntax as `src/lib/series-query.ts`. Needs .env. */
 /** Rows over anon REST, same embed syntax as `src/lib/series-query.ts`. Needs .env. */
 async function restRows(filter, select) {
   const env = readEnv();

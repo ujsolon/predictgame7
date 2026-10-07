@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { HelmetProvider } from 'react-helmet-async';
-import { MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SERIES_SELECT } from '@/lib/series-query';
 import { routes } from '@/routes';
 import {
   ABA_ID,
+  BROKEN_FLAGSHIP_ID,
   BROKEN_ID,
   FIXTURES,
   FLAGSHIP_2016_GAME7,
@@ -47,11 +48,26 @@ function PredictProbe() {
   return <span data-testid="predict-probe">{`${location.pathname}${location.search}`}</span>;
 }
 
-/** The real `routes` array, as `App.tsx` mounts it, behind a Home entry. */
-function renderApp(entry: string) {
+/** Sits outside `<Routes>`, so it survives the navigation it triggers. */
+function JumpTo({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      jump
+    </button>
+  );
+}
+
+/**
+ * The real `routes` array, as `App.tsx` mounts it, behind a Home entry. With
+ * `jumpTo`, the case starts on `entry` and can then navigate to a second id on
+ * the same route element — the only way to reach `KeyedById`'s remount.
+ */
+function renderApp(entry: string, jumpTo?: string) {
   return render(
     <HelmetProvider>
-      <MemoryRouter initialEntries={['/', entry]} initialIndex={1}>
+      <MemoryRouter initialEntries={jumpTo ? [entry] : ['/', entry]} initialIndex={jumpTo ? 0 : 1}>
+        {jumpTo && <JumpTo to={jumpTo} />}
         <Routes>
           {routes
             .filter((route) => route.path !== '/predict')
@@ -250,7 +266,18 @@ describe('/series/:id — pending series', () => {
   it('renders the preview with no reveal; its /result is the 404', async () => {
     renderApp(`/series/${PENDING_ID}`);
     await headline('Spurs and Thunder stand three games apiece');
-    expect(gameRows()).toHaveLength(6);
+    // Neutral order must reach the game rows, not just the headline and title:
+    // the fixture stores Thunder (`team_a`, the eventual winner) first, so a
+    // strip rendered from the stored view reads "Thunder 122–116 Spurs" and
+    // re-leaks the `team_a`-is-winner pattern per row (owner decision E14).
+    expect(gameRows()).toEqual([
+      'Game 1 Spurs 116–122 Thunder',
+      'Game 2 Spurs 108–101 Thunder',
+      'Game 3 Spurs 114–106 Thunder',
+      'Game 4 Spurs 99–105 Thunder',
+      'Game 5 Spurs 102–117 Thunder',
+      'Game 6 Spurs 118–110 Thunder',
+    ]);
     expect(text()).not.toContain('See how the series ended');
     expect(text()).not.toContain('Spoilers');
     expect(anchors().filter((a) => a.getAttribute('href')?.includes('method='))).toHaveLength(4);
@@ -262,7 +289,15 @@ describe('/series/:id — pending series', () => {
   it('a pending non-flagship series renders the preview with no reveal; its /result is the 404 with no request', async () => {
     renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}`);
     await headline('Cavaliers and Celtics stand three games apiece');
-    expect(gameRows()).toHaveLength(6);
+    // Stored order is Celtics first (`team_a`); neutral order swaps it.
+    expect(gameRows()).toEqual([
+      'Game 1 Cavaliers 101–110 Celtics',
+      'Game 2 Cavaliers 104–98 Celtics',
+      'Game 3 Cavaliers 112–107 Celtics',
+      'Game 4 Cavaliers 95–103 Celtics',
+      'Game 5 Cavaliers 109–118 Celtics',
+      'Game 6 Cavaliers 106–99 Celtics',
+    ]);
     expect(text()).not.toContain('See how the series ended');
     expect(db.from).toHaveBeenCalledTimes(1);
   });
@@ -310,13 +345,53 @@ describe('/series/:id — 404, redirect and retry rows', () => {
     expect(String(db.captureException.mock.calls[0][0])).toContain(BROKEN_ID);
   });
 
-  it('a fetch error shows the retry panel, and Retry re-fetches into the page', async () => {
+  it('a flagship row whose phase does not reconcile is the 404 on /result, reported', async () => {
+    // A flagship id is the only shape that reaches this branch: a non-flagship
+    // `/result` short-circuits before any request, so `BROKEN_ID` cannot.
+    renderApp(`/series/${BROKEN_FLAGSHIP_ID}/result`);
+    await waitFor(() => expect(notFoundHeading()).not.toBeNull());
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(text()).not.toContain('win Game 7');
+    await waitFor(() => expect(db.captureException).toHaveBeenCalledTimes(1));
+    expect(String(db.captureException.mock.calls[0][0])).toContain(BROKEN_FLAGSHIP_ID);
+  });
+
+  it('navigating to a second series does not redirect off the first one\'s state (KeyedById)', async () => {
+    renderApp(`/series/${NON_FLAGSHIP_ID}`, `/series/${FLAGSHIP_2016_ID}?method=elo`);
+    await headline('Cavaliers win Game 7');
+
+    fireEvent.click(screen.getByText('jump'));
+
+    // The remount per `:id` is what makes B wait for its own fetch. Without the
+    // key the component keeps A's `found` state for one commit, and the
+    // `?method=` branch redirects B to Predict before B is ever looked up
+    // (review row B8). The bare stale paint of A's page is the same defect, but
+    // it is one commit that `act` collapses before the fetch effect resets it,
+    // so the redirect timing is the half jsdom can actually see.
+    expect(screen.queryByTestId('predict-probe')).toBeNull();
+    expect(db.from).toHaveBeenCalledTimes(2);
+    expect(db.eq).toHaveBeenLastCalledWith('id', FLAGSHIP_2016_ID);
+    expect(text()).toContain('Loading series…');
+    expect(text()).not.toContain('Cavaliers win Game 7');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('predict-probe')).toHaveTextContent(`/predict?series=${FLAGSHIP_2016_ID}&method=elo`)
+    );
+  });
+
+  it('a fetch error shows the retry panel with its own title, and Retry re-fetches into the page', async () => {
     db.fail = true;
     renderApp(`/series/${NON_FLAGSHIP_ID}`);
     await screen.findByText("Couldn't load this series.");
+    // The error state owns its title: without one the tab keeps whatever the
+    // previous page set — an outcome title, on a page that failed to load.
+    await waitFor(() => expect(document.title).toBe("Couldn't load this series."));
     db.fail = false;
     fireEvent.click(screen.getByText('Retry'));
     await headline('Cavaliers win Game 7');
     expect(db.from).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(document.title).toBe('Boston Celtics vs Cleveland Cavaliers, 2018 Eastern Conference Finals: Cavaliers win Game 7 · PredictGame7')
+    );
   });
 });

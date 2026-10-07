@@ -48,7 +48,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
 
 - **Analytics port (AD-1).** `posthog-js` / `@posthog/react` may be imported only inside `src/lib/analytics/`. Feature code calls `track` / `identify` / `resetUser` / `captureError` from `@/lib/analytics`. The owner's personal PostHog key stays in owner-local tooling only and is never bundled.
 - **Share links (AD-6).**
-  - `/series/<id>?method=<slug>` client-redirects to `/predict?series=<id>&method=<slug>` and carries any other query params through.
+  - `/series/<id>?method=<slug>` client-redirects to `/predict?series=<id>&method=<slug>`. Any other query param is dropped today; Story 4.4 is what makes `utm_source` survive the redirect.
   - `/predict?custom=<url-safe base64>` follows the `SharePayload` schema in `supabase/functions/_shared/contract.ts` (AD-2), which is the single source for both the encoder and the decoder.
   - The build emits `404.html` as the SPA fallback.
 - **OG meta never comes from an Edge Function.** Supabase rewrites `text/html` responses to `text/plain`. The `share-og` function is retired, and **no Edge Function is added in this epic**.
@@ -121,7 +121,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
 
 - **4.0 is done.** Every Epic 4 event emits through its port. Story 3.4's SM-3 query, which runs after this epic, reads 4.4's attribution data.
 - **4.1 is done.** It shipped the 404 fallback and the `/series/<id>?method=` redirect. 4.3 replaces 4.1's interim bare-id redirect with real routes. 4.4 makes the redirect carry `utm_source`.
-- **4.2 is in review.** Its card PNGs are what 4.8's `og:image` references.
+- **4.2 is done.** Its card PNGs are what 4.8's `og:image` references.
 - **4.3 → 4.8.** 4.8 prerenders 4.3's components, so 4.3 must keep page render free of browser access.
 - **4.4** builds Share on top of a rebuild of the `PredictPage` request path (deferred work D3): a typed form type and payload builders, a `Record<MethodSlug, string>` of method descriptions, and one validation and failure vocabulary.
 - **4.5** adds the content schema and `is_featured`, which replaces 4.3's pinned list. Content appears in the prerendered HTML automatically. 4.5 also owns the Home pending-Game-7 highlight: a div, not a route, linking to `/series/<id>`.

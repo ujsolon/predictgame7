@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-07-2026 22:15
+last_updated: 10-08-2026 07:12
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -377,7 +377,11 @@ development_status:
   # deletion tests, epic-4-context constraint restore, AGENTS.md single-command deploy), 2 deferred.
   4-2-og-card-rendering-share-og-edge-function: done
   # 2026-10-07: 4.3 re-scoped to the client-side series pages; its prerender/meta/shells/sitemap moved to 4.8, which runs next (sprint-change-proposal-2026-10-07-d.md). Key kept.
-  4-3-prerendered-series-pages-seo: review
+  # 2026-10-08: review pass 2 closed — 8 patches applied (KeyedById remount + ?method= navigation test,
+  # spoiler-neutral game-row order asserted exactly, flagship /result unshowable branch test + fixture,
+  # error-state document title, fallback column width, SeriesRoute docstring, epic-4-context corrections,
+  # orphaned probe comment deleted), 1 deferred to Story 4.8, 10 rejected.
+  4-3-prerendered-series-pages-seo: done
   4-8-prerendered-series-pages-og-meta-route-shells-sitemap: backlog
   4-4-share-button-attribution-fr-31-sm-3: backlog
   4-5-series-editorial-content-model-fr-13-pilot: backlog

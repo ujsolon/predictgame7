@@ -5,7 +5,7 @@ created: '2026-10-07'
 status: 'done'
 baseline_commit: 'c8a7b1c974da4b7843dd06b3a332a8e431e9fdde'
 route: 'dispatch'
-review_loop_iteration: 0
+review_loop_iteration: 1
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
   - '{project-root}/_bmad-output/planning-artifacts/ux-designs/ux-predictgame7-2026-09-25/mockups/key-series-page.html'
@@ -128,6 +128,44 @@ context:
 - Given `npm run gate`, then green.
 - Given the preview headless check, when the reveal link is clicked, then `document.activeElement` is the result `<h1>`, and the preview's `document.body.innerText` contained no Game 7 score.
 
+### Review Findings
+
+Pass 2 (2026-10-08), run in a fresh session on the owner's model. Layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor. Scope: `git diff c8a7b1c..HEAD` minus the four Story-4.2-only paths (`AGENTS.md`, `scripts/og/render.ts`, `tests/og/**`, the 4.2 spec). 29 raw findings → 9 entries: 0 decision, 8 patch, 1 defer, 10 rejected.
+
+- [x] [Review][Patch] `epic-4-context.md` restates two properties that do not hold [_bmad-output/implementation-artifacts/epic-4-context.md:51,124] — :51 says the `?method=` redirect "carries any other query params through", but `SeriesRoute.tsx:32` builds a fresh `URLSearchParams({ series: id })` and adds only `method` (4.1 behaviour, unchanged; :123 of the same doc says 4.4 adds `utm_source`). :124 says "4.2 is in review" while `sprint-status.yaml:378` says `done`.
+- [x] [Review][Patch] The `KeyedById` per-id remount fix has no test at any consumer [src/routes.tsx:16] — no suite navigates between two series ids on one route element (`renderApp` mounts a single entry; the reveal click changes the path, not the `:id`). Deleting the wrapper keeps every test green and reinstates the stale paint — including series A's outcome page at flagship B's URL.
+- [x] [Review][Patch] Orphaned duplicate JSDoc above `restRows` [scripts/probe-deep-links.mjs:186-187] — two adjacent comment blocks, the first left behind by the rename to `restSeries`. The probe is outside Biome's `files.includes`, so no gate flags it.
+- [x] [Review][Patch] `SeriesRoute`'s docstring still claims "Nothing is emitted to analytics" [src/pages/SeriesRoute.tsx:22] — contradicted two lines above in the same comment (:19-20, "reported through `captureError`") and by `useSeriesRecord.ts:37`. `captureError` is part of the AD-1 analytics port.
+- [x] [Review][Patch] The fallback container is `max-w-6xl` while every page variant is `max-w-3xl` [src/pages/series/SeriesFetchFallback.tsx:17] — loading → found visibly snaps the column width, and the 404/retry states sit outside the spec's Layout clause.
+- [x] [Review][Patch] The preview's spoiler-neutral game-row order is asserted nowhere [src/pages/__tests__/series-pages.test.tsx:253,265] — the exact `gameRows()` assertions at :162-169 use `flagship2016`, where `team_a` (Cavaliers) already sorts first, so `shouldSwapForNeutralOrder` is false and they cannot observe a swap. The two fixtures that do swap (`pending2026`, `pendingNonFlagship`) assert only `toHaveLength(6)`. Rendering the strip from the stored view instead of the neutral one keeps the whole suite green while re-leaking the `team_a`-is-winner pattern per game row (the E14 owner decision's game-rows leg).
+- [x] [Review][Defer] The pure page components' inner 404 is silent [src/pages/series/SeriesPreview.tsx:38, src/pages/series/SeriesFullRecord.tsx:40] — deferred: unreachable through both 4.3 routes, which pre-check `toSeriesView` and render `SeriesUnshowable` (reported via `captureError`, row B5). The consumer that would reach it is Story 4.8's prerender, which renders these components directly from preloaded rows — an unshowable row would 404 at build time with no trace, against B5's "never silent". `series-ssr.test.tsx:73-76` already exercises exactly that path.
+- [x] [Review][Patch] The fetch-error state sets no document title [src/pages/series/SeriesFetchFallback.tsx:20-21] — `ErrorRetryPanel` carries no `PageMeta`, so a client navigation from series A's result page to series B's error keeps A's outcome title in the tab, against the "every page sets its title" constraint. Inherited from 4.1, but the error state is now a state of a real content page. Fix locally in `SeriesFetchFallback`, not in the shared panel.
+- [x] [Review][Patch] `SeriesResultRoute`'s unshowable-row branch is exercised by no test [src/pages/SeriesResultRoute.tsx:23] — `BROKEN_ID` is non-flagship, so `/result` short-circuits before any fetch; no fixture pairs a flagship id with a non-reconciling row. Deleting the guard makes `view.phase` (:24) throw during render and no test reddens. The sibling branch in `SeriesRoute` is pinned at `series-pages.test.tsx:303-311`.
+
+**All 8 patches applied 2026-10-08** (owner chose "apply every patch"). `npm run gate` exit 0: lint 158 files, `tsc -b`, **661 tests / 34 files**, build with the `/predictgame7/` prefix check. The four new-or-extended assertions were each mutation-checked — the mutation reddened its intended test and nothing else, then was reverted:
+
+| Mutation | Test that reddens |
+|---|---|
+| `SeriesPreview.tsx:48` renders the strip from `stored` instead of the neutral `view` | both pending cases' exact `gameRows()` |
+| `routes.tsx:67` drops `KeyedById` for `<SeriesRoute />` | the A→B navigation case |
+| `SeriesResultRoute.tsx:23` drops the `if (!view)` guard | the flagship `/result` non-reconciling case |
+| `SeriesFetchFallback.tsx` drops the error branch's `PageMeta` | the error-title assertion |
+
+Note on what the `KeyedById` case can and cannot see: the bare stale paint (A's page for one commit at B's URL) is **not** observable in jsdom — `act()` flushes the passive effect that resets the state to loading before the test's next statement, so the intermediate commit is collapsed. The `?method=` half of row B8 *is* observable, because `<Navigate>` redirects in an effect and the stale `found` state fires it before B is fetched. That is the half the new case pins, and it is the half with the worse outcome (B redirected to Predict without ever being looked up). The one-frame paint stays browser-only evidence.
+
+**Rejected**
+
+- `sprint-status.yaml` `4-3: review` vs spec frontmatter `status: done` (2 layers) — **false**: different axes. `status` tracks implementation completion (set deliberately by `c34d676`); `development_status` tracks the review loop. No shipped artifact depends on either.
+- `review_loop_iteration: 0` is stale — **rejected**: the fix edits the spec under review.
+- `## Spec Change Log` is empty despite the post-approval E14 owner decision — **rejected**: the fix edits the spec under review. Worth the owner's attention regardless: the frozen block's copy rules still say "{Nickname A} and {Nickname B}" with no ordering rule, while the implementation now orders them alphabetically; the decision is recorded only in Implementation Notes.
+- Series tallies are hard-coded literals ("3–3", "4–3", "three games apiece") rather than derived from `games[].winner` — **false**: re-raise of pass-1 rows E4/E5/E6/E7. `series-view.ts:12-14` enumerates exactly the four null conditions it checks and never claims to validate win totals; `deriveSeriesPhase` is documented as a game-number SET check. A 7-game row whose wins do not total 4–3 is undemonstrated state (AD-4/AD-5 pipeline assertions, and the 178-row sweep reconciled every row).
+- Probe REST URLs built by raw string interpolation [scripts/probe-deep-links.mjs:191] — **false**: every `restRows`/`restSeries` call site (:333, :352, :396) passes a literal from the same file, and the one argv-derived value (`--series`) is already `encodeURIComponent`-ed at :88. No untrusted value reaches the interpolation.
+- `data as unknown as Series` is a new untyped seam [src/pages/series/useSeriesRecord.ts:34] — **false** as a 4.3 deviation: it is the repo-wide convention (`HomePage.tsx:79`, `PredictPage.tsx:39-40`), and deferred-work **D3** already owns retiring the blind-cast request path (lands with Story 4.4).
+- The spoiler test omits one of the two Game 7 score digits ("89") [src/pages/__tests__/series-pages.test.tsx:173-187] — **rejected**: a bare `not.toContain('89')` cannot pass, because Game 1 is a real `Cavaliers 89–104 Warriors`. The leak is already pinned four ways (`93–89`, `89–93`, bare `93`, `>93<` in `innerHTML`), and Game 7 is CLE **93**, so any Game 7 render contains 93. Closing the gap as filed means editing the spec's Code Map wording or distorting a real-score fixture.
+- Fixture `nonFlagship2018` is not "real-shaped" (home sides alternate; `team_a` is the loser) [src/pages/__tests__/series-fixtures.ts:75-83] — **false**: deliberate and documented in-file (:69-73) and at the assertion (:100). It is what makes the by-team-id mapping test at :101-109 meaningful — a migration-`00016`-true fixture would exercise only one direction for games 1–6. The spec's "real-shaped" ask names 7 score rows and an ABA row, both present.
+- `focus:outline-none` suppresses the ring on the programmatically focused result `<h1>` [src/pages/series/SeriesHero.tsx:28] — **false**: the `<h1>` is not a keyboard-operable target (`tabIndex={-1}`, focus landing only), and every real target on the page carries a visible ring through `series-styles.ts:12` (`focus-visible:ring-2 ring-ring ring-offset-2` on `CTA_LINK`, `ROW_LINK`, `TEXT_LINK`). WCAG 2.4.7 constrains operable controls. Same deliberate convention as `SeriesNotFound.tsx:45` and `ErrorRetryPanel.tsx:38`.
+- The diff mixes Story 4.2 close-out artifacts into the 4.3 change set — **false**: the 4.2-owned edits in the range come from 4.2's own commits (`db29e9b` flipped sprint-status 4-2 and touched `epic-4-context.md`; the 4.2 half of `3e09c70` touched `scripts/og/render.ts` and the 4.2 spec). The three 4.3 commits touch no 4.2 artifact, and `3e09c70`'s `deferred-work.md` append landed *after* `db29e9b`, exactly as the spec's hygiene note required. The mixing is an artifact of this review's baseline range.
+
 ## Implementation Notes
 
 - **Files.** `src/lib/flagship-series.ts`; `src/pages/series/` — `series-view.ts` (the pure `Series` → view projection: phase via `deriveSeriesPhase`, scores mapped by team id, copy/title builders; `null` for an unshowable row), `series-styles.ts`, `SeriesHero.tsx`, `ScoreStrip.tsx`, `SeriesPreview.tsx`, `SeriesFullRecord.tsx`, `useSeriesRecord.ts` (the one `SERIES_SELECT` fetch + retry), `SeriesFetchFallback.tsx` (loading / 404 / retry); `src/pages/SeriesRoute.tsx` (rewritten), new `src/pages/SeriesResultRoute.tsx`, `src/routes.tsx` (`/series/:id/result`).
@@ -169,6 +207,8 @@ Pass 1 (2026-10-07). Layers: blind-hunter (B), edge-case-hunter (E), verificatio
 | E4/E5/E6/E7/B9 | Duplicate game rows, inconsistent 3–3/4–3 tallies, a Game 7 winner mismatch, tie rows; `series-view` null-paths untested | low | No such rows exist: the pipeline and RPCs assert 3–3 and the winner (AD-4/AD-5), and the 178-row sweep reconciled every row. Guards for undemonstrated state | reject |
 | E13 | The probe's ABA pick may not reconcile | low | All 178 rows reconcile (4.2 live run: skipped none) | reject |
 | B11 | Extra round trips: the redirect waits for the full fetch, and the reveal re-fetches | low | A performance nicety; correctness is unaffected | reject |
+
+Pass 2 (2026-10-08), run in a fresh session on the owner's model — the independence the pass-1 in-session review could not claim. Layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor. Scope: `git diff c8a7b1c..HEAD` minus the four Story-4.2-only paths (`AGENTS.md`, `scripts/og/render.ts`, `tests/og/**`, the 4.2 spec), so it reviews the pass-1 patches and the E14 decision as shipped. 29 raw findings → 9 entries: **0 decision, 8 patch, 1 defer, 10 rejected.** Full detail, evidence and refutations are in `### Review Findings` under Tasks & Acceptance above — not restated here. No `high` finding; the two `medium` entries are both unpinned invariants rather than live defects (the `KeyedById` remount, and the preview's spoiler-neutral game-row order). Pass 1's rejections were re-raised twice (hard-coded tallies, the `nonFlagship2018` fixture shape) and rejected again on the same evidence.
 
 ## Design Notes
 

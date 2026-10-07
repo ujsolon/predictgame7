@@ -19,7 +19,9 @@ import { toSeriesView } from '@/pages/series/series-view';
  *   that cannot be shown (`toSeriesView` → null, e.g. `deriveSeriesPhase` →
  *   null) → the 404, reported through `captureError`;
  * - a fetch error → the retry panel, whose Retry re-fetches.
- * Phase is derived (AD-4), never read from `status`. Nothing is emitted to analytics.
+ * Phase is derived (AD-4), never read from `status`. No analytics *event* is
+ * emitted; the only port use is `captureError`, for the unshowable row above
+ * and for a fetch error inside `useSeriesRecord`.
  */
 export default function SeriesRoute() {
   const { id = '' } = useParams();
