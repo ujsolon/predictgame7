@@ -241,7 +241,17 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     fireEvent.click(screen.getByText('BOS vs MIA').closest('button') as HTMLButtonElement);
 
     const selected = db.capture.mock.calls.find(([name]) => name === 'series_selected');
-    expect(selected?.[1]).toMatchObject({ series_source: 'current', series_id: 's-1' });
+    // Story 4.0 pass-2 review: the port rewrote this call site, so pin the
+    // whole payload — a wrong key on year, round or teams must not pass the
+    // gate the way a two-key `toMatchObject` lets it.
+    expect(selected?.[1]).toEqual({
+      series_id: 's-1',
+      series_year: 2022,
+      series_round: 'Finals',
+      series_source: 'current',
+      team_a: 'Boston Celtics',
+      team_b: 'Miami Heat',
+    });
   });
 
   it('withholds the Active empty-state claim until the archive has answered', async () => {

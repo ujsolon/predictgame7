@@ -146,7 +146,12 @@ What checks them:
 
 All analytics go through one port, `src/lib/analytics/` (AD-1 / NFR-V1). PostHog is the vendor
 behind it, and that folder is the only place `posthog-js` or `@posthog/react` may be imported —
-Biome's `noRestrictedImports` makes an import anywhere else (subpaths included) a lint error. Feature
+Biome's `noRestrictedImports` makes an import anywhere else (subpaths included) a lint error.
+The override exempts `src/lib/analytics/**` from the **whole rule**, so if a second restricted
+path is ever added to it the port folder is exempt from that too — scope the override down when
+that happens. `tests/lint/analytics-isolation.test.ts` pins both directions. And keep `biome.json`
+strict JSON: a comment makes Biome 2.4.5 silently fall back to its default config, un-enforcing
+the guard while `npm run lint` stays green. Feature
 code imports from the `@/lib/analytics` barrel only, which exports:
 
 - `track(EVENTS.X, props?)` — the typed `EVENTS` registry holds the 10 event names (prediction flow,

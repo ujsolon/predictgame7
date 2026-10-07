@@ -631,3 +631,9 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-0-analytics-isolation-layer-ad-1-port.md`
   summary: AGENTS.md's analytics guardrail ("all analytics code ... goes through the single isolated integration layer (NFR-V1)") names neither `src/lib/analytics/`, the `track`/`EVENTS` entry points, the `@/lib/analytics/provider` exception for `main.tsx`, nor the Biome `noRestrictedImports` guard (paths + subpath patterns). Agents are steered by AGENTS.md rather than the README.
   evidence: Review pass 1, blind-hunter (row B9). The build workflow defers any fix that edits agent-context files. One sentence under Product guardrails would do. It is the owner's call, or a `bmad-project-context` refresh.
+
+## Deferred from: code review of spec-4-0-analytics-isolation-layer-ad-1-port.md, pass 2 (2026-10-07)
+
+- source_spec: `spec-4-0-analytics-isolation-layer-ad-1-port.md`
+  summary: The barrel-purity angle on the provider-init deferral above. No gate check asserts that importing `@/lib/analytics` does *not* boot the SDK — the property is the one deviation's stated rationale (`AnalyticsProvider` is not re-exported from the barrel), and a future `export * from './provider'` in the barrel would pass lint and typecheck while only accidentally breaking some page tests. AC 3's headless before/after walk harness is also uncommitted, so the `$pageview` continuity it evidenced is pinned by prose alone.
+  evidence: Review pass 2, blind-hunter + acceptance-auditor. Same root-cause family as the pass-1 entry above (no gate test on the analytics bootstrap modules) and should be absorbed by it: one Vitest suite covering `provider.tsx` (`init`'s exact argument list), `main.tsx`'s mount, and the barrel (imported against a mock without `init`, asserting `init` was never called) settles all three. Natural owner stays Story 3.4, or any story that next touches the provider.

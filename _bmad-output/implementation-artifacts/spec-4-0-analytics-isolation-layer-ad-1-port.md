@@ -92,6 +92,30 @@ context:
 - Given the headless harness (`openBrowserSession`, PostHog answered locally), when the scripted walk runs at the baseline and at the change, then the decoded event lists match. The walk covers: land on `/`, `/historical`, `/predict`; click a hotspot; apply the year filter; type a team search; expand a row.
 - Given `npm run gate`, then green.
 
+### Review Findings
+
+Pass 2 (2026-10-07, fresh-session review on a different model). 0 decision-needed, 5 patch, 1 defer, 11 rejected.
+
+- [x] [Review][Patch] `series_selected`'s rewritten props are not fully pinned — the existing pin (`predict-phase-groups.test.tsx:243`) is a `toMatchObject` on `series_source` + `series_id` only; a wrong key on `series_year`, `series_round`, `team_a` or `team_b` passes the gate. Pass 1's V1 remediation list omitted this call site. [src/pages/PredictPage.tsx:470] — applied: the pin is now a whole-payload `toEqual`; mutation `series_year:`→`series_yr:` reddens exactly that case.
+- [x] [Review][Patch] The rewritten `captureError` on the series-list fetch failure has no test observing it — deleting it keeps the full suite and the gate green (demonstrated by the verification-gap layer). Add the port assertion to the existing list-failure case. [src/pages/PredictPage.tsx:164 → src/pages/__tests__/predict-error-states.test.tsx:153] — applied: the case now pins one `captureException` carrying the list error; deleting the call site reddens exactly that case.
+- [x] [Review][Patch] The Biome AD-1 import guard has no committed failable check — its efficacy (exact + subpath specifiers) rests on throwaway probes only, and pass 1 caught a shipped subpath bypass (rows B1/E1). A Biome upgrade or override edit can silently un-enforce the port's only boundary. Add a lint-fixture test (repo precedent: `tests/pipeline/workflows.test.ts`). [biome.json:28-43, 57-68] — applied: `tests/lint/analytics-isolation.test.ts` spawns the repo Biome against temp fixtures and pins diagnostics on all three import lines, the port-folder exemption, and a clean control.
+- [x] [Review][Patch] The before-leg record lacks two handoff notes for Story 4.7 — (i) the after leg is expected to carry the added `historical_filter_applied {filter_type:'reset'}` line (D1, sanctioned), so strict line-for-line comparison must not flag it as drift; (ii) `contact_form_submitted` was deliberately not live-walked (sends a real message) — the substitute pin is `home-pending.test.tsx`'s whole-log case. [_bmad-output/implementation-artifacts/analytics-continuity-before-4-0.md] — applied: both notes appended under "What this record does not hold".
+- [x] [Review][Patch] The biome.json analytics override switches off the whole `noRestrictedImports` rule for `src/lib/analytics/**` with nothing marking the coupling — a future second restricted path would silently exempt the port folder too. One JSONC comment above the override makes it self-documenting (pass 1's E2 rejected the scoped-override variant, not this). [biome.json:57-68] — applied at the README instead: the proposed comment turned out to be impossible — a comment in `biome.json` makes Biome 2.4.5 **silently fall back to its default config**, un-enforcing the whole rule with `npm run lint` still green (caught live by the new guard test on its first run; verified by a `noDebugger` probe). README §Analytics now carries the coupling note plus "keep `biome.json` strict JSON".
+- [x] [Review][Defer] Bootstrap invariants are pinned by no gate check — `provider.tsx`'s `init` arguments, `main.tsx`'s mount, and (new pass-2 angle) barrel purity: nothing asserts that importing `@/lib/analytics` does not boot the SDK, and AC 3's headless-walk harness is uncommitted. [src/lib/analytics/provider.tsx:8, src/lib/analytics/index.ts] — deferred: pass 1 already deferred the provider-init test with Story 3.4 as natural owner; the pass-2 deferred-work entry absorbs the barrel-purity angle.
+
+Rejected:
+- Auth events dropped "with no recorded disposition" (blind-hunter, edge-case-hunter) — false: the spec Code Map explicitly directs dropping both captures and the `{username}` person prop, with reasons (names outside the registry, addendum §A.1, code never runs); `AuthProvider` unmounted verified by two layers.
+- The commit's continuity claim is falsified by the auth drop (edge-case-hunter) — false: those captures never fired in production, so no live stream changed.
+- `identify()` cannot carry person properties (blind-hunter) — false: the Code Map pins "`identify(userId)` is the port's signature" — a deliberate decision, not an omission.
+- `posthog?.` optional-chaining semantics lost (blind-hunter) — false: `provider.tsx` inits at module load and `main.tsx`'s import graph evaluates it before any component renders, so a pre-init capture is unreachable; in tests the singleton is mocked.
+- `toEqual` misses dropped `undefined`-valued keys; `toStrictEqual` needed (blind-hunter) — false: JSON serialization drops `undefined` keys, so both object shapes are wire-identical; the pin protects the wire payload, which cannot diverge this way.
+- Spec `[x]` task line contradicts the as-built barrel; Spec Change Log empty (blind-hunter, acceptance-auditor) — rejected: the fix edits the spec under review; the deviation is disclosed in Implementation Notes and pass 1 already adjudicated it (row E3).
+- Status disagreement: spec `done` vs sprint-status `review`, `review_loop_iteration: 0` (blind-hunter, acceptance-auditor) — rejected: spec-`done` + sprint-`review` is the normal post-build state; reconciling the counter edits the spec under review.
+- Two baseline commits cited for one bundle hash (blind-hunter) — false: `f21847a` changed planning/docs files only, so its `src` tree is identical to `282c1dd` and an identical bundle hash is the expected result.
+- epic-4-context promises the query surface / `utm_source` the port lacks (blind-hunter) — false: it is a compiled epic-scope document describing the module's final state (Story 3.4 owns the query surface); `index.ts`'s header records "Not here yet".
+- Closed finding (a) in deferred-work.md still reads as open (blind-hunter) — false: the summary leads with "CLOSED 2026-10-07 — root cause refuted", and the file's append-not-rewrite convention keeps the pre-closure history ahead of the closure.
+- `captureError(err, ctx?)` exceeds the frozen arity boundary (acceptance-auditor) — false: disclosed in Implementation Notes, consistent with spine AD-1's `captureError(err, ctx)`, no call site passes `ctx`, and the omitted-`ctx` arity is pinned in `analytics.test.ts`.
+
 ## Implementation Notes
 
 Implementation pass, 2026-10-07 (uncommitted at the time of writing).
@@ -138,6 +162,11 @@ Implementation pass, 2026-10-07 (uncommitted at the time of writing).
   - Two findings deferred to `deferred-work.md`: the provider `init` test, and the AGENTS.md pointer.
   - `npm run gate` exit 0, 25 files / 582 tests.
 
+- **Review pass 2 patches (2026-10-07, fresh-session review on a different model).**
+  - The five `patch` findings landed as: the `series_selected` whole-payload `toEqual` (mutation-proved: `series_year`→`series_yr` reddens exactly that case), the list-failure `captureException` pin in `predict-error-states.test.tsx` (mutation-proved: deleting `PredictPage.tsx:164` reddens exactly that case), the new `tests/lint/analytics-isolation.test.ts`, the two Story 4.7 handoff notes in the before-leg file, and the override-coupling note — in README §Analytics, not `biome.json`: the proposed JSONC comment turned out to make Biome 2.4.5 silently ignore the config and fall back to its **default** config (verified: a `debugger` statement then trips `noDebugger`, which the repo config disables, while `noRestrictedImports` stops firing and `npm run lint` stays green). The guard test caught this live on its first run; README now says to keep `biome.json` strict JSON.
+  - The guard test spawns the repo Biome binary (`.bin` shims are not spawnable without a shell here); under the full parallel `npm test` run each spawn measured 2.7–4.8 s, past Vitest's 5 s default, so the three spawned cases carry an explicit 30 s per-case budget — no global timeout raise.
+  - `npm run gate` exit 0: lint clean, `tsc -b` clean, 26 files / 586 tests, build with the `/predictgame7/` prefix check.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -160,6 +189,8 @@ Pass 1 (2026-10-07). Layers: blind-hunter (B), edge-case-hunter (E), verificatio
 | E2 | The analytics-folder override switches off the whole rule, which would exempt future restricted paths | low | Hypothetical (no other restricted path exists). A per-path scoped override adds config complexity | reject |
 | E3/V-other | Spec task text says `index.ts` re-exports `AnalyticsProvider`; code does not | low | True, and recorded as a deviation in Implementation Notes. The fix edits this build's spec | reject |
 | V1 | Nine rewritten call sites (seven §A.1 events: custom series, 4× method, details, reset, hotspot, contact submit, contact `captureError`) have no page test pinning name + props | medium | Pre-verified by the V layer (grep of every name and key across tests). This diff rewrote each line, and a wrong key, wrong props or dropped call passes the gate | patch |
+
+Pass 2 (2026-10-07, fresh-session review on a different model). Layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor. 23 raw findings deduplicated to 17: 5 patch, 1 defer, 11 rejected — full verdicts and refutations in `### Review Findings` under Tasks & Acceptance. New against pass 1: the `series_selected` pin is partial (V1's list omitted it), the list-fetch `captureError` rewrite is unpinned, and the Biome guard has no committed failable check.
 
 ## Design Notes
 

@@ -169,6 +169,11 @@ describe('PredictPage error states (Story 1.3)', () => {
     // matchup (Story 2.2: the group is always present).
     expect(screen.getByText('101 — 91')).toBeInTheDocument();
     expect(db.from).toHaveBeenCalledWith('series');
+    // Story 4.0 pass-2 review: a list-fetch failure must reach the exception
+    // stream through the port. The preload succeeded, so this is the render's
+    // only exception — pin the single call and the error it carries.
+    expect(db.captureException).toHaveBeenCalledTimes(1);
+    expect((db.captureException.mock.calls[0]?.[0] as Error).message).toBe('series select failed');
   });
 
   it('treats a failed ?series= query as retryable in the result region (matrix: broken preload)', async () => {

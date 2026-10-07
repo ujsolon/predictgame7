@@ -78,3 +78,7 @@ The listing groups events by minute, so the order inside one minute is the listi
 - the headless decoded walk, which Story 4.0's build runs at baseline and after the change, with PostHog answered locally.
 
 If Story 4.7 wants a live property comparison, it opens one event of each kind in PostHog's event detail on both sides.
+
+**Expected difference, not drift.** The after leg will carry one line this before leg cannot: pressing the archive reset button now emits `historical_filter_applied {filter_type: 'reset'}` (Story 4.0 spec decision D1 — the one sanctioned count change). A line-for-line comparison should treat that row as expected and everything else as continuity.
+
+**`contact_form_submitted` has no live before row.** The walk skipped the form on purpose (a submission sends a real message), and Story 4.7 faces the same wall. Its substitute pins are the code-level ones: the whole-log jsdom case in `src/pages/__tests__/home-pending.test.tsx` asserts the emission's name and payload through the port, and page tests pinned the same payload pre-port. 4.7 should read that case rather than expect a production pair.
