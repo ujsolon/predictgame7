@@ -318,7 +318,7 @@ The highest-risk Predict paths have automated regression coverage and pass manua
 The user can share a completed Prediction as a stable Share Link that reproduces the matchup, Method, and result, rendered with social preview metadata (OG title/description/image) so shared links unfurl as prediction cards in chat and social contexts. Realizes UJ-1's resolution; supplies SM-3.
 **Consequences (testable):**
 - Opening a Share Link re-renders the original Prediction (inputs + Method + outputs) without the recipient re-entering anything.
-- Link previews render card metadata on major social/chat surfaces.
+- Link previews render card metadata on major social/chat surfaces. *(2026-10-07, AD-6 amendment: archive-series links preview with a per-series card; custom-matchup links preview with the generic card — owner-accepted narrowing, `sprint-change-proposal-2026-10-07-b.md`.)*
 - Arrivals via Share Links are attributable to a share/referral channel in analytics (FR-25).
 
 **Out of Scope:** in-product social posting, image export beyond the OG card. `[ASSUMPTION: OG card via static generation or a lightweight render service — mechanism is architecture's call.]`
