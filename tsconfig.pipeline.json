@@ -33,5 +33,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["supabase/scripts/pipeline", "tests"]
+  "include": ["supabase/scripts/pipeline", "scripts/og", "tests"]
 }

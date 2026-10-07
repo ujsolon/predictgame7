@@ -658,3 +658,9 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-1-series-deep-links-404-spa-fallback.md`
   summary: Outside the 404 treatment, nothing in the app sets a document title: `index.html` declares no `<title>`, and `PageMeta` is imported only by `SeriesNotFound.tsx` and the two dead template pages (`NotFound.tsx`, `SamplePage.tsx`), neither in `routes.tsx`. Story 4.1 makes the 404 copy the app's *only* title producer.
   evidence: Review pass 2, verification-gap (filed under Other findings). Pre-existing, not caused by 4.1, and out of its scope. It matters twice downstream: it is what turns the h2-notice title regression into "404 copy in the tab" rather than "empty tab" (see the pass-2 patch finding about `helpers.tsx` and `HelmetProvider`), and Story 4.3's prerender/SEO work will read per-page titles as covered when they are not yet written. Natural owner: Story 4.3.
+
+## Deferred from: code review of spec-4-2-og-card-rendering-build-time.md (2026-10-07)
+
+- source_spec: `spec-4-2-og-card-rendering-build-time.md`
+  summary: AGENTS.md's Verification-gate section is stale after Story 4.2. It says `scripts/` outside `supabase/scripts/pipeline` is checked by no gate step, but `scripts/og/**` is now linted by Biome and type-checked through `tsconfig.pipeline.json`. Its Deploy line says `predeploy` runs `npm run gate`, but `predeploy` is now `npm run gate && npm run og:cards`, which also needs `.env` and a live anon read (≈40–50 s) and fails the deploy on any undecodable logo or zero series cards.
+  evidence: Review pass 1, blind-hunter (row B3). Verified against AGENTS.md's Verification-gate and Deploy paragraphs. The build workflow defers any fix that edits agent-context files, so this is the owner's call or a `bmad-project-context` refresh. It is two sentences: one in the coverage paragraph and one in the Deploy line.
