@@ -3,6 +3,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  allByRoleText,
+  byId,
+  byRoleText,
   chooseCustomMatchup,
   chooseMethod,
   conformingResult,
@@ -102,8 +105,8 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
   it('puts the Series and Method triggers in the tab ring as real buttons, in DOM order', () => {
     renderPage();
 
-    const series = screen.getByRole('button', { name: /Click to choose series/ });
-    const method = screen.getByRole('button', { name: /Click to choose method/ });
+    const series = byRoleText('button', /Click to choose series/);
+    const method = byRoleText('button', /Click to choose method/);
 
     for (const trigger of [series, method]) {
       expect(trigger.tagName).toBe('BUTTON');
@@ -122,8 +125,8 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
   // Found by the owner's NVDA pass (§6.1), not by anything automated: Chrome's
   // accessible-name computation concatenates a trigger's descendant text with no
   // separator, so the real screen reader said "Select a SeriesClick to choose
-  // series" and "Not selectedClick to choose method". The regexes above match the
-  // fused string too, which is why they never caught it.
+  // series" and "Not selectedClick to choose method". Substring locators match
+  // the fused string too, which is why none of them caught it.
   //
   // This deliberately asserts `textContent`, NOT `getByRole({ name })`:
   // `dom-accessibility-api` inserts a space between block-level siblings that
@@ -134,8 +137,8 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
   it('separates the trigger label from its hint in the rendered text', () => {
     renderPage();
 
-    const series = screen.getByRole('button', { name: /Click to choose series/ });
-    const method = screen.getByRole('button', { name: /Click to choose method/ });
+    const series = byRoleText('button', /Click to choose series/);
+    const method = byRoleText('button', /Click to choose method/);
 
     expect(series.textContent).toBe('Select a Series Click to choose series');
     expect(method.textContent).toBe('Not selected Click to choose method');
@@ -143,7 +146,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
 
   it('opens the series picker on Enter and on Space, Escape closing it back to the trigger', async () => {
     renderPage();
-    const trigger = screen.getByRole('button', { name: /Click to choose series/ });
+    const trigger = byRoleText('button', /Click to choose series/);
 
     activateByKeyboard(trigger, 'Enter');
     const dialog = await screen.findByRole('dialog');
@@ -161,35 +164,37 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
 
   it('opens the method picker on Enter and on Space without losing the nested Details links', async () => {
     renderPage();
-    const trigger = screen.getByRole('button', { name: /Click to choose method/ });
+    const trigger = byRoleText('button', /Click to choose method/);
 
     activateByKeyboard(trigger, 'Enter');
     const dialog = await screen.findByRole('dialog');
     // The four options stay buttons and their "Details" links stay nested in
     // them (Decision 1 keeps that intact — only the Series card was narrowed).
     expect(within(dialog).getByText('Select Method')).toBeInTheDocument();
-    expect(within(dialog).getAllByRole('link', { name: 'Details' })).toHaveLength(4);
+    expect(allByRoleText('link', 'Details', dialog)).toHaveLength(4);
 
     fireEvent.keyDown(dialog, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 
     activateByKeyboard(trigger, ' ');
     const reopened = await screen.findByRole('dialog');
-    fireEvent.click(within(reopened).getByRole('button', { name: /Elo Rating/ }));
+    fireEvent.click(byRoleText('button', 'Elo Rating', reopened));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(screen.getByRole('button', { name: /^Elo Rating/ })).toBeInTheDocument();
+    expect(byRoleText('button', /^Elo Rating/)).toBeInTheDocument();
   });
 
   it('keeps every custom-grid input individually focusable and typed into, beside the Series trigger', async () => {
     renderPage();
     await chooseCustomMatchup();
 
-    const trigger = screen.getByRole('button', { name: /TBD vs TBD/ });
+    const trigger = byRoleText('button', 'TBD vs TBD');
     expect(trigger.tagName).toBe('BUTTON');
     assertNoInteractiveDescendant(trigger);
 
-    const teamA = screen.getByRole('textbox', { name: 'Team A' });
-    const teamB = screen.getByRole('textbox', { name: 'Team B' });
+    // A `<label>`-associated textbox has no textContent, so the two team fields
+    // are taken by the ids the page already gives them.
+    const teamA = byId('team_a');
+    const teamB = byId('team_b');
     const game1A = document.getElementById('game_1_score_a') as HTMLInputElement;
     const game6B = document.getElementById('game_6_score_b') as HTMLInputElement;
 
@@ -215,7 +220,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     const ring = tabRing();
     expect(ring.filter((element) => element.tagName === 'INPUT')).toHaveLength(14);
     expect(ring).toEqual(expect.arrayContaining([trigger, teamA, teamB, game1A, game6B]));
-    expect(ring).toContain(screen.getByRole('button', { name: /Click to choose method/ }));
+    expect(ring).toContain(byRoleText('button', /Click to choose method/));
   });
 
   it('activates Generate with Enter and Space for exactly one invoke each, and ignores the card click once a result exists', async () => {
@@ -224,7 +229,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     await chooseMethod();
     fillCustomForm();
 
-    const submit = screen.getByRole('button', { name: 'Click to generate prediction' });
+    const submit = byRoleText('button', 'Click to generate prediction');
     expect(submit.tagName).toBe('BUTTON');
     expect(submit).toBeEnabled();
     expect(tabRing()).toEqual(expect.arrayContaining([submit]));
@@ -309,7 +314,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     await chooseMethod();
     fillCustomForm();
 
-    const submit = screen.getByRole('button', { name: 'Click to generate prediction' });
+    const submit = byRoleText('button', 'Click to generate prediction');
     // A request that never resolves is the state the fan actually sits in while
     // waiting, and `loading` is the only thing separating a repeated activation
     // from a second concurrent prediction — `handlePredict` has no guard of its
@@ -322,7 +327,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
     expect(submit).toBeDisabled();
     // In flight the label must not invite the click the control cannot take.
-    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBe(submit);
+    expect(byRoleText('button', 'Generating prediction…')).toBe(submit);
 
     fireEvent.click(submit);
     await waitFor(() => expect(submit).toBeDisabled());
@@ -332,7 +337,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
   it('leaves an incomplete selection with a disabled submit control, outside the ring and inert', () => {
     renderPage();
 
-    const submit = screen.getByRole('button', { name: 'Select series and method first' });
+    const submit = byRoleText('button', 'Select series and method first');
     // A real disabled `<button>`, not the opacity-only fakery the card wore.
     // `tabRing()` filters on `disabled` by construction, so asserting exclusion
     // here would test the probe; the browser's own exclusion of a disabled
@@ -357,7 +362,7 @@ describe('PredictPage keyboard operability (Story 1.5)', () => {
     submitPrediction();
     await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
 
-    const retry = within(panel()).getByRole('button', { name: 'Retry' });
+    const retry = byRoleText('button', 'Retry', panel());
     const ring = tabRing();
     expect(ring.filter((element) => panel().contains(element))).toEqual([retry]);
     // The panel container stays programmatically focusable only (it takes

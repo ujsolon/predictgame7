@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  byRoleText,
   chooseCustomMatchup,
   chooseMethod,
   clickDecadeCard,
@@ -11,8 +12,10 @@ import {
   fetchError,
   fillCustomForm,
   fillField,
+  findByRoleText,
   httpError,
   panel,
+  pickerDialog,
   pressRetry,
   renderPage,
   renderPageWithNavigation,
@@ -302,7 +305,7 @@ describe('PredictPage error states (Story 1.3)', () => {
     expect(db.toast.error).not.toHaveBeenCalled();
     // The mount-time list fetch still runs; the by-id preload never does —
     // re-checked after the page has settled, so a late query cannot slip by.
-    await waitFor(() => expect(screen.getByRole('button', { name: /Click to choose series/ })).toBeInTheDocument());
+    await waitFor(() => expect(byRoleText('button', /Click to choose series/)).toBeInTheDocument());
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(db.from).toHaveBeenCalledTimes(1);
     expect(byId).not.toHaveBeenCalled();
@@ -316,7 +319,7 @@ describe('PredictPage error states (Story 1.3)', () => {
     fireEvent.click(screen.getByText('Click to choose series'));
     clickDecadeCard(2020);
     await clickYearCard(2022);
-    fireEvent.click(await screen.findByRole('button', { name: /Finals/ }));
+    fireEvent.click(await findByRoleText('button', 'Finals', pickerDialog()));
 
     await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());
     expect(document.querySelector('[data-series-not-found]')).toBeNull();
@@ -332,7 +335,7 @@ describe('PredictPage error states (Story 1.3)', () => {
     // Derived label: the fixture reads pending, so the year card says
     // `Current`, not `View Series` (Story 2.2).
     await clickYearCard(2022);
-    fireEvent.click(await screen.findByRole('button', { name: /Finals/ }));
+    fireEvent.click(await findByRoleText('button', 'Finals', pickerDialog()));
 
     await waitFor(() => expect(screen.getByText('BOS vs MIA')).toBeInTheDocument());
     expect(screen.queryByText("Couldn't load this series.")).toBeNull();

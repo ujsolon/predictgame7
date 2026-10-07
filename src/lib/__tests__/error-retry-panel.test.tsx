@@ -7,6 +7,15 @@ import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
 const FOCUSABLE =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+// The panel renders exactly one button, so the role query alone identifies it;
+// its copy is then asserted as raw `textContent` rather than a jsdom-computed
+// accessible name (AGENTS.md · Evidence discipline, F16).
+function retryButton(): HTMLElement {
+  const button = screen.getByRole('button');
+  expect(button.textContent).toBe('Retry');
+  return button;
+}
+
 describe('ErrorRetryPanel', () => {
   it('announces as a status region with the heading and the classifier message', () => {
     render(
@@ -35,7 +44,7 @@ describe('ErrorRetryPanel', () => {
 
     const stops = screen.getByRole('status').querySelectorAll(FOCUSABLE);
     expect(stops).toHaveLength(1);
-    expect(stops[0]).toBe(screen.getByRole('button', { name: 'Retry' }));
+    expect(stops[0]).toBe(retryButton());
   });
 
   it('re-fires the attempt through onRetry without bubbling to outer click handlers', () => {
@@ -46,7 +55,7 @@ describe('ErrorRetryPanel', () => {
       </div>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(retryButton());
     // stopPropagation keeps a card-level click from double-firing the attempt;
     // one call comes from the button itself.
     expect(onRetry).toHaveBeenCalledTimes(1);

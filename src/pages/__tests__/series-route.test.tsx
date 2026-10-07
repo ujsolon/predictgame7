@@ -63,6 +63,21 @@ function notFoundHeading() {
   return document.querySelector('[data-series-not-found] h1');
 }
 
+// Role finds the control and raw `textContent` pins its copy — a jsdom-computed
+// accessible name is not evidence (AGENTS.md · Evidence discipline, F16). Same
+// discipline as the shared Predict harness locators, kept local because this
+// suite deliberately does not import `PredictPage`.
+function byRoleText(role: 'button', expected: string, scope?: HTMLElement): HTMLElement {
+  const root = scope ?? document.body;
+  const matches = within(root)
+    .queryAllByRole(role)
+    .filter((el) => (el.textContent ?? '').includes(expected));
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one ${role} matching "${expected}", found ${matches.length}`);
+  }
+  return matches[0];
+}
+
 describe('SeriesRoute (Story 4.1)', () => {
   it('redirects a known id with a known method to Predict with both preloaded (matrix: share arrival)', async () => {
     renderRoute(`/series/${SERIES_ID}?method=elo`);
@@ -82,7 +97,7 @@ describe('SeriesRoute (Story 4.1)', () => {
     // With `replace`, Back from Predict returns to where the arrival came from;
     // a pushed redirect would put /series/<id> one step back and bounce the
     // reader straight back into Predict.
-    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    fireEvent.click(byRoleText('button', 'back'));
     expect(await screen.findByText('home')).toBeInTheDocument();
     expect(db.from).toHaveBeenCalledTimes(1);
   });
@@ -140,12 +155,12 @@ describe('SeriesRoute (Story 4.1)', () => {
     expect(db.from).toHaveBeenCalledTimes(1);
 
     // Second failure re-renders the panel — never a spinner loop.
-    fireEvent.click(within(panel.closest('[role="status"]') as HTMLElement).getByRole('button', { name: 'Retry' }));
+    fireEvent.click(byRoleText('button', 'Retry', panel.closest('[role="status"]') as HTMLElement));
     await waitFor(() => expect(db.from).toHaveBeenCalledTimes(2));
     await screen.findByText("Couldn't load this series.");
 
     db.single = { data: { id: SERIES_ID }, error: null };
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(byRoleText('button', 'Retry'));
     expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}&method=elo`);
     expect(db.from).toHaveBeenCalledTimes(3);
   });

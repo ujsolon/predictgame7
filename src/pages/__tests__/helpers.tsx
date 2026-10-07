@@ -123,6 +123,52 @@ export function renderPageWithNavigation(entry = '/predict') {
   return { goTo: (to: string) => void act(() => navigate?.(to)) };
 }
 
+// AGENTS.md · Evidence discipline (F16): a jsdom-computed accessible name is
+// not evidence. `dom-accessibility-api` inserts a separator between block-level
+// siblings that Chrome's accname does not, so `getByRole({ name })` can stay
+// green on a tree real AT reads as fused. These locate a control by its
+// semantic role (kept — it is what the keyboard suites actually pin) plus the
+// raw `textContent` concatenation, and abort unless exactly one element matches.
+// A `<label>`-associated textbox has no textContent, so those are taken by id.
+function matchesText(el: Element, expected: string | RegExp): boolean {
+  const text = el.textContent ?? '';
+  return typeof expected === 'string' ? text.includes(expected) : expected.test(text);
+}
+
+type TextRole = 'button' | 'link';
+
+export function allByRoleText(role: TextRole, expected: string | RegExp, scope: HTMLElement = document.body): HTMLElement[] {
+  return within(scope)
+    .queryAllByRole(role)
+    .filter((el) => matchesText(el, expected));
+}
+
+export function byRoleText(role: TextRole, expected: string | RegExp, scope: HTMLElement = document.body): HTMLElement {
+  const matches = allByRoleText(role, expected, scope);
+  if (matches.length !== 1) {
+    throw new Error(`expected exactly one ${role} matching ${String(expected)}, found ${matches.length}`);
+  }
+  return matches[0];
+}
+
+export async function findByRoleText(role: TextRole, expected: string | RegExp, scope?: HTMLElement): Promise<HTMLElement> {
+  let found: HTMLElement | undefined;
+  await waitFor(() => {
+    found = byRoleText(role, expected, scope);
+  });
+  return found as HTMLElement;
+}
+
+export function byId(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`no element with id "${id}"`);
+  return el;
+}
+
+export function pickerDialog(): HTMLElement {
+  return screen.getByRole('dialog');
+}
+
 // Story 1.5 (Decisions 1-2) turned the three Predict surfaces into real
 // `<button>`s, so the click helpers retarget once, centrally, to the accessible
 // element instead of the hint `<p>` inside it. Every suite shares these, and the
@@ -140,16 +186,14 @@ async function settlePickerClose() {
 }
 
 export async function chooseMethod(label = 'Logistic Regression') {
-  fireEvent.click(screen.getByRole('button', { name: /Click to choose method/ }));
-  const option = await screen.findByRole('button', { name: new RegExp(label) });
-  fireEvent.click(option);
+  fireEvent.click(byRoleText('button', /Click to choose method/));
+  fireEvent.click(await findByRoleText('button', label, pickerDialog()));
   await settlePickerClose();
 }
 
 export async function chooseCustomMatchup() {
-  fireEvent.click(screen.getByRole('button', { name: /Click to choose series/ }));
-  const option = await screen.findByRole('button', { name: /Custom Matchup/ });
-  fireEvent.click(option);
+  fireEvent.click(byRoleText('button', /Click to choose series/));
+  fireEvent.click(await findByRoleText('button', 'Custom Matchup', pickerDialog()));
   await settlePickerClose();
 }
 
@@ -168,7 +212,7 @@ export function fillCustomForm() {
 }
 
 export function submitPrediction() {
-  fireEvent.click(screen.getByRole('button', { name: 'Click to generate prediction' }));
+  fireEvent.click(byRoleText('button', 'Click to generate prediction'));
 }
 
 export function panel() {
@@ -208,5 +252,5 @@ export async function clickYearCard(year: number) {
 }
 
 export function pressRetry() {
-  fireEvent.click(within(panel()).getByRole('button', { name: 'Retry' }));
+  fireEvent.click(byRoleText('button', 'Retry', panel()));
 }

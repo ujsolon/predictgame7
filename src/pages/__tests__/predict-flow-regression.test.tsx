@@ -6,6 +6,7 @@ import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import type { MethodSlug } from '@/types/prediction';
 import type { Series, Team } from '@/types/types';
 import {
+  byRoleText,
   chooseCustomMatchup,
   chooseMethod,
   clickDecadeCard,
@@ -14,6 +15,8 @@ import {
   fetchError,
   fillCustomForm,
   fillField,
+  findByRoleText,
+  pickerDialog,
   pressRetry,
   renderPage,
   renderPageWithLocationProbe,
@@ -72,7 +75,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     // the derived decade-card label reads `Current` (Story 2.2).
     await clickYearCard(2022);
     expect(screen.getByText('Select Series from 2022')).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole('button', { name: /BOS vs MIA/ }));
+    fireEvent.click(await findByRoleText('button', 'BOS vs MIA', pickerDialog()));
 
     // The trigger reflects the picked row, and the row's Games 1–6 render
     // through the selection — proof `selectedSeries.data` holds the series.
@@ -83,7 +86,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     // Back-navigation inside the picker never touches the prior choice.
     fireEvent.click(screen.getByText('BOS vs MIA'));
     clickDecadeCard(2020);
-    fireEvent.click(await screen.findByRole('button', { name: /Go Back/ }));
+    fireEvent.click(await findByRoleText('button', 'Go Back'));
     expect(await screen.findByText('Select Decade')).toBeInTheDocument();
     expect(screen.getByText('101 — 91')).toBeInTheDocument();
   });
@@ -493,7 +496,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
 
     // Switch 1: logistic → bayes clears the failure panel and resets nothing else.
     fireEvent.click(screen.getByText('Logistic Regression'));
-    fireEvent.click(await screen.findByRole('button', { name: /Bayes Method/ }));
+    fireEvent.click(await findByRoleText('button', 'Bayes Method'));
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByText('Bayes Method')).toBeInTheDocument();
     expect((document.getElementById('team_a') as HTMLInputElement).value).toBe('BOS');
@@ -508,7 +511,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
 
     // Switch 2: bayes → elo.
     fireEvent.click(screen.getByText('Bayes Method'));
-    fireEvent.click(await screen.findByRole('button', { name: /Elo Rating/ }));
+    fireEvent.click(await findByRoleText('button', 'Elo Rating'));
     expect(screen.queryByText('Team name is required')).toBeNull();
     expect((document.getElementById('team_b') as HTMLInputElement).value).toBe('MIA');
     expect((document.getElementById('game_6_score_a') as HTMLInputElement).value).toBe('106');
@@ -520,7 +523,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     await waitFor(() => expect(screen.getByText('Predicted Winner')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('Elo Rating'));
-    fireEvent.click(await screen.findByRole('button', { name: /Bayes Method/ }));
+    fireEvent.click(await findByRoleText('button', 'Bayes Method'));
     expect(screen.queryByText('Predicted Winner')).toBeNull();
     expect(screen.getByText('Bayes Method')).toBeInTheDocument();
     expect((document.getElementById('game_1_score_a') as HTMLInputElement).value).toBe('101');
@@ -538,9 +541,9 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
       fireEvent.click(screen.getByText('Click to choose method'));
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByText(label)).toBeInTheDocument();
-      const option = within(dialog).getByRole('button', { name: new RegExp(label) });
+      const option = byRoleText('button', label, dialog);
       // The dialog's option labels and anchors are literals, not reads of the maps.
-      expect(within(option).getByRole('link', { name: 'Details' })).toHaveAttribute(
+      expect(byRoleText('link', 'Details', option)).toHaveAttribute(
         'href',
         `/maths#${METHOD_MATHS_ANCHORS[slug]}`
       );
@@ -556,7 +559,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
       fireEvent.click(screen.getByText('View Detailed Analysis'));
       await waitFor(() => expect(screen.getByText('Prediction Result')).toBeInTheDocument());
       expect(screen.getByText(`Method: ${label}`)).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /View Maths/ })).toHaveAttribute(
+      expect(byRoleText('link', 'View Maths')).toHaveAttribute(
         'href',
         `/maths#${METHOD_MATHS_ANCHORS[slug]}`
       );
@@ -569,7 +572,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
 
     // Move the preloaded selection over to the custom grid.
     fireEvent.click(screen.getByText('BOS vs MIA'));
-    fireEvent.click(await screen.findByRole('button', { name: /Custom Matchup/ }));
+    fireEvent.click(await findByRoleText('button', 'Custom Matchup'));
     await chooseMethod();
     fillCustomForm();
     db.invoke.mockResolvedValue({ data: conformingResult, error: null });
@@ -591,7 +594,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
     // Custom input and the fetched games list survived the reset.
     fireEvent.click(screen.getByText('Click to choose series'));
     expect(await screen.findByText('Select Decade')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Custom Matchup/ }));
+    fireEvent.click(byRoleText('button', 'Custom Matchup'));
     expect((document.getElementById('team_a') as HTMLInputElement).value).toBe('BOS');
     expect((document.getElementById('game_6_score_b') as HTMLInputElement).value).toBe('96');
     expect(db.from).toHaveBeenCalledTimes(2);
@@ -611,7 +614,7 @@ describe('PredictPage flow regressions (Story 1.4)', () => {
       ['Elo Rating', 'Exponential Smoothing'],
     ]) {
       fireEvent.click(screen.getByText(current));
-      fireEvent.click(await screen.findByRole('button', { name: new RegExp(next) }));
+      fireEvent.click(await findByRoleText('button', next));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     }
 
@@ -890,7 +893,7 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
   // test already drives it.
   async function switchMethod(currentLabel: string, nextLabel: string) {
     fireEvent.click(screen.getByText(currentLabel));
-    const option = await screen.findByRole('button', { name: new RegExp(nextLabel) });
+    const option = await findByRoleText('button', nextLabel);
     fireEvent.click(option);
     await waitFor(() => {
       if (screen.queryByRole('dialog')) throw new Error('the method picker is still mounted');
@@ -932,7 +935,7 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
     expect(generatedEvents()).toHaveLength(1);
     expect(generatedEvents()[0][1]).toMatchObject({ method: 'elo' });
     expect(generatedToastMessages()).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled();
   });
 
   it('drops an in-flight result when a method switch ends the wait it was part of', async () => {
@@ -944,13 +947,13 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
 
     submitPrediction();
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+    expect(byRoleText('button', 'Generating prediction…')).toBeDisabled();
 
     // No second submit this time: the switch alone retires the attempt, so the
     // spinner must not be left waiting on a response that can no longer paint.
     await switchMethod('Logistic Regression', 'Elo Rating');
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled()
+      expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled()
     );
 
     slow.settle({ data: conformingResult, error: null });
@@ -1036,13 +1039,13 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
 
     // The live request is still out there, so the control the fan must not
     // double-fire stays disabled — and the retired attempt stays silent.
-    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+    expect(byRoleText('button', 'Generating prediction…')).toBeDisabled();
     expect(generatedEvents()).toHaveLength(0);
     expect(generatedToastMessages()).toHaveLength(0);
 
     live.settle({ data: { ...conformingResult, win_probability_a: 71.5, win_probability_b: 28.5 }, error: null });
     await waitFor(() => expect(screen.getByText('71.5%')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled();
   });
 
   it('drops an in-flight result when the fan edits the custom scores that produced it', async () => {
@@ -1056,14 +1059,14 @@ describe('PredictPage superseded predictions (Epic 1 retro A1)', () => {
 
     submitPrediction();
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole('button', { name: 'Generating prediction…' })).toBeDisabled();
+    expect(byRoleText('button', 'Generating prediction…')).toBeDisabled();
 
     // A keystroke rebuilds `customInput`, the reset effect's third dependency.
     // That edit already discards a visible result, so it discards the response
     // that would have painted a result computed from the pre-edit scores.
     fillField('game_1_score_a', '111');
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled()
+      expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled()
     );
 
     slow.settle({ data: conformingResult, error: null });
@@ -1086,7 +1089,7 @@ describe('PredictPage method preload (Story 4.1)', () => {
 
     expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
     expect(screen.getByText('Elo Rating')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled();
     expect(db.invoke).not.toHaveBeenCalled();
     expect(db.capture).not.toHaveBeenCalled();
 
@@ -1099,8 +1102,8 @@ describe('PredictPage method preload (Story 4.1)', () => {
     renderPage(`/predict?series=${SERIES_ID}&method=foo`);
 
     expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Select series and method first' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Click to choose method/ })).toBeInTheDocument();
+    expect(byRoleText('button', 'Select series and method first')).toBeDisabled();
+    expect(byRoleText('button', /Click to choose method/)).toBeInTheDocument();
     expect(db.toast.error).not.toHaveBeenCalled();
     expect(screen.queryByRole('status')).toBeNull();
   });
@@ -1109,7 +1112,7 @@ describe('PredictPage method preload (Story 4.1)', () => {
     renderPage(`/predict?series=${SERIES_ID}&method=toString`);
 
     expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Select series and method first' })).toBeDisabled();
+    expect(byRoleText('button', 'Select series and method first')).toBeDisabled();
   });
 
   it('keeps the linked method through a failed preload and its Retry (matrix: lookup fails)', async () => {
@@ -1118,11 +1121,11 @@ describe('PredictPage method preload (Story 4.1)', () => {
     await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
 
     db.single = { data: seriesFixture, error: null };
-    fireEvent.click(within(screen.getByRole('status')).getByRole('button', { name: 'Retry' }));
+    fireEvent.click(byRoleText('button', 'Retry', screen.getByRole('status')));
 
     expect(await screen.findByText('BOS vs MIA')).toBeInTheDocument();
     expect(screen.getByText('Elo Rating')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Click to generate prediction' })).toBeEnabled();
+    expect(byRoleText('button', 'Click to generate prediction')).toBeEnabled();
     expect(db.invoke).not.toHaveBeenCalled();
   });
 });

@@ -11,10 +11,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Series } from '@/types/types';
 
 import {
+  byRoleText,
   chooseMethod,
   clickDecadeCard,
   clickYearCard,
   conformingResult,
+  pickerDialog,
   pressRetry,
   renderPage,
   seriesFixture,
@@ -101,7 +103,7 @@ function stubQueries() {
 }
 
 async function openPickerAtDecadeLevel() {
-  fireEvent.click(screen.getByRole('button', { name: /Click to choose series/ }));
+  fireEvent.click(byRoleText('button', /Click to choose series/));
   await screen.findByText('Select Decade');
 }
 
@@ -127,7 +129,7 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
 
     expect(screen.getByText('Current Game 7s')).toBeInTheDocument();
     expect(screen.getByText('No active series right now — the next Game 7 is coming.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Every Game 7 has a history.' })).toHaveAttribute('href', '/historical');
+    expect(byRoleText('link', 'Every Game 7 has a history.', pickerDialog())).toHaveAttribute('href', '/historical');
     // Not hidden, and not an error: the retry panel stays away.
     expect(screen.queryByText("Couldn't load the series list.")).toBeNull();
     expect(db.captureException).not.toHaveBeenCalled();
@@ -154,7 +156,7 @@ describe('PredictPage derived phase groups (Story 2.2)', () => {
     clickDecadeCard(2020);
     await waitFor(() => expect(yearCardText(2022)).toBe('2022Current'));
 
-    fireEvent.click(screen.getByRole('button', { name: /Go Back/ }));
+    fireEvent.click(byRoleText('button', 'Go Back', pickerDialog()));
     clickDecadeCard(1990);
     await waitFor(() => expect(yearCardText(1998)).toBe('1998View Series'));
   });
