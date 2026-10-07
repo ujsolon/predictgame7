@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.8] - 2026-10-07
+
+### Added
+
+- Deep links survive a cold load. The build emits `404.html` as a byte copy of `index.html`, so GitHub Pages serves the app on every path: `/predict`, `/historical`, `/insights` and `/maths` open directly instead of GitHub's 404 page. Through the fallback these answers carry HTTP status 404, which is recorded for Story 4.3's prerender. `npm run build` fails if the copy is missing or differs (Story 4.1).
+- `/series/<id>` links. `?method=<slug>` opens Predict with that series and method already selected, and nothing runs until Generate. A bare id opens Predict with the series selected, until the series pages arrive. An unknown or malformed id shows "This series doesn't exist." with a link to Historical (Story 4.1).
+- `scripts/probe-deep-links.mjs` checks every route, the share arrival and the 404 in headless Chrome against a preview or the live site (Story 4.1).
+
+### Changed
+
+- An unknown `?series=` on Predict shows the not-found notice inside the series card (announced to screen readers) instead of a toast. A malformed id is never queried (Story 4.1).
+- Analytics run through one module, `src/lib/analytics/`. The 10 event names and their properties are unchanged, and a lint rule rejects PostHog imports anywhere else (Story 4.0).
+- The Historical page's reset button is now counted as `historical_filter_applied` with `filter_type: 'reset'` (Story 4.0).
+
 ## [0.2.7] - 2026-10-07
 
 ### Added
