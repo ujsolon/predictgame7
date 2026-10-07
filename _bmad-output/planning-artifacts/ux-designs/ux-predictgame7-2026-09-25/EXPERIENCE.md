@@ -39,7 +39,7 @@ Delta only — existing routes unchanged (`/`, `/predict`, `/historical`, `/insi
 
 **Preview/result pair scope:** only the five flagship (`is_featured`) series and any live **Active** (inseason) series carry the pair. The 172 non-flagship historical series stay single full-record pages — pairing all 177 would emit 172 near-empty preview pages, a thin/doorway pattern that risks domain-level demotion (sprint-change-proposal-2026-09-25). The result page is reached only by an explicit reveal action from the preview, never by direct link from the archive list.
 
-Shareable URLs per AD-6: `/series/<id>?method=<slug>` (historic prediction share), `/predict?custom=<base64>` (custom matchup). What users copy/share is the **site URL itself** with `utm_source=share` appended; per-series `og:*` tags come from the prerendered page (AD-7) and the card image from the `share-og` Edge Function (AD-6, amended 2026-10-07 — Supabase cannot serve HTML) (FR-25/SM-3 attribution; the parameter flows through the single NFR-V1 analytics layer only, never a second tracker). The base64 custom payload follows the `SharePayload` schema owned by `supabase/functions/_shared/contract.ts` (AD-2) — Share button and the `/predict?custom=` decoder both derive from that one contract, so there is one link shape; cards are per series.
+Shareable URLs per AD-6: `/series/<id>?method=<slug>` (historic prediction share), `/predict?custom=<base64>` (custom matchup). What users copy/share is the **site URL itself** with `utm_source=share` appended; per-series `og:*` tags come from the prerendered page (AD-7) and the card image from a static `og/<id>.png` rendered at build time (AD-6, amended 2026-10-07) (FR-25/SM-3 attribution; the parameter flows through the single NFR-V1 analytics layer only, never a second tracker). The base64 custom payload follows the `SharePayload` schema owned by `supabase/functions/_shared/contract.ts` (AD-2) — Share button and the `/predict?custom=` decoder both derive from that one contract, so there is one link shape; cards are per series.
 
 **Arrival behavior:** see State Patterns for what each URL renders on arrival (`?method` → Predict preloaded; bare featured/active → the spoiler-free preview; bare non-flagship → the full-record page; unknown id → 404, never a blank page). The 404 strategy must not compromise crawlability of the prerendered set.
 
@@ -53,7 +53,7 @@ Microcopy anchors from PRD addendum §H: "Where data meets playoff drama" · "De
 
 **Spoiler discipline (2026-09-25):** on preview pages, OG cards, and any pre-reveal copy, the Game 7 outcome is never stated, hinted at in past tense, or visible in a score. The register is tension-forward, present-tense: "Game 7 stands." · "Six games. One winner still unknown." · "The models have their picks — do you?" The resolution voice (past tense, verdicts) belongs only to the result page and non-flagship full-record pages.
 
-**OG meta copy** (`og:title` / `og:description`, emitted by the prerendered pages and app-route shells; the image comes from share-og) — per variant:
+**OG meta copy** (`og:title` / `og:description`, emitted by the prerendered pages and app-route shells; the image is the build-time card) — per variant:
 
 | Variant | og:title | og:description |
 |---|---|---|
@@ -105,7 +105,7 @@ Behavioral rules. Visual specs in DESIGN.md · Components.
 | Historic share-link arrival | `/series/<id>?method=<slug>` | Lands on Predict preloaded with series + method applied — zero re-entry (Stories 4.1/4.4). The editorial page is not shown for this URL. Mechanism (owner decision 2026-09-25): client redirect to `/predict?series=<id>&method=<slug>`. |
 | Share-attributed arrival | Any shareable URL | `utm_source=share` on the landing URL changes nothing visually; it is consumed by the single analytics layer (NFR-V1) only. |
 | Unknown series id / unknown result route | `/series/<id>`, `/series/<id>/result` | 404 treatment: `<h1>` headline "This series doesn't exist." — one line ("It may have been removed, or the link is wrong.") — link to Historical archive. Document `<title>` updates to the 404 copy and focus moves to the headline (react-router doesn't do this automatically). HTTP 404 via the SPA fallback page — applied so the prerendered flagship set stays fully crawlable (real content, real 200s). A bare `/series/<id>/result` with no preview sibling (non-flagship id) is a 404. |
-| OG render failure | share-og function (image only) | Generic fallback card (wordmark + tagline). Silent to the user — the shared link itself always resolves. |
+| OG render failure | card build step | The build fails — no deploy ships a blank or missing card; pages without their own card (app-route shells) use the fallback card. Users never see a render failure. |
 | Series fetch failure | `/series/<id>`, `/series/<id>/result` | Retry panel replaces the content region; hero skeleton stays so the page frame is stable. |
 | Predict service failure | `/predict` | Existing sonner toast for the mutation + retry panel around the result region; form inputs preserved. |
 | Share copy success | Anywhere share exists | sonner toast: "Link copied." — 2s, no action button. Native share sheet needs no toast (the platform confirms). |
@@ -170,7 +170,7 @@ The OG card itself has no responsive behavior — it is a fixed 1200×630 image;
 4. A friend — mid-debate, needing an answer in ninety seconds (UJ-1) — taps the card on mobile and lands directly on `/predict?custom=<base64>&utm_source=share`, counted toward SM-3 through the analytics layer. The page hydrates the exact matchup — no form re-entry.
 5. **Climax:** the friend sees Wang's matchup and the "Model it yourself" path in one screen — the debate gets settled with numbers, the app earns a new visitor with zero onboarding, and the thread itself starts re-running the matchup.
 
-Failure: clipboard API blocked (older browser) → toast becomes "Couldn't copy — long-press the address bar to share." share-og render failure → generic fallback card; the link itself is the site, so it always lands.
+Failure: clipboard API blocked (older browser) → toast becomes "Couldn't copy — long-press the address bar to share." the link itself is the site, so it always lands.
 
 ### Flow 2 — A citable angle before deadline (Rhian, newsletter writer, UJ-3; Wednesday afternoon, playoffs on)
 

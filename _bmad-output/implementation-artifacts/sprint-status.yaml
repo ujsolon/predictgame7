@@ -372,7 +372,7 @@ development_status:
   epic-4: in-progress
   4-0-analytics-isolation-layer-ad-1-port: done
   4-1-series-deep-links-404-spa-fallback: done
-  # 2026-10-07: re-cut to image-only (sprint-change-proposal-2026-10-07-b).
+  # 2026-10-07: re-cut to image-only (proposal b), then to a build-time renderer (proposal c); key kept.
   4-2-og-card-rendering-share-og-edge-function: backlog
   4-3-prerendered-series-pages-seo: backlog
   4-4-share-button-attribution-fr-31-sm-3: backlog

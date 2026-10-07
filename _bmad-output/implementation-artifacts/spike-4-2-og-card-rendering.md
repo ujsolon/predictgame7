@@ -102,3 +102,5 @@ supabase functions delete spike-og --project-ref zfhtbamvmqztvztyokyf
 ```
 
 The spike code stays in the session scratchpad and is not committed.
+
+**Decision (owner, 2026-10-07):** build-time cards; round names wrap, never abbreviated; logo normalisation in Story 4.2 — applied by `sprint-change-proposal-2026-10-07-c.md`.
