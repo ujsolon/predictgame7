@@ -184,6 +184,8 @@ context:
   No local Docker engine was running, so the next CI rehearsal run is the first evidence for section 8. 4.5 moves to `done` once that run is green.
 - **CI migration rehearsal green (2026-10-08, run `37767944147` on `f6007a2`)**: sections 8a–8e all `ok` (column shape, seed, PK/CHECKs/cascade, RLS, re-apply). 4.5 is `done`.
 
+- **Post-release owner decision (2026-10-08, after the 0.2.10 deploy): the Home empty state is withdrawn.** On the live front page "No active series right now — the next Game 7 is coming." read badly. With nothing pending, Home now renders nothing (loading and failed reads too), as before 4.5. The frozen block's empty-state clause and matrix row "Home, none pending" are superseded by this decision. The pending cards stay unchanged. The redesign, with a design session and a mockup of simulated active series first, is **Story 4.9** (`epics.md`, `sprint-status.yaml`).
+
 ## Spec Change Log
 
 ## Review Triage Log

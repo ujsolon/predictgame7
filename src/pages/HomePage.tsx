@@ -33,8 +33,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The empty state's height (icon tile, one line, the ≥44px link), reserved while the read is in flight. */
-const PENDING_BLOCK_MIN_H = 'min-h-36';
 
 const HOME_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
@@ -51,11 +49,10 @@ const HOME_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visibl
  * - One card per pending series: the eyebrow, the spoiler-neutral "{A} and {B}
  *   stand three games apiece" + "Game 7 stands.", a primary link to the series
  *   page and a secondary deep link into Predict.
- * - No pending series → the EXPERIENCE.md empty state, with one onward link to
- *   the archive.
- * - While loading it reserves the empty state's height with no copy (no
- *   layout shift under the hero); a failed read renders NOTHING and logs to the
- *   console, so it stays distinguishable from "nothing pending".
+ * - No pending series, a read in flight, or a failed read → nothing at all
+ *   (owner decision 2026-10-08: the empty state is withdrawn until Story 4.9's
+ *   redesign). A failed read still logs to the console, so it stays
+ *   distinguishable from "nothing pending".
  * - A pending row the card cannot show (`toSeriesView` → null) is reported
  *   through `captureError` once per id, as the series routes report theirs.
  */
@@ -110,36 +107,11 @@ export function PendingGameSevens() {
     };
   }, []);
 
-  if (failed) return null;
-
-  // While the read is in flight the block's space is reserved (the empty state's
-  // height), with no copy, so the answer does not shift the page under the hero.
-  if (pending === null) {
-    return (
-      <section className="pb-12" data-home-pending-series-loading="" aria-hidden="true">
-        <div className={PENDING_BLOCK_MIN_H} />
-      </section>
-    );
-  }
-
-  if (pending.length === 0) {
-    return (
-      <section className="pb-12" data-home-pending-series="" data-empty="">
-        <div className={`mx-auto w-full max-w-md space-y-2 text-left ${PENDING_BLOCK_MIN_H}`}>
-          <div className="mb-4 inline-flex rounded-lg bg-accent p-2 text-foreground" aria-hidden="true">
-            <Trophy className="h-5 w-5" />
-          </div>
-          <p className="text-xl font-medium text-foreground">No active series right now — the next Game 7 is coming.</p>
-          <Link
-            to="/historical"
-            className={`inline-flex min-h-11 items-center gap-1.5 font-medium text-foreground underline underline-offset-4 ${HOME_FOCUS}`}
-          >
-            Every Game 7 has a history. <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </section>
-    );
-  }
+  // Owner decision 2026-10-08 (after the 0.2.10 deploy): with nothing pending,
+  // Home shows nothing — the EXPERIENCE.md empty state Story 4.5 shipped read
+  // badly on the front page and is withdrawn until Story 4.9's redesign. So
+  // loading, a failed read and "nothing pending" all render nothing, as before 4.5.
+  if (failed || pending === null || pending.length === 0) return null;
 
   return (
     <section className="pb-12" data-home-pending-series="">
