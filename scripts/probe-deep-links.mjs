@@ -21,7 +21,10 @@
 //      from its own SPA fallback, so on preview row 1 is what proves the file.
 //   3. `/series/<known>?method=elo` lands on `/predict?series=<id>&method=elo`,
 //      with the series and Elo selected and no predict-game-7 request sent
-//      (owner decision D1: nothing runs until Generate).
+//      (owner decision D1: nothing runs until Generate). Live on GitHub Pages
+//      (since Story 4.8), a direct `/predict?…` request 301s to the static shell
+//      at `/predict/?…` with the query kept, and `vite preview` does not redirect.
+//      So the preload read accepts either path; the rows assert the query (Story 4.7).
 //   4. `/series/<unknown uuid>` and `/series/abc` render the 404 treatment:
 //      the `<h1>`, the document title, focus on the headline, the Historical link.
 //   5. (Story 4.3, Story 4.5) The five flagship ids exist over anon REST,
@@ -212,7 +215,8 @@ function readRoute(expectedH1) {
 
 const READ_PRELOAD = `${WAIT}(() => {
   const n = ${norm};
-  if (!location.pathname.endsWith("/predict")) return null;
+  // Story 4.7: live, /predict?... 301s to the 4.8 shell at /predict/?..., so a trailing slash is accepted.
+  if (!location.pathname.replace(/\\/+$/, "").endsWith("/predict")) return null;
   const buttons = Array.from(document.querySelectorAll("button"));
   // Unselected, the method trigger reads "Not selected … Click to choose method";
   // selected, it reads the method's label and description instead.

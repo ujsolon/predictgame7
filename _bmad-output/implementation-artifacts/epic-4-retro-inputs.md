@@ -18,6 +18,8 @@ The retro runs after Story 4.7 and **decides the home of every remaining item**.
   - the AGENTS.md coverage note;
   - the PRD addendum §A.1 event row.
 - **The URL and entry-point ideas below** (items 1–3a).
+- **Story 4.7's partial row 5 (analytics properties):** 8 of 10 §A.1 events were confirmed live by name and trigger, but their properties were not read live, `custom_series_selected` was not walked, and `contact_form_submitted` is skipped by design. Option: a committed headless live walk (`openBrowserSession`, PostHog answered locally) that decodes every event's properties against Story 4.0's record. It was offered and declined for now (owner decision b, 2026-10-08). Decide whether it is needed before Story 3.4's SM metrics read these events.
+- **Search Console status:** the sitemap was submitted 2026-10-08, and the first status was "Couldn't fetch". Before the retro, read the Sitemaps report and the Pages (indexed) count, and decide whether discovery needs more (URL Inspection on the flagships, or internal links per item 3a).
 
 ## 1. Human-readable series URLs (owner idea, 2026-10-08)
 

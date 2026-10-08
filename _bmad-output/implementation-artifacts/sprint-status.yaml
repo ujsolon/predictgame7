@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-08-2026 21:31
+last_updated: 10-08-2026 22:15
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -396,7 +396,8 @@ development_status:
   # 2026-10-08 remaining order (owner, revised the same day): 4.7 -> epic retro -> scoping of 4.6 + 4.9 + open deferred items.
   # THE RETRO DECIDES each item's home: small scope ships right after as Epic 4 follow-ups, large scope moves to a later epic.
   # 4.7's Given amended to 4.0-4.5 + 4.8. Deadline: flagship content (4.6) live by ~Feb 4-18, 2027.
-  4-7-epic-verification-the-sharing-round-trip-in-production: backlog
+  # 2026-10-08: drill on 0.2.11 — 6/7 AC ok; measurement continuity partial (owner decision b: properties not read live), handed to the retro.
+  4-7-epic-verification-the-sharing-round-trip-in-production: review
   epic-4-retrospective: optional
   # 2026-10-08: deferred to post-retro scoping (its Home featured cards overlap 4.9's Home redesign).
   4-6-flagship-five-content-load: backlog
