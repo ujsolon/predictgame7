@@ -10,8 +10,20 @@ vi.mock('posthog-js', () => ({ default: { capture: vi.fn(), captureException: vi
 
 import {
   aba1970,
+  BEFORE_BODY_TEXT,
+  BEFORE_HEADLINE,
+  BEFORE_VIDEO_ID,
   BROKEN_ID,
   broken,
+  CONTENT_FLAGSHIP_ID,
+  CONTENT_RECORD_ID,
+  contentFlagship,
+  contentRecord,
+  INVALID_CONTENT_ID,
+  invalidContent,
+  RESOLUTION_BODY_TEXT,
+  RESOLUTION_HEADLINE,
+  RESOLUTION_VIDEO_ID,
   FLAGSHIP_2016_GAME7,
   FLAGSHIP_2016_ID,
   flagship2016,
@@ -48,11 +60,11 @@ const TEMPLATE = `<!DOCTYPE html>
 </html>
 `;
 
-const FLAGSHIPS = [FLAGSHIP_2016_ID];
+// Featured (Story 4.5, `is_featured`): the 2016 flagship (archived) and the 2026 pending row.
 const ROWS: Series[] = [flagship2016, nonFlagship2018, aba1970, pending2026, pendingNonFlagship];
 
-function site(rows: readonly Series[] = ROWS, flagships: readonly string[] = FLAGSHIPS) {
-  const out = prerenderSite(rows, TEMPLATE, flagships);
+function site(rows: readonly Series[] = ROWS) {
+  const out = prerenderSite(rows, TEMPLATE);
   const file = (path: string) => out.files.find((f) => f.path === path)?.content;
   return { out, file };
 }
@@ -74,7 +86,7 @@ describe('the route set (I/O matrix)', () => {
     expect(typeof document).toBe('undefined');
   });
 
-  it('emits one page per row plus a result page per archived flagship, and nothing else under series/', () => {
+  it('emits one page per row plus a result page per archived featured series, and nothing else under series/', () => {
     const { out } = site();
     expect(out.errors).toEqual([]);
     const seriesFiles = out.files.map((f) => f.path).filter((p) => p.startsWith('series/')).sort();
@@ -88,7 +100,7 @@ describe('the route set (I/O matrix)', () => {
         `series/${PENDING_NON_FLAGSHIP_ID}/index.html`,
       ].sort()
     );
-    expect(out.summary).toMatchObject({ rows: 5, record: 2, preview: 3, result: 1, shells: 4 });
+    expect(out.summary).toMatchObject({ rows: 5, featured: 2, record: 2, preview: 3, result: 1, shells: 4 });
   });
 
   it('non-flagship archive: the full record, its outcome title, Historic OG tags and the full-row preload', () => {
@@ -180,17 +192,178 @@ describe('the route set (I/O matrix)', () => {
   });
 
   it('an empty read fails', () => {
-    expect(planSeriesPages([], FLAGSHIPS).errors).toHaveLength(1);
+    expect(planSeriesPages([]).errors).toHaveLength(1);
   });
 
-  it('a pinned flagship that is absent, or present but pending, fails the build', () => {
-    const absent = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const missing = site(ROWS, [FLAGSHIP_2016_ID, absent]);
-    expect(missing.out.files).toEqual([]);
-    expect(missing.out.errors.join('\n')).toContain(`pinned flagship ${absent} is absent`);
+  it("flagship-ness is the row's is_featured: the same archived row gets the pair only when featured", () => {
+    // The featured pending row keeps the build's featured floor satisfied.
+    const unfeatured = site([{ ...flagship2016, is_featured: false }, pending2026]);
+    expect(unfeatured.out.files.filter((f) => f.path.startsWith(`series/${FLAGSHIP_2016_ID}`)).map((f) => f.path)).toEqual([
+      `series/${FLAGSHIP_2016_ID}/index.html`,
+    ]);
+    expect(unfeatured.file(`series/${FLAGSHIP_2016_ID}/index.html`)).toContain('Cavaliers win Game 7');
 
-    const pending = site(ROWS, [PENDING_ID]);
-    expect(pending.out.errors.join('\n')).toContain(`pinned flagship ${PENDING_ID} is not archived`);
+    const featuredRecord = site([{ ...nonFlagship2018, is_featured: true }]);
+    expect(featuredRecord.out.summary).toMatchObject({ featured: 1, record: 0, preview: 1, result: 1 });
+    expect(featuredRecord.file(`series/${NON_FLAGSHIP_ID}/result/index.html`)).toContain('Cavaliers win Game 7');
+  });
+
+  it('a featured pending row gets the preview only (matrix: is_featured pending series)', () => {
+    const { out, file } = site([pending2026]);
+    expect(out.errors).toEqual([]);
+    expect(out.summary).toMatchObject({ featured: 1, preview: 1, result: 0 });
+    expect(preloadOf(file(`series/${PENDING_ID}/index.html`) ?? '')).toMatchObject({ variant: 'preview', reveal: false });
+    expect(file(`series/${PENDING_ID}/result/index.html`)).toBeUndefined();
+  });
+
+  it('a row without a boolean is_featured (a read from before migration 00019) fails the build, naming it', () => {
+    const { is_featured: _dropped, ...unflagged } = nonFlagship2018;
+    const { out } = site([flagship2016, unflagged as Series]);
+    expect(out.files).toEqual([]);
+    expect(out.errors.join('\n')).toContain('no boolean is_featured');
+    expect(out.errors.join('\n')).toContain(NON_FLAGSHIP_ID);
+  });
+
+  it('a read in which no row is featured fails the build (the floor the pinned-flagship check gave)', () => {
+    const { out } = site(ROWS.map((row) => ({ ...row, is_featured: false })));
+    expect(out.files).toEqual([]);
+    expect(out.errors.join('\n')).toContain('no series row has is_featured = true');
+    expect(planSeriesPages([pending2026]).errors).toEqual([]);
+  });
+});
+
+// Story 4.5 · editorial content through the prerender (I/O matrix rows).
+describe('editorial content (Story 4.5)', () => {
+  const rootOf = (html: string) => /<div id="root">([\s\S]*)<\/div>\n\s*<script type="application\/json"/.exec(html)?.[1] ?? '';
+  const flat = (html: string) => html.split('<!-- -->').join('');
+
+  it('bare series: the prerendered root is identical with no content rows and with an empty embed', () => {
+    const bare = site(ROWS);
+    const empty = site(ROWS.map((row) => ({ ...row, series_content: [] })));
+    const pages = bare.out.files.filter((f) => f.path.startsWith('series/'));
+    expect(pages).toHaveLength(6);
+    for (const page of pages) {
+      expect(rootOf(empty.file(page.path) ?? '')).toBe(rootOf(page.content));
+      expect(rootOf(page.content)).not.toContain('data-series-content');
+      expect(rootOf(page.content)).not.toContain('data-video-embed');
+    }
+  });
+
+  it('flagship preview: the before part only — and the file carries no resolution text or video id anywhere', () => {
+    const { out, file } = site([contentFlagship]);
+    expect(out.errors).toEqual([]);
+    const preview = file(`series/${CONTENT_FLAGSHIP_ID}/index.html`) ?? '';
+    const root = rootOf(preview);
+    expect(root).toContain(BEFORE_HEADLINE);
+    expect(root).toContain(BEFORE_BODY_TEXT);
+    // The facade is prerendered: thumbnail, visible title, labelled play button, credit — no iframe.
+    expect(root).toContain(`src="https://i.ytimg.com/vi/${BEFORE_VIDEO_ID}/hqdefault.jpg"`);
+    expect(root).toContain('aria-label="Play: Before-part video title"');
+    expect(flat(root)).toContain('Highlights via Before Channel');
+    // No credit_url: the credit links the YouTube watch URL.
+    expect(root).toContain(`href="https://www.youtube.com/watch?v=${BEFORE_VIDEO_ID}"`);
+    expect(root).not.toContain('<iframe');
+    expect(root).not.toContain('youtube-nocookie');
+    // The editorial image resolves under the app base, with its caption.
+    expect(root).toContain('src="/predictgame7/editorial/before-huddle.jpg"');
+    expect(root).toContain('alt="Game six huddle"');
+    expect(root).toContain('Game 6 huddle');
+    // An external markdown link carries rel="noopener noreferrer".
+    expect(root).toMatch(/<a href="https:\/\/www\.basketball-reference\.com\/" rel="noopener noreferrer"[^>]*>the box scores<\/a>/);
+    // Order: hero → strip → before → method links.
+    expect(root.indexOf('data-series-content="before"')).toBeGreaterThan(root.indexOf('Games 1–6'));
+    expect(root.indexOf('data-series-content="before"')).toBeLessThan(root.indexOf('series-methods'));
+
+    for (const leak of [RESOLUTION_HEADLINE, RESOLUTION_BODY_TEXT, RESOLUTION_VIDEO_ID, 'Resolution Channel', 'Resolution-part', '"resolution"']) {
+      expect(preview).not.toContain(leak);
+    }
+    expect(preloadOf(preview).series.series_content?.map((row) => row.part)).toEqual(['before']);
+  });
+
+  it('flagship result: the resolution headline, write-up and video; the before part absent from the page', () => {
+    const { file } = site([contentFlagship]);
+    const root = rootOf(file(`series/${CONTENT_FLAGSHIP_ID}/result/index.html`) ?? '');
+    expect(/<h1[^>]*>([^<]*)<\/h1>/.exec(root)?.[1]).toBe(RESOLUTION_HEADLINE);
+    expect(root).toContain(RESOLUTION_BODY_TEXT);
+    expect(root).toContain(`/vi/${RESOLUTION_VIDEO_ID}/`);
+    expect(root).toContain('href="https://www.youtube.com/@resolution"');
+    for (const absent of [BEFORE_HEADLINE, BEFORE_BODY_TEXT, BEFORE_VIDEO_ID]) expect(root).not.toContain(absent);
+    // Order: strip → resolution → CTA.
+    expect(root.indexOf('data-series-content="resolution"')).toBeGreaterThan(root.indexOf('The full record'));
+    expect(root.indexOf('data-series-content="resolution"')).toBeLessThan(root.indexOf('series-cta'));
+  });
+
+  it('non-flagship record: before then resolution, the resolution headline on the hero', () => {
+    const { file } = site([contentRecord, pending2026]);
+    const root = rootOf(file(`series/${CONTENT_RECORD_ID}/index.html`) ?? '');
+    expect(/<h1[^>]*>([^<]*)<\/h1>/.exec(root)?.[1]).toBe(RESOLUTION_HEADLINE);
+    expect(root.indexOf(BEFORE_BODY_TEXT)).toBeGreaterThan(root.indexOf('The full record'));
+    expect(root.indexOf(BEFORE_BODY_TEXT)).toBeLessThan(root.indexOf(RESOLUTION_BODY_TEXT));
+    expect(root.indexOf(RESOLUTION_VIDEO_ID)).toBeLessThan(root.indexOf('series-cta'));
+  });
+
+  it('every editorial image a page references is a required asset', () => {
+    const { out } = site([contentFlagship, ...ROWS]);
+    expect(out.errors).toEqual([]);
+    expect(out.assets).toEqual(['editorial/before-huddle.jpg']);
+    expect(site(ROWS).out.assets).toEqual([]);
+  });
+
+  it('the document title and OG meta stay data-built when a headline overrides the hero', () => {
+    const { file } = site([contentFlagship]);
+    const preview = file(`series/${CONTENT_FLAGSHIP_ID}/index.html`) ?? '';
+    expect(preview).toMatch(/<title data-rh="true">Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7<\/title>/);
+    expect(meta(preview, 'og:title')).toBe('Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals');
+  });
+
+  it('invalid content at build: no files, every invalid item listed by series id and reason', () => {
+    const offEditorial = {
+      ...contentRecord,
+      series_content: [
+        {
+          series_id: CONTENT_RECORD_ID,
+          part: 'resolution',
+          headline: null,
+          body_md: '![](editorial/no-alt.jpg)\n\n![A hotlinked photo](https://images.example.com/x.jpg)',
+          videos: [],
+          updated_at: '2026-10-08T00:00:00+00:00',
+        },
+      ],
+    } as Series;
+    const { out } = site([invalidContent, offEditorial, pending2026]);
+    expect(out.files).toEqual([]);
+    const errors = out.errors.join('\n');
+    expect(errors).toContain(`series ${INVALID_CONTENT_ID} · before: videos[0].youtube_id`);
+    expect(errors).toContain(`series ${CONTENT_RECORD_ID} · resolution: body_md: image "editorial/no-alt.jpg" has no alt text`);
+    expect(errors).toContain(
+      `series ${CONTENT_RECORD_ID} · resolution: body_md: image "https://images.example.com/x.jpg" must be a site-relative path under editorial/`
+    );
+  });
+
+  it('raw HTML in markdown is rendered as text, never as elements', () => {
+    const hostile = {
+      ...contentRecord,
+      series_content: [
+        {
+          series_id: CONTENT_RECORD_ID,
+          part: 'resolution',
+          headline: null,
+          body_md: 'Before <script>alert(1)</script> and <img src=x onerror="alert(2)"> after.',
+          videos: [],
+          updated_at: '2026-10-08T00:00:00+00:00',
+        },
+      ],
+    } as Series;
+    const { out, file } = site([hostile, pending2026]);
+    expect(out.errors).toEqual([]);
+    const html = file(`series/${CONTENT_RECORD_ID}/index.html`) ?? '';
+    const root = rootOf(html);
+    expect(root).not.toContain('<script');
+    expect(root).not.toMatch(/<img[^>]*onerror/);
+    expect(flat(root)).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(flat(root)).toContain('&lt;img src=x onerror=&quot;alert(2)&quot;&gt;');
+    // The template's module script and the preload are the file's only <script> elements.
+    expect(html.split('<script').length - 1).toBe(2);
   });
 });
 
@@ -385,7 +558,7 @@ describe('runPrerender (fail loud, outputs removed)', () => {
     const code = await runPrerender({
       env,
       fetchRows: async () => rows,
-      render: async (r, t): Promise<PrerenderOutput> => prerenderSite(r, t, FLAGSHIPS),
+      render: async (r, t): Promise<PrerenderOutput> => prerenderSite(r, t),
       io,
       log: (l) => lines.push(l),
       logError: (l) => errors.push(l),
@@ -406,7 +579,7 @@ describe('runPrerender (fail loud, outputs removed)', () => {
     expect(files.get('index.html')).toBe(TEMPLATE);
     expect(files.get('404.html')).toBe(TEMPLATE);
     expect(files.get('og/fallback.png')).toBe('png');
-    expect(r.lines).toContain('6 series pages (2 record + 3 preview + 1 result) from 5 series read, 4 shells, sitemap 11 URLs');
+    expect(r.lines).toContain('6 series pages (2 record + 3 preview + 1 result) from 5 series read (2 featured), 4 shells, sitemap 11 URLs');
   });
 
   it('missing env: exit non-zero and nothing deleted', async () => {
@@ -414,6 +587,27 @@ describe('runPrerender (fail loud, outputs removed)', () => {
     const r = await run(io, ROWS, {});
     expect(r.code).not.toBe(0);
     for (const p of STALE) expect(files.get(p)).toBe('stale');
+  });
+
+  it('invalid editorial content: exit non-zero listing the series id, outputs removed', async () => {
+    const { files, io } = memoryDist({ cards: [...ROWS, invalidContent].map((r) => `og/${r.id}.png`) });
+    const r = await run(io, [...ROWS, invalidContent]);
+    expect(r.code).not.toBe(0);
+    expect(r.errors).toContain(`series ${INVALID_CONTENT_ID} · before`);
+    expect(noOutputs(files)).toEqual([]);
+  });
+
+  it('a missing editorial image: exit non-zero listing the file, outputs removed; present, the run passes', async () => {
+    const rows = [...ROWS, contentFlagship];
+    const cards = rows.map((r) => `og/${r.id}.png`);
+    const missing = memoryDist({ cards });
+    const r = await run(missing.io, rows);
+    expect(r.code).not.toBe(0);
+    expect(r.errors).toContain('dist/editorial/before-huddle.jpg is missing');
+    expect(noOutputs(missing.files)).toEqual([]);
+
+    const present = memoryDist({ cards: [...cards, 'editorial/before-huddle.jpg'] });
+    expect((await run(present.io, rows)).code).toBe(0);
   });
 
   it('an unshowable row: exit non-zero listing the id, outputs removed', async () => {

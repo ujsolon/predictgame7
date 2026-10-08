@@ -42,6 +42,27 @@ export interface Series {
   team_b?: Team;
   winner_team?: Team | null;
   series_game_scores?: SeriesGameScore[];
+  // Story 4.5, migration `00019`: `NOT NULL DEFAULT false`. Decides the
+  // preview/result page pair (with the derived phase). Optional here only
+  // because the type also describes projections that do not select it.
+  is_featured?: boolean;
+  // Story 4.5: the `series_content` embed (`SERIES_PAGE_SELECT` only). Rows
+  // are unvalidated as read — `parseSeriesContent` decides what renders.
+  series_content?: SeriesContentRow[];
+}
+
+/** The two editorial parts a series may carry (`series_content.part`). */
+export type SeriesContentPart = 'before' | 'resolution';
+
+/** One `series_content` row as read (Story 4.5, migration `00019`). */
+export interface SeriesContentRow {
+  series_id: string;
+  part: string;
+  headline: string | null;
+  body_md: string | null;
+  /** `jsonb` array of video items; validated by `parseSeriesContent`. */
+  videos: unknown;
+  updated_at: string;
 }
 
 export interface PredictionMethod {

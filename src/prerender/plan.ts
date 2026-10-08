@@ -1,18 +1,20 @@
 /**
  * The prerender route set (Story 4.8, AD-7): every row of the live read, to
  * the pages it gets. Derived per row through `toSeriesView` — phase from
- * `deriveSeriesPhase` (AD-4), never `status`, dates or `league`:
- * - archive, not flagship → `series/<id>/index.html` (the full record);
- * - archive, flagship → that path as the spoiler-free preview, plus
+ * `deriveSeriesPhase` (AD-4), never `status`, dates or `league` — and, since
+ * Story 4.5, flagship-ness from the row's own `is_featured` (migration `00019`):
+ * - archive, not featured → `series/<id>/index.html` (the full record);
+ * - archive, featured → that path as the spoiler-free preview, plus
  *   `series/<id>/result/index.html` (the full record, outcome included);
- * - pending → the preview only: no reveal and no result page (4.3's `/result`
- *   answers 404 for a pending series).
+ * - pending (featured or not) → the preview only: no reveal and no result
+ *   page (4.3's `/result` answers 404 for a pending series).
  *
  * Fails loud: an empty read, any row `toSeriesView` cannot show (listed by
- * id), or a pinned flagship that is absent or not archived is an error, never
- * a page quietly left out. Pure — no I/O.
+ * id), a row without a boolean `is_featured` (the read predates `00019`), or
+ * any invalid editorial content (`parseSeriesContent`, every item listed by
+ * series id), or a read with no featured row at all is an error, never a page quietly left out. Pure — no I/O.
  */
-import { FLAGSHIP_SERIES_IDS } from '@/lib/flagship-series';
+import { parseSeriesContent } from '@/lib/series-content';
 import { resultHref, spoilerNeutralView, toSeriesView, yearRound } from '@/pages/series/series-view';
 import type { Series } from '@/types/types';
 import { type SeriesPreload, stripOutcome } from './preload';
@@ -31,6 +33,8 @@ export interface PlannedPage {
 export interface SeriesPlan {
   pages: PlannedPage[];
   errors: string[];
+  /** Rows with `is_featured` — logged by the build. */
+  featured: number;
 }
 
 /** "{A} vs {B} — Game 7, {Year} {Round}" — spoiler-neutral order, `yearRound` league wording, never an outcome. */
@@ -50,21 +54,24 @@ export function routeFile(route: string): string {
   return `${route.replace(/^\/+|\/+$/g, '')}/index.html`;
 }
 
-export function planSeriesPages(rows: readonly Series[], flagshipIds: readonly string[] = FLAGSHIP_SERIES_IDS): SeriesPlan {
+export function planSeriesPages(rows: readonly Series[]): SeriesPlan {
   const errors: string[] = [];
   if (rows.length === 0) {
-    return { pages: [], errors: ['the series read returned no rows — refusing to prerender an empty archive'] };
+    return { pages: [], errors: ['the series read returned no rows — refusing to prerender an empty archive'], featured: 0 };
   }
 
-  // The same list decides the pages and is validated below (default: the pinned ids the app routes use).
-  const flagships = new Set(flagshipIds.map((id) => id.toLowerCase()));
   const unshowable: string[] = [];
+  const unflagged: string[] = [];
+  const contentErrors: string[] = [];
   const pages: PlannedPage[] = [];
-  const archivedIds = new Set<string>();
-  const seenIds = new Set<string>();
+  let featured = 0;
 
   for (const row of rows) {
-    seenIds.add(row.id.toLowerCase());
+    if (typeof row.is_featured !== 'boolean') unflagged.push(row.id);
+    const flagship = row.is_featured === true;
+    if (flagship) featured += 1;
+    contentErrors.push(...parseSeriesContent(row.series_content ?? [], row.id).errors);
+
     const view = toSeriesView(row);
     const ogTitle = historicOgTitle(row);
     if (!view || !ogTitle) {
@@ -72,9 +79,6 @@ export function planSeriesPages(rows: readonly Series[], flagshipIds: readonly s
       continue;
     }
     const route = seriesRoute(view.id);
-    const flagship = flagships.has(view.id.toLowerCase());
-
-    if (view.phase === 'archive') archivedIds.add(view.id.toLowerCase());
 
     if (view.phase === 'archive' && !flagship) {
       pages.push({
@@ -117,10 +121,18 @@ export function planSeriesPages(rows: readonly Series[], flagshipIds: readonly s
   if (unshowable.length > 0) {
     errors.push(`${unshowable.length} series row(s) cannot be shown (toSeriesView → null): ${unshowable.join('; ')}`);
   }
-  for (const id of flagshipIds) {
-    const key = id.toLowerCase();
-    if (!seenIds.has(key)) errors.push(`pinned flagship ${id} is absent from the series read`);
-    else if (!archivedIds.has(key)) errors.push(`pinned flagship ${id} is not archived (no derivable archive phase)`);
+  if (unflagged.length > 0) {
+    errors.push(
+      `${unflagged.length} series row(s) carry no boolean is_featured (is migration 00019 applied, and does the read select it?): ${unflagged.join(', ')}`
+    );
   }
-  return { pages, errors };
+  // The floor the pinned-flagship check used to give: a read that lost its flags
+  // would otherwise prerender no preview/result pair at all, silently.
+  if (featured === 0) {
+    errors.push('no series row has is_featured = true — refusing to prerender without a single featured series');
+  }
+  if (contentErrors.length > 0) {
+    errors.push(`${contentErrors.length} invalid editorial content item(s): ${contentErrors.join('; ')}`);
+  }
+  return { pages, errors, featured };
 }

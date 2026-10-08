@@ -14,6 +14,7 @@
  * Pure and platform-free: no `window`, no `document`, no Node APIs.
  */
 import { createContext, useContext } from 'react';
+import { withoutResolution } from '@/lib/series-content';
 import { shouldSwapForNeutralOrder } from '@/lib/spoiler-neutral';
 import type { Series } from '@/types/types';
 
@@ -52,7 +53,9 @@ export function usePreload(pathname: string): SeriesPreload | null {
 
 /**
  * The row a preview may carry: no Game 7 score row, no winner id, no winner
- * embed. Everything else (games 1–6, both teams) is what the preview shows.
+ * embed, and (Story 4.5) no `resolution` editorial part — only the `before`
+ * part, which the preview renders. Everything else (games 1–6, both teams) is
+ * what the preview shows.
  *
  * Spoiler-neutral order too (owner decision E14, `src/lib/spoiler-neutral.ts`):
  * stored order puts the eventual winner in `team_a` in 177/178 archived rows,
@@ -64,6 +67,7 @@ export function usePreload(pathname: string): SeriesPreload | null {
 export function stripOutcome(series: Series): Series {
   const games = (series.series_game_scores ?? []).filter((game) => game.game_number !== 7);
   const stripped: Series = { ...series, winner_team_id: null, winner_team: null, series_game_scores: games };
+  if (series.series_content) stripped.series_content = withoutResolution(series.series_content);
   const { team_a: teamA, team_b: teamB } = series;
   if (!teamA || !teamB) return stripped;
   const [first, second] = shouldSwapForNeutralOrder(teamA, teamB) ? [teamB, teamA] : [teamA, teamB];

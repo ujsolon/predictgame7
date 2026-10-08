@@ -24,8 +24,11 @@
 //      (owner decision D1: nothing runs until Generate).
 //   4. `/series/<unknown uuid>` and `/series/abc` render the 404 treatment:
 //      the `<h1>`, the document title, focus on the headline, the Historical link.
-//   5. (Story 4.3) The five pinned flagship ids exist over anon REST, archived
-//      (winner set, games 1–7), with the expected team abbreviations.
+//   5. (Story 4.3, Story 4.5) The five flagship ids exist over anon REST,
+//      archived (winner set, games 1–7), with the expected team abbreviations,
+//      and each carries `is_featured = true` on the live table. Other rows may
+//      be featured too (a pending series can be). Until the owner applies
+//      migration `00019` this row FAILS (the column does not exist yet).
 //   6. (Story 4.3) The 2016 Finals flagship preview at `/series/<id>`: games
 //      1–6 only, and `document.body.innerText` carries no Game 7 score (read
 //      over anon REST) and no "win Game 7"; a winner-free title. A real mouse
@@ -349,7 +352,7 @@ const READ_NOT_FOUND = `${WAIT}(() => {
   };
 }, "the 404 headline", 30000)`;
 
-/** Story 4.3: the pinned 2016 Finals flagship (`src/lib/flagship-series.ts`). */
+/** Story 4.3: the 2016 Finals flagship (featured by migration `00019` since Story 4.5). */
 const FLAGSHIP_2016 = "06715a85-ec33-46a4-8383-d058055eefe6";
 
 /** Rows over anon REST, same embed syntax as `src/lib/series-query.ts`. Needs .env. */
@@ -369,7 +372,11 @@ async function restSeries(filter, select) {
   return rows[0];
 }
 
-/** Story 4.3: every pinned flagship (`src/lib/flagship-series.ts`) with its expected teams, order-agnostic. */
+/**
+ * Story 4.3: the five pilot flagships with their expected teams, order-agnostic.
+ * Since Story 4.5 the app decides flagship-ness from `series.is_featured`; this
+ * list is the probe's independent expectation of which rows carry it (row 5).
+ */
 const FLAGSHIPS = [
   ["dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a", 2013, ["MIA", "SAS"]],
   [FLAGSHIP_2016, 2016, ["CLE", "GSW"]],
@@ -658,10 +665,11 @@ async function main() {
       );
     }
 
-    // Row 5 (Story 4.3): the five pinned flagship ids exist live, archived, with the expected teams.
+    // Row 5 (Story 4.3, Story 4.5): the five flagships exist live, archived, with the expected teams,
+    // each `is_featured`. Red until `00019` is applied.
     const flagRows = await restRows(
       `id=in.(${FLAGSHIPS.map(([id]) => id).join(",")})`,
-      "id,year,winner_team_id,team_a:team_a_id(abbreviation),team_b:team_b_id(abbreviation),series_game_scores(game_number)"
+      "id,year,winner_team_id,is_featured,team_a:team_a_id(abbreviation),team_b:team_b_id(abbreviation),series_game_scores(game_number)"
     ).catch((e) => ({ error: e.message }));
     for (const [id, year, codes] of FLAGSHIPS) {
       const row = Array.isArray(flagRows) ? flagRows.find((r) => r.id === id) : null;
@@ -669,9 +677,10 @@ async function main() {
       const games = row ? new Set((row.series_game_scores || []).map((g) => g.game_number)) : new Set();
       const archived = !!row && row.winner_team_id != null && games.size === 7 && [1, 2, 3, 4, 5, 6, 7].every((g) => games.has(g));
       L.check(
-        `flagship ${year} ${codes.join("–")} (${id}) exists, is archived and names the expected teams`,
-        !!row && row.year === year && archived && [...got].sort().join() === [...codes].sort().join(),
-        flagRows.error ?? (row ? `${row.year} ${got.join("–")} winner=${row.winner_team_id} games=${games.size}` : "no row")
+        `flagship ${year} ${codes.join("–")} (${id}) exists, is archived, is_featured, and names the expected teams`,
+        !!row && row.year === year && archived && row.is_featured === true && [...got].sort().join() === [...codes].sort().join(),
+        flagRows.error ??
+          (row ? `${row.year} ${got.join("–")} winner=${row.winner_team_id} games=${games.size} is_featured=${row.is_featured}` : "no row")
       );
     }
 

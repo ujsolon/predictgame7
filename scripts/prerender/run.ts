@@ -2,7 +2,9 @@
  * Story 4.8 — the prerender build step (AD-6/AD-7), the thin Node entry.
  *
  * Runs in `predeploy` after `og:cards`, never inside the gate (the gate and CI
- * have no Supabase secrets). It reads every series over anon REST, loads the
+ * have no Supabase secrets). It reads every series over anon REST through
+ * `SERIES_PAGE_SELECT` (Story 4.5: `is_featured` and the `series_content`
+ * embed — the read fails until migration `00019` is applied), loads the
  * app's own route tree through Vite's SSR loader and renders every series page,
  * the four app-route shells, `sitemap.xml` and `robots.txt` into `dist/`.
  * The logic lives in `src/prerender/` (unit tested); this file only supplies
@@ -18,17 +20,43 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
 import { createServer, type ViteDevServer } from 'vite';
+import { SERIES_PAGE_SELECT } from '../../src/lib/series-query.ts';
 import type { DistIo, PrerenderDeps } from '../../src/prerender/build.ts';
 import { OUTPUT_PATHS } from '../../src/prerender/outputs.ts';
 import type { PrerenderOutput } from '../../src/prerender/types.ts';
 import type { Series } from '../../src/types/types.ts';
-import { ENV_ANON_KEY, ENV_SUPABASE_URL, fetchSeriesAnon, REPO_ROOT } from '../og/render.ts';
+import { ENV_ANON_KEY, ENV_SUPABASE_URL, REPO_ROOT } from '../og/render.ts';
 
 export const DIST_DIR = join(REPO_ROOT, 'dist');
 
 interface BuildModule {
   runPrerender: (deps: PrerenderDeps) => Promise<number>;
+}
+
+/** The anon `SERIES_PAGE_SELECT` read of every series — the rows the series pages render from. */
+export const PRERENDER_SELECT = SERIES_PAGE_SELECT;
+
+/** The slice of a Supabase client this read uses; injectable so tests can pin the projection. */
+export interface SeriesReadClient {
+  from(table: 'series'): {
+    select(projection: string): {
+      order(column: string): { order(column: string): PromiseLike<{ data: unknown; error: { message: string } | null }> };
+    };
+  };
+}
+
+export async function fetchSeriesPageRows(
+  url: string,
+  anonKey: string,
+  makeClient: (url: string, anonKey: string) => SeriesReadClient = (u, k) =>
+    createClient(u, k, { auth: { persistSession: false, autoRefreshToken: false } }) as unknown as SeriesReadClient
+): Promise<Series[]> {
+  const client = makeClient(url, anonKey);
+  const { data, error } = await client.from('series').select(PRERENDER_SELECT).order('year').order('id');
+  if (error) throw new Error(`series read failed: ${error.message}`);
+  return (data ?? []) as unknown as Series[];
 }
 
 interface EntryModule {
@@ -72,7 +100,7 @@ async function main(): Promise<number> {
     const build = (await vite.ssrLoadModule('/src/prerender/build.ts')) as BuildModule;
     return await build.runPrerender({
       env: process.env,
-      fetchRows: async (url, anonKey) => (await fetchSeriesAnon(url, anonKey)) as unknown as Series[],
+      fetchRows: (url, anonKey) => fetchSeriesPageRows(url, anonKey),
       render: async (rows, template) => {
         const entry = (await vite.ssrLoadModule('/src/prerender/entry-server.tsx')) as EntryModule;
         return entry.prerenderSite(rows, template);

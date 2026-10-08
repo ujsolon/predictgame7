@@ -4,7 +4,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SERIES_SELECT } from '@/lib/series-query';
+import { SERIES_PAGE_SELECT } from '@/lib/series-query';
 import SeriesRoute from '@/pages/SeriesRoute';
 import { routes } from '@/routes';
 import { SERIES_ID } from './helpers';
@@ -12,7 +12,7 @@ import { nonFlagship2018 } from './series-fixtures';
 
 // Story 4.1 · I/O matrix rows for `/series/:id` (every row except Cold GET,
 // which `scripts/probe-deep-links.mjs` measures against a real server). Since
-// Story 4.3 the route fetches the full `SERIES_SELECT` row and a bare id
+// Story 4.3 the route fetches the full series row (`SERIES_PAGE_SELECT` since Story 4.5) and a bare id
 // renders the series page (`series-pages.test.tsx` covers the page variants);
 // the `?method=` share arrival still redirects.
 const KNOWN = { ...nonFlagship2018, id: SERIES_ID };
@@ -90,7 +90,7 @@ describe('SeriesRoute (Story 4.1, as amended by Story 4.3)', () => {
 
     expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${SERIES_ID}&method=elo`);
     expect(db.from).toHaveBeenCalledWith('series');
-    expect(db.select).toHaveBeenCalledWith(SERIES_SELECT);
+    expect(db.select).toHaveBeenCalledWith(SERIES_PAGE_SELECT);
     expect(db.eq).toHaveBeenCalledWith('id', SERIES_ID);
     // Preloads emit nothing (D-continuity with Story 4.0).
     expect(db.capture).not.toHaveBeenCalled();

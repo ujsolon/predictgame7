@@ -3,6 +3,7 @@ import { Link, useNavigationType } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import SeriesNotFound from '@/components/common/SeriesNotFound';
 import ShareButton from '@/components/common/ShareButton';
+import SeriesContentSection, { useSeriesContent } from '@/components/series/SeriesContentSection';
 import { seriesPageSharePath } from '@/lib/share';
 import type { Series } from '@/types/types';
 import ScoreStrip from './ScoreStrip';
@@ -25,6 +26,10 @@ interface SeriesFullRecordProps {
  * the final 4–3 with the Game 7 box, all seven games, and the generic
  * "Model it yourself" CTA — no per-method links. Pure over its `Series` prop
  * and SSR-safe: focus is moved in an effect, never during render.
+ *
+ * Story 4.5: the result page shows the `resolution` part only; the
+ * non-flagship record shows whatever exists, `before` then `resolution`.
+ * Both take the `resolution` headline over the default one when it exists.
  */
 export default function SeriesFullRecord({ series, variant }: SeriesFullRecordProps) {
   const view = toSeriesView(series);
@@ -32,6 +37,7 @@ export default function SeriesFullRecord({ series, variant }: SeriesFullRecordPr
   const navigationType = useNavigationType();
   const isResult = variant === 'result';
   const renderable = view?.phase === 'archive' && view.winner != null;
+  const content = useSeriesContent(series);
 
   useEffect(() => {
     // A cold load (POP) leaves focus where the browser puts it; an in-app
@@ -47,7 +53,7 @@ export default function SeriesFullRecord({ series, variant }: SeriesFullRecordPr
 
       <SeriesHero
         eyebrow={seriesEyebrow(view)}
-        headline={outcomeHeadline(view.winner)}
+        headline={content.resolution?.headline ?? outcomeHeadline(view.winner)}
         headingRef={headingRef}
         focusable={isResult}
         action={
@@ -62,6 +68,9 @@ export default function SeriesFullRecord({ series, variant }: SeriesFullRecordPr
       >
         <ScoreStrip view={view} mode="full" />
       </SeriesHero>
+
+      {!isResult && <SeriesContentSection part={content.before} name="before" />}
+      <SeriesContentSection part={content.resolution} name="resolution" />
 
       <section aria-labelledby="series-cta" className="border-t border-border pt-10">
         <h2 id="series-cta" className="text-3xl font-medium leading-tight tracking-[-0.01em] text-foreground">

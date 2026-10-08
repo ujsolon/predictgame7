@@ -4,13 +4,23 @@ import { HelmetProvider } from 'react-helmet-async';
 import { MemoryRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SERIES_SELECT } from '@/lib/series-query';
+import { SERIES_PAGE_SELECT } from '@/lib/series-query';
 import { routes } from '@/routes';
 import {
   ABA_ID,
+  BAD_YOUTUBE_ID,
+  BEFORE_BODY_TEXT,
+  BEFORE_HEADLINE,
+  BEFORE_VIDEO_ID,
   BROKEN_FLAGSHIP_ID,
   BROKEN_ID,
+  CONTENT_FLAGSHIP_ID,
+  CONTENT_RECORD_ID,
   FIXTURES,
+  INVALID_CONTENT_ID,
+  RESOLUTION_BODY_TEXT,
+  RESOLUTION_HEADLINE,
+  RESOLUTION_VIDEO_ID,
   FLAGSHIP_2016_GAME7,
   FLAGSHIP_2016_ID,
   NON_FLAGSHIP_ID,
@@ -106,7 +116,7 @@ describe('/series/:id — non-flagship archive (full record)', () => {
     await headline('Cavaliers win Game 7');
 
     expect(db.from).toHaveBeenCalledTimes(1);
-    expect(db.select).toHaveBeenCalledWith(SERIES_SELECT);
+    expect(db.select).toHaveBeenCalledWith(SERIES_PAGE_SELECT);
     expect(db.eq).toHaveBeenCalledWith('id', NON_FLAGSHIP_ID);
 
     expect(text()).toContain('GAME 7 · 2018 EASTERN CONFERENCE FINALS');
@@ -158,11 +168,15 @@ describe('/series/:id — non-flagship archive (full record)', () => {
     );
   });
 
-  it('has no result page: /result is the 404, with no request', async () => {
+  it('has no result page: /result is the 404 once its one fetch shows it is not featured (Story 4.5)', async () => {
     renderApp(`/series/${NON_FLAGSHIP_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     expect(notFoundHeading()).toHaveFocus();
-    expect(db.from).not.toHaveBeenCalled();
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.select).toHaveBeenCalledWith(SERIES_PAGE_SELECT);
+    expect(text()).not.toContain('win Game 7');
+    // A series without a result page is a plain 404, not a reported anomaly.
+    expect(db.captureException).not.toHaveBeenCalled();
   });
 });
 
@@ -286,7 +300,7 @@ describe('/series/:id — pending series', () => {
     );
   });
 
-  it('a pending non-flagship series renders the preview with no reveal; its /result is the 404 with no request', async () => {
+  it('a pending non-flagship series renders the preview with no reveal', async () => {
     renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}`);
     await headline('Cavaliers and Celtics stand three games apiece');
     // Stored order is Celtics first (`team_a`); neutral order swaps it.
@@ -302,13 +316,13 @@ describe('/series/:id — pending series', () => {
     expect(db.from).toHaveBeenCalledTimes(1);
   });
 
-  it('/result for a pending non-flagship series is the 404 with no request', async () => {
+  it('/result for a pending non-flagship series is the 404 after its one fetch', async () => {
     renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
-    expect(db.from).not.toHaveBeenCalled();
+    expect(db.from).toHaveBeenCalledTimes(1);
   });
 
-  it('/result for a pending series (even a pinned flagship id) is the 404', async () => {
+  it('/result for a pending series (even a featured one) is the 404 (matrix: is_featured pending series)', async () => {
     renderApp(`/series/${PENDING_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     expect(db.from).toHaveBeenCalledTimes(1);
@@ -346,8 +360,8 @@ describe('/series/:id — 404, redirect and retry rows', () => {
   });
 
   it('a flagship row whose phase does not reconcile is the 404 on /result, reported', async () => {
-    // A flagship id is the only shape that reaches this branch: a non-flagship
-    // `/result` short-circuits before any request, so `BROKEN_ID` cannot.
+    // Only a featured row reaches this branch: a row that is not featured is
+    // the plain 404 before its phase is looked at, so `BROKEN_ID` cannot.
     renderApp(`/series/${BROKEN_FLAGSHIP_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     expect(db.from).toHaveBeenCalledTimes(1);
@@ -454,5 +468,113 @@ describe('series header Share — native sheet title (Story 4.4)', () => {
   it('flagship result: the outcome title', async () => {
     const { title } = await nativeTitleFrom(`/series/${FLAGSHIP_2016_ID}/result`, 'Cavaliers win Game 7');
     expect(title).toBe('Cleveland Cavaliers vs Golden State Warriors, 2016 Finals: Cavaliers win Game 7 · PredictGame7');
+  });
+});
+
+// Story 4.5 · editorial content on the client path (I/O matrix rows). The
+// content fixtures are copies of the 2016 flagship (featured) and the 2018
+// record (not featured), each on its own id, with a before and a resolution part.
+describe('series editorial content (Story 4.5)', () => {
+  const html = () => document.body.innerHTML;
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  it('flagship preview: the before headline, write-up and video facade — no resolution text or video id in the DOM', async () => {
+    renderApp(`/series/${CONTENT_FLAGSHIP_ID}`);
+    await headline(BEFORE_HEADLINE);
+    const before = document.querySelector('[data-series-content="before"]') as HTMLElement;
+    expect(before.textContent).toContain(BEFORE_BODY_TEXT);
+    expect(before.querySelector(`[data-video-embed="${BEFORE_VIDEO_ID}"]`)).not.toBeNull();
+    // Placement: after the games 1–6 strip, before the method links.
+    expect(follows(document.querySelector('ol') as HTMLElement, before)).toBe(true);
+    expect(follows(before, document.getElementById('series-methods') as HTMLElement)).toBe(true);
+    for (const leak of [RESOLUTION_HEADLINE, RESOLUTION_BODY_TEXT, RESOLUTION_VIDEO_ID, 'Resolution Channel']) {
+      expect(html()).not.toContain(leak);
+    }
+    expect(document.querySelector('[data-series-content="resolution"]')).toBeNull();
+    // The reveal is still there (featured + archived), and the title stays data-built.
+    expect(text()).toContain('See how the series ended');
+    await waitFor(() => expect(document.title).toBe('Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7'));
+  });
+
+  it('flagship result: the resolution headline, write-up and video; the before part absent', async () => {
+    renderApp(`/series/${CONTENT_FLAGSHIP_ID}/result`);
+    await headline(RESOLUTION_HEADLINE);
+    const resolution = document.querySelector('[data-series-content="resolution"]') as HTMLElement;
+    expect(resolution.textContent).toContain(RESOLUTION_BODY_TEXT);
+    expect(resolution.querySelector(`[data-video-embed="${RESOLUTION_VIDEO_ID}"]`)).not.toBeNull();
+    expect(document.querySelector('[data-series-content="before"]')).toBeNull();
+    for (const absent of [BEFORE_HEADLINE, BEFORE_BODY_TEXT, BEFORE_VIDEO_ID]) expect(html()).not.toContain(absent);
+    // Placement: after the full record, before the CTA.
+    expect(follows(document.querySelector('ol') as HTMLElement, resolution)).toBe(true);
+    expect(follows(resolution, document.getElementById('series-cta') as HTMLElement)).toBe(true);
+    await waitFor(() =>
+      expect(document.title).toBe('Cleveland Cavaliers vs Golden State Warriors, 2016 Finals: Cavaliers win Game 7 · PredictGame7')
+    );
+  });
+
+  it('non-flagship record with content: before then resolution, the resolution headline', async () => {
+    renderApp(`/series/${CONTENT_RECORD_ID}`);
+    await headline(RESOLUTION_HEADLINE);
+    const before = document.querySelector('[data-series-content="before"]') as HTMLElement;
+    const resolution = document.querySelector('[data-series-content="resolution"]') as HTMLElement;
+    expect(before).not.toBeNull();
+    expect(follows(before, resolution)).toBe(true);
+    expect(text()).not.toContain('See how the series ended');
+  });
+
+  it('/result for a record series with content is still the 404 (it is not featured)', async () => {
+    renderApp(`/series/${CONTENT_RECORD_ID}/result`);
+    await waitFor(() => expect(notFoundHeading()).not.toBeNull());
+    expect(html()).not.toContain(RESOLUTION_HEADLINE);
+  });
+
+  it('video activation: the play button swaps the facade for a titled, focused iframe — nothing from YouTube before but the thumbnail', async () => {
+    renderApp(`/series/${CONTENT_FLAGSHIP_ID}/result`);
+    await headline(RESOLUTION_HEADLINE);
+    const embed = document.querySelector(`[data-video-embed="${RESOLUTION_VIDEO_ID}"]`) as HTMLElement;
+    expect(document.querySelector('iframe')).toBeNull();
+    const thumb = embed.querySelector('img') as HTMLImageElement;
+    expect(thumb.getAttribute('src')).toBe(`https://i.ytimg.com/vi/${RESOLUTION_VIDEO_ID}/hqdefault.jpg`);
+    expect(thumb.getAttribute('alt')).toBe('');
+    expect(thumb.getAttribute('loading')).toBe('lazy');
+    // The visible title and the credit line (credit_url wins over the watch URL).
+    expect(embed.textContent).toContain('Resolution-part video title');
+    const credit = Array.from(embed.querySelectorAll('a')).find((a) => (a.textContent ?? '').startsWith('Highlights via'));
+    expect(credit?.textContent).toBe('Highlights via Resolution Channel ↗');
+    expect(credit?.getAttribute('href')).toBe('https://www.youtube.com/@resolution');
+    expect(credit?.getAttribute('rel')).toBe('noopener noreferrer');
+    // The labelled play button is the only control inside the frame, 64px square.
+    const play = embed.querySelector('button') as HTMLButtonElement;
+    expect(play.getAttribute('aria-label')).toBe('Play: Resolution-part video title');
+    expect(play.getAttribute('type')).toBe('button');
+    expect(play.className).toMatch(/\bh-16\b/);
+    expect(play.className).toMatch(/\bw-16\b/);
+
+    fireEvent.click(play);
+    await waitFor(() => expect(embed.querySelector('iframe')).not.toBeNull());
+    const iframe = embed.querySelector('iframe') as HTMLIFrameElement;
+    expect(iframe.getAttribute('src')).toBe(`https://www.youtube-nocookie.com/embed/${RESOLUTION_VIDEO_ID}?autoplay=1`);
+    expect(iframe.getAttribute('title')).toBe('Resolution-part video title — via Resolution Channel');
+    expect(embed.querySelector('button')).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(iframe));
+    expect(db.capture).not.toHaveBeenCalled();
+  });
+
+  it('invalid content in the client: the page renders without that part and reports it once, never throwing', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderApp(`/series/${INVALID_CONTENT_ID}`);
+    // The invalid before part is gone; the valid resolution part still renders.
+    await headline(RESOLUTION_HEADLINE);
+    expect(document.querySelector('[data-series-content="before"]')).toBeNull();
+    expect(document.querySelector('[data-series-content="resolution"]')?.textContent).toContain(RESOLUTION_BODY_TEXT);
+    expect(html()).not.toContain(BAD_YOUTUBE_ID);
+    expect(text()).toContain('Model it yourself');
+    await waitFor(() => expect(db.captureException).toHaveBeenCalledTimes(1));
+    const reported = String(db.captureException.mock.calls[0][0]);
+    expect(reported).toContain(INVALID_CONTENT_ID);
+    expect(reported).toContain('youtube_id');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(db.captureException).toHaveBeenCalledTimes(1);
+    quiet.mockRestore();
   });
 });

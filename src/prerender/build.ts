@@ -5,8 +5,10 @@
  *
  * Fails loud — non-zero, every failure listed, and this step's outputs removed
  * so no partial prerender can ship — on: missing env, an empty read, an
- * unshowable row or flagship problem (`planSeriesPages`), a render error, a
- * missing `dist/index.html` or a referenced card under `dist/og/`, any written
+ * unshowable row, a row without `is_featured` or with invalid editorial
+ * content (`planSeriesPages`), a render error, a
+ * missing `dist/index.html`, a referenced card under `dist/og/` or a
+ * referenced editorial image under `dist/editorial/` (Story 4.5), any written
  * file missing or empty on read-back, or `index.html` / `404.html` changing.
  * A run that fails the env check deletes nothing (Story 4.2's rule).
  *
@@ -87,6 +89,11 @@ export async function runPrerender(deps: PrerenderDeps): Promise<number> {
       return fail(missingCards.map((card) => `dist/${card} is missing — run npm run og:cards first`));
     }
 
+    const missingAssets = output.assets.filter((asset) => !io.exists(asset));
+    if (missingAssets.length > 0) {
+      return fail(missingAssets.map((asset) => `dist/${asset} is missing — an editorial image referenced by series content (commit it under public/${asset})`));
+    }
+
     for (const file of output.files) io.write(file.path, file.content);
 
     const readBack: string[] = [];
@@ -103,7 +110,8 @@ export async function runPrerender(deps: PrerenderDeps): Promise<number> {
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     log(
       `prerender: ${summary.record + summary.preview + summary.result} series pages ` +
-        `(${summary.record} record + ${summary.preview} preview + ${summary.result} result) from ${summary.rows} series read, ` +
+        `(${summary.record} record + ${summary.preview} preview + ${summary.result} result) from ${summary.rows} series read ` +
+        `(${summary.featured} featured), ` +
         `${summary.shells} shells, sitemap ${summary.sitemapUrls} URLs, robots.txt — ${output.files.length} files, ${seconds} s`
     );
     return 0;

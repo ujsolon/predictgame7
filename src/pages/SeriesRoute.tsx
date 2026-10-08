@@ -1,5 +1,4 @@
 import { Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { isFlagship } from '@/lib/flagship-series';
 import { isMethodSlug } from '@/lib/method-display';
 import { isSeriesId } from '@/lib/series-id';
 import SeriesFetchFallback, { SeriesUnshowable } from '@/pages/series/SeriesFetchFallback';
@@ -10,13 +9,14 @@ import { toSeriesView } from '@/pages/series/series-view';
 import { usePreload } from '@/prerender/preload';
 
 /**
- * `/series/:id` (Story 4.1, Story 4.3). One fetch (`SERIES_SELECT`), then:
+ * `/series/:id` (Story 4.1, Story 4.3). One fetch (`SERIES_PAGE_SELECT`), then:
  * - `?method=` present → the share arrival: redirect (history replace) to
  *   `/predict?series=<id>`, carrying `&method=<slug>` when the slug is known
  *   (Story 4.1); an unknown slug is dropped, never an error; every other
  *   parameter (`utm_source` above all) follows in order (Story 4.4);
- * - an archived non-flagship series → the single full-record page;
- * - a flagship archive or a pending series → the spoiler-free preview;
+ * - an archived series that is not featured → the single full-record page;
+ * - a featured archive (`series.is_featured`, Story 4.5) or a pending series
+ *   → the spoiler-free preview;
  * - an unknown or malformed id (no request at all for the latter), or a row
  *   that cannot be shown (`toSeriesView` → null, e.g. `deriveSeriesPhase` →
  *   null) → the 404, reported through `captureError`;
@@ -71,6 +71,6 @@ export default function SeriesRoute() {
   // `toSeriesView` derives the phase (AD-4) and is null for any row that cannot be shown.
   const view = toSeriesView(state.series);
   if (!view) return <SeriesUnshowable id={state.series.id} />;
-  if (view.phase === 'archive' && !isFlagship(view.id)) return <SeriesFullRecord series={state.series} variant="record" />;
+  if (view.phase === 'archive' && state.series.is_featured !== true) return <SeriesFullRecord series={state.series} variant="record" />;
   return <SeriesPreview series={state.series} />;
 }

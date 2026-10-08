@@ -13,6 +13,8 @@ export interface PrerenderFile {
 
 export interface PrerenderSummary {
   rows: number;
+  /** Rows with `is_featured` (Story 4.5). */
+  featured: number;
   record: number;
   preview: number;
   result: number;
@@ -24,6 +26,8 @@ export interface PrerenderOutput {
   files: PrerenderFile[];
   /** `dist/`-relative OG cards the pages reference; each must exist before anything is written. */
   cards: string[];
+  /** `dist/`-relative editorial images the pages reference (Story 4.5); each must exist before anything is written. */
+  assets: string[];
   errors: string[];
   summary: PrerenderSummary;
 }

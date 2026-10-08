@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import SeriesNotFound from '@/components/common/SeriesNotFound';
 import ShareButton from '@/components/common/ShareButton';
-import { isFlagship } from '@/lib/flagship-series';
+import SeriesContentSection, { useSeriesContent } from '@/components/series/SeriesContentSection';
 import { METHOD_LABELS } from '@/lib/method-display';
 import { seriesPageSharePath } from '@/lib/share';
 import type { MethodSlug } from '@/types/prediction';
@@ -31,18 +31,21 @@ const METHOD_SLUGS = Object.keys(METHOD_LABELS) as MethodSlug[];
  *
  * Spoiler discipline is structural: nothing about Game 7 — its row, scores,
  * winner, the final series score, past-tense outcome copy — is rendered, and
- * the document title is winner-free.
+ * the document title is winner-free. Story 4.5: of the editorial content only
+ * the `before` part renders here (its headline overrides the default hero
+ * headline); a prerendered preview's row carries no resolution part at all.
  */
 export default function SeriesPreview({ series, reveal }: { series: Series; reveal?: boolean }) {
   // Winner-free surface: never the stored order, which names the winner first (owner decision 2026-10-07).
   const stored = toSeriesView(series);
   const view = stored && spoilerNeutralView(stored);
+  const { before } = useSeriesContent(series);
   if (!view) return <SeriesNotFound headingLevel="h1" />;
 
-  // Only an archived flagship has a result page to reveal; a pending series has none.
+  // Only an archived featured series (`is_featured`, Story 4.5) has a result page to reveal; a pending series has none.
   // A prerendered preview (Story 4.8) renders from its stripped row, which derives as pending,
   // so the build-time decision arrives as `reveal` and overrides the derived one.
-  const hasReveal = reveal ?? (view.phase === 'archive' && isFlagship(view.id));
+  const hasReveal = reveal ?? (view.phase === 'archive' && series.is_featured === true);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-16">
@@ -50,7 +53,7 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
 
       <SeriesHero
         eyebrow={seriesEyebrow(view)}
-        headline={previewHeadline(view)}
+        headline={before?.headline ?? previewHeadline(view)}
         standfirst="Game 7 stands."
         action={
           <ShareButton
@@ -64,6 +67,8 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
       >
         <ScoreStrip view={view} mode="preview" />
       </SeriesHero>
+
+      <SeriesContentSection part={before} name="before" />
 
       <section aria-labelledby="series-methods">
         <h2 id="series-methods" className={LABEL}>

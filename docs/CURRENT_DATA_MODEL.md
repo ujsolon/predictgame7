@@ -29,6 +29,7 @@ This document summarizes the active Supabase data model used by Predict Game 7 a
 - Identity: `UNIQUE (year, team_a_id, team_b_id)` (`series_year_team_pair_key`) — the upsert conflict target the Epic 2 pipeline upserts against. The archive read is `.not('winner_team_id','is',null)`; nothing may branch on a stored status.
 - Write path (Story 2.3, migration `00015_pipeline_series_functions.sql`): rows are created and completed only through the two `SECURITY DEFINER` RPCs below, called by `supabase/scripts/pipeline/` with the service-role key. No writer sets `id` (server-generated `gen_random_uuid()`), and no writer can address `status` — the column is gone.
 - `league` — `NBA` / `BAA` / `ABA`, `NOT NULL DEFAULT 'NBA'`, CHECKed (`series_league_check`). Added by `00016`, **applied to production 2026-10-02**.
+- `is_featured` — `boolean NOT NULL DEFAULT false`, added by `00019_series_editorial_content.sql` (Story 4.5, FR-13 pilot) — **written, apply pending (owner `npx supabase db push`)**. Seeded `true` for the five pilot series the owner pinned on 2026-09-25 (2013 Finals Heat–Spurs `dd4e81bc-…`, 2016 Finals Cavaliers–Warriors `06715a85-…`, 2019 ECSF Raptors–76ers `29638c4e-…`, 2025 Finals Thunder–Pacers `626257bc-…`, 2026 WCF Thunder–Spurs `6ecb170c-…`); it replaces the pinned id list `src/lib/flagship-series.ts` (deleted). It decides flagship-ness everywhere (`SeriesRoute`, `SeriesResultRoute`, the preview's reveal, the prerender plan): a featured **archived** series gets the preview/result page pair, a featured **pending** series the preview only. It is not a phase — phase stays derived from `winner_team_id` (AD-4). `SERIES_SELECT` (Predict, Home, OG cards) and `SERIES_PAGE_SELECT` (series pages, prerender) both select it, so **those reads fail until `00019` is applied**; apply it before the deploy that ships Story 4.5.
 - **`00016` IS APPLIED (2026-10-02, owner-run `npx supabase db push`).** It adds `league` and rewrites the **game-7 row only** of the 160 NBA/BAA archived series to the real home/away sides, scores swapped along with the teams. **`league IN ('NBA','BAA')` on the series row is the definition of "this Game-7 venue is real"** — there is no separate flag. Games 1–6 of every archived series, and all 18 ABA game-7 rows, remain the winner-fiction `00007` wrote. The full boundary and the live measurements are in "Story 2.8 status" below; read it before writing any code or statistic that touches an archived `home_team_id`.
 
 ### `series_game_scores`
@@ -44,6 +45,19 @@ This document summarizes the active Supabase data model used by Predict Game 7 a
   - `winner_team_id`
   - `created_at` (pipeline write timestamp — not a game date; nothing user-facing may derive from it, AD-4)
 - Conflict target: `UNIQUE (series_id, game_number)` (`unique_series_game`, `00005:55`) — the pipeline's scores key. `series_id` cascades on delete.
+
+### `series_content`
+- Editorial content for a series (Story 4.5, FR-13 pilot): at most one optional **before** part and one optional **resolution** part per series. Created by `00019_series_editorial_content.sql` — **written, apply pending (owner `npx supabase db push`)**.
+- Stores:
+  - `series_id` (UUID) — FK → `series(id)` `ON DELETE CASCADE`
+  - `part` — `text`, `CHECK (part IN ('before','resolution'))`
+  - `headline` — `text NULL`; overrides the default hero headline (the preview uses `before.headline`, the result and record pages `resolution.headline`). The document `<title>` and meta stay data-built.
+  - `body_md` — `text NULL`; CommonMark rendered with `react-markdown`, raw HTML never rendered as elements. Links `http(s)` only; images need non-empty alt text and a site-relative `src` under `editorial/` (files committed to `public/editorial/`, no third-party image hosts).
+  - `videos` — `jsonb NOT NULL DEFAULT '[]'`, `CHECK (jsonb_typeof(videos) = 'array')`; items `{ youtube_id: /^[A-Za-z0-9_-]{11}$/, title, credit?, credit_url? (https) }`, validated in the app (zod).
+  - `updated_at` — `timestamptz NOT NULL DEFAULT now()`
+- Key: `PRIMARY KEY (series_id, part)` — "at most one before, one resolution" is a database fact, and the preview's spoiler strip removes one row (`stripOutcome`).
+- Access: RLS enabled; one policy, "Public can read series content" — `FOR SELECT TO anon, authenticated USING (true)` (the `00011` idempotent pattern). **No insert, update or delete policy**: writes are owner SQL or service-role scripts only (AD-8). The client never writes it.
+- Read path: embedded in `SERIES_PAGE_SELECT` (`src/lib/series-query.ts`) by `useSeriesRecord` and the prerender read only. Validity is one pure function, `parseSeriesContent` (`src/lib/series-content.ts`): the prerender fails the build listing every invalid item by series id; the client renders the page without an invalid part and reports it through `captureError`. A series with no rows renders exactly as it did before Story 4.5.
 
 ## Pipeline write functions (`00015`, Story 2.3)
 

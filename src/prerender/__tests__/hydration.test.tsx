@@ -27,6 +27,10 @@ import App from '@/App';
 import { AppWrapper } from '@/components/common/PageMeta';
 import {
   aba1970,
+  CONTENT_FLAGSHIP_ID,
+  CONTENT_RECORD_ID,
+  contentFlagship,
+  contentRecord,
   FLAGSHIP_2016_ID,
   flagship2016,
   NON_FLAGSHIP_ID,
@@ -78,7 +82,10 @@ beforeAll(() => {
   const canUseDOM = HelmetProvider.canUseDOM;
   HelmetProvider.canUseDOM = false;
   try {
-    const out = prerenderSite([flagship2016, nonFlagship2018, aba1970, pendingNonFlagship], TEMPLATE, [FLAGSHIP_2016_ID]);
+    const out = prerenderSite(
+      [flagship2016, nonFlagship2018, aba1970, pendingNonFlagship, contentFlagship, contentRecord],
+      TEMPLATE
+    );
     expect(out.errors).toEqual([]);
     files = out.files;
   } finally {
@@ -101,6 +108,10 @@ const VARIANTS: [label: string, route: string, live: Series | null][] = [
   ['flagship result', `/series/${FLAGSHIP_2016_ID}/result`, null],
   // A pending preview refreshes in the background; the live row is the same series.
   ['pending preview', `/series/${PENDING_NON_FLAGSHIP_ID}`, pendingNonFlagship],
+  // Story 4.5: editorial content (markdown, an editorial image, a video facade) hydrates as cleanly.
+  ['content flagship preview', `/series/${CONTENT_FLAGSHIP_ID}`, null],
+  ['content flagship result', `/series/${CONTENT_FLAGSHIP_ID}/result`, null],
+  ['content record', `/series/${CONTENT_RECORD_ID}`, null],
 ];
 
 describe('prerendered pages hydrate against the client tree', () => {

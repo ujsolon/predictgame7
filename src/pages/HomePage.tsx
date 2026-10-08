@@ -5,10 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/db/supabase';
-import { getTeamCode } from '@/lib/nba-utils';
 import { isSeriesPending } from '@/lib/series-phase';
 import { SERIES_SELECT } from '@/lib/series-query';
 import type { Series } from '@/types/types';
+import { predictHref, previewHeadline, type SeriesView, seriesEyebrow, spoilerNeutralView, toSeriesView } from '@/pages/series/series-view';
 import { captureError, EVENTS, track } from '@/lib/analytics';
 import {
   Trophy,
@@ -33,29 +33,36 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The empty state's height (icon tile, one line, the ≥44px link), reserved while the read is in flight. */
+const PENDING_BLOCK_MIN_H = 'min-h-36';
+
+const HOME_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+
 /**
- * Story 2.7 (owner decision D2) — the pending-Game-7 DATA REACH on Home, not
- * its design. Reads `series` through the picker's own projection and keeps a
- * row only when the shared derivation calls it pending (six score rows for
- * games 1–6 and a NULL winner — `isSeriesPending`, AD-4); no stored flag,
- * date or `created_at` decides it. The server-side `winner_team_id IS NULL`
- * filter only narrows the payload (production holds 178 archived rows and
- * none pending): every surviving row still has to pass the derivation, so a
+ * Story 2.7 (owner decision D2) built the pending-Game-7 DATA REACH on Home;
+ * Story 4.5 gives it its treatment (the 2026-09-29 highlight decision). It
+ * reads `series` through the picker's own projection and keeps a row only when
+ * the shared derivation calls it pending (six score rows for games 1–6 and a
+ * NULL winner — `isSeriesPending`, AD-4); no stored flag, date or `created_at`
+ * decides it. The server-side `winner_team_id IS NULL` filter only narrows the
+ * payload: every surviving row still has to pass the derivation, so a
  * winner-less row with the wrong game set is dropped, not promoted.
  *
- * It renders NOTHING when no series is pending or when the read fails — no
- * heading, no empty state, no error copy — so production Home renders as
- * before until a real pending series exists (April 2027). A failed read logs
- * to the console, so the two stay distinguishable off the page. It is not free:
- * every Home load now makes one anon `series` read, which returns zero rows
- * while nothing is pending. Each pending series gets
- * one plain link to `/predict?series=<id>`, the link shape the banner
- * hotspots below already use (`/series/<id>` arrives with Story 4.1). Visual
- * treatment, copy and the AA floor are Story 4.5's; this block proves only
- * that the data arrives and resolves to that series' preview page.
+ * - One card per pending series: the eyebrow, the spoiler-neutral "{A} and {B}
+ *   stand three games apiece" + "Game 7 stands.", a primary link to the series
+ *   page and a secondary deep link into Predict.
+ * - No pending series → the EXPERIENCE.md empty state, with one onward link to
+ *   the archive.
+ * - While loading it reserves the empty state's height with no copy (no
+ *   layout shift under the hero); a failed read renders NOTHING and logs to the
+ *   console, so it stays distinguishable from "nothing pending".
+ * - A pending row the card cannot show (`toSeriesView` → null) is reported
+ *   through `captureError` once per id, as the series routes report theirs.
  */
 export function PendingGameSevens() {
-  const [pending, setPending] = React.useState<Series[]>([]);
+  // `null` while the read is in flight; `failed` once it has failed (nothing renders).
+  const [pending, setPending] = React.useState<SeriesView[] | null>(null);
+  const [failed, setFailed] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -67,18 +74,35 @@ export function PendingGameSevens() {
           .is('winner_team_id', null)
           .order('year', { ascending: false });
         if (error || !Array.isArray(data)) {
-          // Still renders nothing (D2 leaves Home no error surface for this block), but a broken
-          // read must not be indistinguishable from "nothing pending" once April 2027 depends on
-          // it. Sibling reads log the same way (`HistoricalPage.tsx:79`); exception capture
-          // through the isolated analytics layer stays Story 3.1's.
+          // Renders nothing (Home has no error surface for this block), but a broken read must
+          // not be indistinguishable from "nothing pending". Sibling reads log the same way
+          // (`HistoricalPage.tsx:79`).
           console.error('Error fetching pending Game 7s:', error?.message ?? 'unexpected response shape');
+          if (!cancelled) setFailed(true);
           return;
         }
         if (cancelled) return;
-        // Same unvalidated cast the picker makes (`PredictPage.tsx`'s `asSeries`).
-        setPending((data as unknown as Series[]).filter((row) => isSeriesPending(row)));
+        // Same unvalidated cast the picker makes (`PredictPage.tsx`'s `asSeries`). A pending row
+        // the series page could not show either (`toSeriesView` → null) gets no card.
+        const views: SeriesView[] = [];
+        const reported = new Set<string>();
+        for (const row of data as unknown as Series[]) {
+          if (!isSeriesPending(row)) continue;
+          const view = toSeriesView(row);
+          if (view) {
+            views.push(spoilerNeutralView(view));
+          } else if (!reported.has(row.id)) {
+            // Reported, never silent — as the series routes report a row they cannot show.
+            reported.add(row.id);
+            const anomaly = new Error(`Series ${row.id} cannot be shown: its pending row does not reconcile to a series card`);
+            console.error('Non-reconciling series:', anomaly);
+            captureError(anomaly);
+          }
+        }
+        setPending(views);
       } catch (err) {
         console.error('Error fetching pending Game 7s:', err);
+        if (!cancelled) setFailed(true);
       }
     })();
     return () => {
@@ -86,27 +110,64 @@ export function PendingGameSevens() {
     };
   }, []);
 
-  if (pending.length === 0) return null;
+  if (failed) return null;
+
+  // While the read is in flight the block's space is reserved (the empty state's
+  // height), with no copy, so the answer does not shift the page under the hero.
+  if (pending === null) {
+    return (
+      <section className="pb-12" data-home-pending-series-loading="" aria-hidden="true">
+        <div className={PENDING_BLOCK_MIN_H} />
+      </section>
+    );
+  }
+
+  if (pending.length === 0) {
+    return (
+      <section className="pb-12" data-home-pending-series="" data-empty="">
+        <div className={`mx-auto w-full max-w-md space-y-2 text-left ${PENDING_BLOCK_MIN_H}`}>
+          <div className="mb-4 inline-flex rounded-lg bg-accent p-2 text-foreground" aria-hidden="true">
+            <Trophy className="h-5 w-5" />
+          </div>
+          <p className="text-xl font-medium text-foreground">No active series right now — the next Game 7 is coming.</p>
+          <Link
+            to="/historical"
+            className={`inline-flex min-h-11 items-center gap-1.5 font-medium text-foreground underline underline-offset-4 ${HOME_FOCUS}`}
+          >
+            Every Game 7 has a history. <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="pb-12" data-home-pending-series="">
-      <ul className="space-y-2 text-center">
-        {pending.map((series) => {
-          const teamA = getTeamCode(series.team_a?.full_name || 'Team A', series.team_a);
-          const teamB = getTeamCode(series.team_b?.full_name || 'Team B', series.team_b);
-          return (
-            <li key={series.id}>
+      <div className="mx-auto grid w-full max-w-3xl gap-4">
+        {pending.map((view) => (
+          <div key={view.id} data-pending-series-id={view.id} className="rounded-xl border border-border p-6 text-left">
+            <p className="text-xs font-semibold uppercase tracking-widest text-on-muted">{seriesEyebrow(view)}</p>
+            <h2 className="mt-3 text-2xl font-medium leading-tight tracking-[-0.01em] text-foreground">{previewHeadline(view)}</h2>
+            <p className="mt-2 text-on-muted">Game 7 stands.</p>
+            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
               <Link
-                to={`/predict?series=${series.id}`}
-                data-pending-series-id={series.id}
-                className="text-sm font-medium text-primary hover:underline"
+                to={`/series/${view.id}`}
+                data-pending-series-link="series"
+                className={`inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${HOME_FOCUS}`}
               >
-                {`${teamA} vs ${teamB} — Game 7 pending`}
+                Read the series <span aria-hidden="true">→</span>
               </Link>
-            </li>
-          );
-        })}
-      </ul>
+              <Link
+                to={predictHref(view.id)}
+                data-pending-series-link="predict"
+                className={`inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-foreground underline underline-offset-4 ${HOME_FOCUS}`}
+              >
+                Model Game 7 <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

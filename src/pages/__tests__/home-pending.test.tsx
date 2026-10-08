@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-// Story 2.7 (owner decision D2): Home's pending-Game-7 data reach. Pins that a
-// pending series reaches Home through the shared derivation and resolves to
-// its preview page, and that Home renders nothing at all when none is pending
-// or the read fails. Assertions are `textContent` / `href` only — never a
-// computed accessible name (AGENTS.md · Evidence discipline, finding F16).
+// Story 2.7 (owner decision D2): Home's pending-Game-7 data reach; Story 4.5:
+// its treatment. Pins that a pending series reaches Home through the shared
+// derivation as a highlight card linking its series page and Predict, that
+// zero pending series shows the empty state, and that a failed read renders
+// nothing. Assertions are `textContent` / `href` only — never a computed
+// accessible name (AGENTS.md · Evidence discipline, finding F16).
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,26 +106,42 @@ async function settled() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('Home pending-Game-7 data reach (Story 2.7, D2)', () => {
-  it('reads series through the shared projection, embedding every score row', async () => {
+describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatment)', () => {
+  it('reads series through the shared projection, embedding every score row and no editorial content', async () => {
     renderBlock();
     await settled();
     expect(db.projections).toHaveLength(1);
     expect(db.projections[0]).toContain('series_game_scores(*)');
     expect(db.projections[0]).toContain('team_a:team_a_id(');
     expect(db.projections[0]).not.toMatch(/\bstatus\b/);
+    expect(db.projections[0]).not.toContain('series_content');
     // The payload is narrowed to winner-less rows; the derivation still decides.
     expect(db.filters).toEqual([['winner_team_id', null]]);
   });
 
-  it('renders one link per pending series, resolving to that series\' preview page', async () => {
+  it('renders one card per pending series: eyebrow, spoiler-neutral headline, "Game 7 stands." and both links (matrix: Home, pending exists)', async () => {
     db.result = { data: [seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6])], error: null };
     const { container } = renderBlock();
-    await waitFor(() => expect(container.querySelector('a[data-pending-series-id]')).not.toBeNull());
-    const links = container.querySelectorAll('a[data-pending-series-id]');
-    expect(links).toHaveLength(1);
-    expect(links[0].getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
-    expect(links[0].textContent).toBe('BOS vs MIA — Game 7 pending');
+    await waitFor(() => expect(container.querySelector('[data-pending-series-id]')).not.toBeNull());
+    const cards = container.querySelectorAll('[data-pending-series-id]');
+    expect(cards).toHaveLength(1);
+    const card = cards[0] as HTMLElement;
+    expect(card.getAttribute('data-pending-series-id')).toBe(PENDING_ID);
+    expect(card.querySelector('p')?.textContent).toBe('GAME 7 · 2027 EASTERN CONFERENCE FIRST ROUND');
+    expect(card.querySelector('h2')?.textContent).toBe('Boston Celtics and Miami Heat stand three games apiece');
+    expect(card.textContent).toContain('Game 7 stands.');
+
+    const series = card.querySelector('a[data-pending-series-link="series"]') as HTMLAnchorElement;
+    const predict = card.querySelector('a[data-pending-series-link="predict"]') as HTMLAnchorElement;
+    expect(series.getAttribute('href')).toBe(`/series/${PENDING_ID}`);
+    expect(series.textContent).toBe('Read the series →');
+    expect(predict.getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
+    expect(predict.textContent).toBe('Model Game 7 →');
+    // ≥44px targets.
+    for (const link of [series, predict]) expect(link.className).toMatch(/\bmin-h-11\b/);
+    // Spoiler-neutral: no score, no outcome wording.
+    expect(card.textContent).not.toMatch(/\d+–\d+|win|won|over/);
+    expect(container.querySelector('[data-empty]')).toBeNull();
   });
 
   it('drops a winner-less row whose game set is not exactly 1–6 (the derivation decides, not the filter)', async () => {
@@ -133,41 +150,91 @@ describe('Home pending-Game-7 data reach (Story 2.7, D2)', () => {
       error: null,
     };
     const { container } = renderBlock();
-    await waitFor(() => expect(container.querySelector('a[data-pending-series-id]')).not.toBeNull());
-    const ids = Array.from(container.querySelectorAll('a[data-pending-series-id]')).map((a) => a.getAttribute('data-pending-series-id'));
+    await waitFor(() => expect(container.querySelector('[data-pending-series-id]')).not.toBeNull());
+    const ids = Array.from(container.querySelectorAll('[data-pending-series-id]')).map((el) => el.getAttribute('data-pending-series-id'));
     expect(ids).toEqual([PENDING_ID]);
   });
 
   it('drops a six-row row that carries a winner (the mock ignores the server filter, so only the derivation can drop it)', async () => {
     db.result = { data: [seriesWith('decided', [1, 2, 3, 4, 5, 6], BOS.id), seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6])], error: null };
     const { container } = renderBlock();
-    await waitFor(() => expect(container.querySelector('a[data-pending-series-id]')).not.toBeNull());
-    const ids = Array.from(container.querySelectorAll('a[data-pending-series-id]')).map((a) => a.getAttribute('data-pending-series-id'));
+    await waitFor(() => expect(container.querySelector('[data-pending-series-id]')).not.toBeNull());
+    const ids = Array.from(container.querySelectorAll('[data-pending-series-id]')).map((el) => el.getAttribute('data-pending-series-id'));
     expect(ids).toEqual([PENDING_ID]);
   });
 
-  it('renders nothing at all when no series is pending', async () => {
+  it('shows the empty state with one onward link to the archive when no series is pending (matrix: Home, none pending)', async () => {
     db.result = { data: [seriesWith('short', [1, 2, 3, 4, 5])], error: null };
     const { container } = renderBlock();
-    await settled();
-    expect(container.innerHTML).toBe('');
+    await waitFor(() => expect(container.querySelector('[data-home-pending-series][data-empty]')).not.toBeNull());
+    const block = container.querySelector('[data-home-pending-series]') as HTMLElement;
+    expect(block.textContent).toContain('No active series right now — the next Game 7 is coming.');
+    const links = block.querySelectorAll('a');
+    expect(links).toHaveLength(1);
+    expect(links[0].getAttribute('href')).toBe('/historical');
+    expect(links[0].textContent).toBe('Every Game 7 has a history. →');
+    expect(links[0].className).toMatch(/\bmin-h-11\b/);
+    expect(container.querySelector('[data-pending-series-id]')).toBeNull();
   });
 
-  it('renders nothing on a query error', async () => {
+  it('while the read is in flight it reserves the empty state\'s height with no copy and no links', () => {
+    db.from.mockImplementation(() => {
+      const chain = { select: () => chain, is: () => chain, order: () => new Promise(() => {}) };
+      return chain;
+    });
+    const { container } = renderBlock();
+    const placeholder = container.querySelector('[data-home-pending-series-loading]') as HTMLElement;
+    expect(placeholder).not.toBeNull();
+    expect(placeholder.getAttribute('aria-hidden')).toBe('true');
+    expect(container.textContent).toBe('');
+    expect(container.querySelector('a')).toBeNull();
+    // The same min-height class the empty-state block carries.
+    expect(placeholder.querySelector('div')?.className).toBe('min-h-36');
+  });
+
+  it('the empty-state block carries the reserved min-height', async () => {
+    const { container } = renderBlock();
+    await waitFor(() => expect(container.querySelector('[data-empty]')).not.toBeNull());
+    expect(container.querySelector('[data-empty] > div')?.className).toMatch(/\bmin-h-36\b/);
+    expect(container.querySelector('[data-home-pending-series-loading]')).toBeNull();
+  });
+
+  it('a pending row the card cannot show is reported once by id, and the others still render', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    db.captureException.mockClear();
+    const unshowable = { ...seriesWith('teamless', [1, 2, 3, 4, 5, 6]), team_a: undefined } as Series;
+    db.result = { data: [unshowable, unshowable, seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6])], error: null };
+    const { container } = renderBlock();
+    await waitFor(() => expect(container.querySelector('[data-pending-series-id]')).not.toBeNull());
+    const ids = Array.from(container.querySelectorAll('[data-pending-series-id]')).map((el) => el.getAttribute('data-pending-series-id'));
+    expect(ids).toEqual([PENDING_ID]);
+    expect(db.captureException).toHaveBeenCalledTimes(1);
+    expect(String(db.captureException.mock.calls[0][0])).toContain('teamless');
+    expect(quiet).toHaveBeenCalledWith('Non-reconciling series:', expect.any(Error));
+    quiet.mockRestore();
+  });
+
+  it('renders nothing on a query error, and logs it', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     db.result = { data: null, error: { message: 'boom', code: '500' } };
     const { container } = renderBlock();
     await settled();
     expect(container.innerHTML).toBe('');
+    expect(log).toHaveBeenCalledWith('Error fetching pending Game 7s:', 'boom');
+    log.mockRestore();
   });
 
-  it('renders nothing when the read throws', async () => {
+  it('renders nothing when the read throws, and logs it', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     db.result = new Error('network down');
     const { container } = renderBlock();
     await settled();
     expect(container.innerHTML).toBe('');
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 
-  it('is mounted by HomePage, which carries no pending block when nothing is pending', async () => {
+  it('is mounted by HomePage, which shows the empty state when nothing is pending', async () => {
     const { container } = render(
       <MemoryRouter>
         <HomePage />
@@ -175,10 +242,11 @@ describe('Home pending-Game-7 data reach (Story 2.7, D2)', () => {
     );
     await settled();
     expect(container.textContent).toContain('Predict Game 7');
-    expect(container.querySelector('[data-home-pending-series]')).toBeNull();
+    await waitFor(() => expect(container.querySelector('[data-home-pending-series][data-empty]')).not.toBeNull());
+    expect(container.querySelector('[data-pending-series-id]')).toBeNull();
   });
 
-  it('is mounted by HomePage, which links a pending series to its preview page', async () => {
+  it('is mounted by HomePage, which links a pending series to its series page and to Predict', async () => {
     db.result = { data: [seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6])], error: null };
     const { container } = render(
       <MemoryRouter>
@@ -186,7 +254,8 @@ describe('Home pending-Game-7 data reach (Story 2.7, D2)', () => {
       </MemoryRouter>
     );
     await waitFor(() => expect(container.querySelector('[data-home-pending-series] a')).not.toBeNull());
-    expect(container.querySelector('[data-home-pending-series] a')?.getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
+    const hrefs = Array.from(container.querySelectorAll('[data-home-pending-series] a')).map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual([`/series/${PENDING_ID}`, `/predict?series=${PENDING_ID}`]);
   });
 });
 

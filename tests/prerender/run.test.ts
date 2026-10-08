@@ -7,6 +7,43 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from '../../scripts/og/render.ts';
+import { fetchSeriesPageRows, PRERENDER_SELECT, type SeriesReadClient } from '../../scripts/prerender/run.ts';
+import { SERIES_PAGE_SELECT } from '../../src/lib/series-query.ts';
+
+describe('the prerender read (Story 4.5)', () => {
+  it('reads every series through SERIES_PAGE_SELECT, ordered by year then id', async () => {
+    const calls: string[] = [];
+    const rows = [{ id: 'a' }];
+    const client = {
+      from: (table: string) => {
+        calls.push(`from:${table}`);
+        return {
+          select: (projection: string) => {
+            calls.push(`select:${projection}`);
+            const ordered = {
+              order: (column: string) => {
+                calls.push(`order:${column}`);
+                return column === 'id' ? Promise.resolve({ data: rows, error: null }) : ordered;
+              },
+            };
+            return ordered;
+          },
+        };
+      },
+    } as unknown as SeriesReadClient;
+    const got = await fetchSeriesPageRows('https://example.supabase.co', 'anon', () => client);
+    expect(PRERENDER_SELECT).toBe(SERIES_PAGE_SELECT);
+    expect(calls).toEqual(['from:series', `select:${SERIES_PAGE_SELECT}`, 'order:year', 'order:id']);
+    expect(got).toEqual(rows);
+  });
+
+  it('throws on a read error (fail loud)', async () => {
+    const client = {
+      from: () => ({ select: () => ({ order: () => ({ order: () => Promise.resolve({ data: null, error: { message: 'column series.is_featured does not exist' } }) }) }) }),
+    } as unknown as SeriesReadClient;
+    await expect(fetchSeriesPageRows('u', 'k', () => client)).rejects.toThrow(/series read failed: column series.is_featured/);
+  });
+});
 
 describe('the prerender entry script (spawned, as `npm run prerender` runs it)', { timeout: 30_000 }, () => {
   it('auto-runs as the entry and exits 2 naming VITE_SUPABASE_URL when the env is absent', () => {

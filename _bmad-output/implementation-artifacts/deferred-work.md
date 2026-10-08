@@ -723,3 +723,12 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-4-share-button-attribution.md`
   summary: `PredictPage` discards a prediction whose Generate click lands after a `?series=`/`?custom=` preload has painted but before its effects have run. The reset effect then retires that attempt.
   evidence: Found during the review-pass-1 fixes, as the cause of `predict-share.test.tsx` failing about 1 run in 4 at any timeout. The fix there is test-side only (flush effects before Generate); the page is unchanged. It is a window of less than a frame that no human click reaches, so it is a test-harness hazard first. A page fix would make the reset effect skip the attempt started by the same render (for example by comparing the selection the attempt captured). The owning story is any later change to the Predict reset logic.
+
+## Deferred from: code review of spec-4-5-series-editorial-content-model.md (2026-10-08)
+
+- source_spec: `spec-4-5-series-editorial-content-model.md`
+  summary: The main JS bundle grew from 858 kB to 1,045 kB (263 → 316 kB gzipped) with Story 4.5, because `react-markdown` and its parser tree load on every page, including Predict and Home, which never render editorial content.
+  evidence: Orchestrator note O1, measured from the `npm run build` output before and after the change. Lazy-loading the renderer conflicts with the prerender's synchronous `renderToString` (a lazy boundary would leave the write-up out of the static HTML, against AD-7's no-JS crawl requirement). Two candidate fixes: code-split the series routes as a whole, with the prerender awaiting the chunk; or replace `react-markdown` with a smaller AST renderer over `mdast-util-from-markdown`, which is already a direct dependency. Measure first: `npm run perf:predict` against NFR-P1 (3 s P95). Natural owner: Epic 5 (5.3) or a perf story before the pre-playoff release.
+- source_spec: `spec-4-5-series-editorial-content-model.md`
+  summary: `series_content.updated_at` is set only on insert (`DEFAULT now()`, no `BEFORE UPDATE` trigger), so an edited write-up keeps its original timestamp unless the writer sets it.
+  evidence: Review pass 1, blind-hunter (row B3). The only writers are the owner's SQL and scripts (AD-8), arriving with Story 4.6. Its loader should set `updated_at = now()` on upsert, or a later migration adds the trigger. Nothing reads the column yet.

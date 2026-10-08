@@ -13,6 +13,7 @@ import type { HelmetServerState } from 'react-helmet-async';
 import { StaticRouter } from 'react-router-dom';
 import { AppRoutes } from '@/App';
 import { AppWrapper } from '@/components/common/PageMeta';
+import { editorialImagePaths, parseSeriesContent } from '@/lib/series-content';
 import type { Series } from '@/types/types';
 import {
   FALLBACK_CARD,
@@ -65,10 +66,27 @@ export function renderRoute(route: string, preload: SeriesPreload | null): Rende
   return { html, helmetHead };
 }
 
-export function prerenderSite(rows: readonly Series[], template: string, flagshipIds?: readonly string[]): PrerenderOutput {
-  const plan = planSeriesPages(rows, flagshipIds);
-  const summary: PrerenderSummary = { rows: rows.length, record: 0, preview: 0, result: 0, shells: 0, sitemapUrls: 0 };
-  if (plan.errors.length > 0) return { files: [], cards: [], errors: plan.errors, summary };
+export function prerenderSite(rows: readonly Series[], template: string): PrerenderOutput {
+  const plan = planSeriesPages(rows);
+  const summary: PrerenderSummary = {
+    rows: rows.length,
+    featured: plan.featured,
+    record: 0,
+    preview: 0,
+    result: 0,
+    shells: 0,
+    sitemapUrls: 0,
+  };
+  if (plan.errors.length > 0) return { files: [], cards: [], assets: [], errors: plan.errors, summary };
+
+  // Every editorial image any row's content references (content is valid here: the plan checked it).
+  const assets = new Set<string>();
+  for (const row of rows) {
+    const { before, resolution } = parseSeriesContent(row.series_content ?? [], row.id);
+    for (const part of [before, resolution]) {
+      if (part?.body) for (const path of editorialImagePaths(part.body)) assets.add(path);
+    }
+  }
 
   const errors: string[] = [];
   const files: PrerenderFile[] = [];
@@ -113,6 +131,6 @@ export function prerenderSite(rows: readonly Series[], template: string, flagshi
   files.push({ path: 'sitemap.xml', content: sitemapXml(sitemapRoutes) });
   files.push({ path: 'robots.txt', content: robotsTxt() });
 
-  if (errors.length > 0) return { files: [], cards: [], errors, summary };
-  return { files, cards: [...cards], errors, summary };
+  if (errors.length > 0) return { files: [], cards: [], assets: [], errors, summary };
+  return { files, cards: [...cards], assets: [...assets], errors, summary };
 }
