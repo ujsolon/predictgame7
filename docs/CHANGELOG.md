@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.11] - 2026-10-08
+
+### Removed
+
+- Home no longer shows "No active series right now — the next Game 7 is coming." when no Game 7 is pending: it read badly on the front page. Home shows nothing in that case, as before 0.2.10. The pending-series cards still appear during a live 3–3. Their redesign, with a design session and a mockup first, is Story 4.9 (owner decision).
+
 ## [0.2.10] - 2026-10-08
 
 ### Added
