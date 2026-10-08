@@ -732,3 +732,9 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-5-series-editorial-content-model.md`
   summary: `series_content.updated_at` is set only on insert (`DEFAULT now()`, no `BEFORE UPDATE` trigger), so an edited write-up keeps its original timestamp unless the writer sets it.
   evidence: Review pass 1, blind-hunter (row B3). The only writers are the owner's SQL and scripts (AD-8), arriving with Story 4.6. Its loader should set `updated_at = now()` on upsert, or a later migration adds the trigger. Nothing reads the column yet.
+
+## Found during the Story 4.7 analytics walk (2026-10-08)
+
+- source_spec: none
+  summary: Historical's filter-reset button (`HistoricalPage.tsx:204`) is icon-only (`FilterX`) with no accessible name, and its hit area is 40×40 px (`h-10 w-10`), below the 44×44 px target floor.
+  evidence: Seen in the owner's PostHog walk of 2026-10-08 (`analytics-continuity-4-7.md`): autocapture recorded the click as a bare "clicked button" with no text, because the element has no text content and no `aria-label`. A screen reader announces it as just "button" (WCAG 4.1.2 Name, Role, Value), and the hit area misses NFR-U1's 44×44 px bar. It predates Epic 4 (Story 4.0 only added its `track` call), so it is not a regression. The fix is an `aria-label` (e.g. "Reset filters") plus `h-11 w-11`. Natural owner: Epic 5, Story 5.2's AA pass, or the post-retro scoping.
