@@ -97,6 +97,18 @@
 // seeded state — the 6e convention again, and each tamper then proven to have
 // left nothing behind.
 //
+// Since Story 4.5 section 8 rehearses 00019: series.is_featured's shape
+// (boolean NOT NULL DEFAULT false); the seed UPDATE, which matches 0 rows here
+// because the fixture's series ids are generated in the container (none of the
+// five production pilot uuids), asserted as that measured 0 and then shown to
+// flag a pilot id on a row inserted for it; series_content's PRIMARY KEY
+// (series_id, part), its part and videos CHECKs and the primary key each
+// observed refusing, ON DELETE CASCADE observed removing content with its
+// series; RLS enabled with exactly one policy (SELECT, anon + authenticated,
+// USING true) and an anon INSERT refused by RLS itself once the table
+// privilege Supabase grants by default is granted here; and a re-apply of the
+// committed file leaving everything unchanged. Every write probe rolls back.
+//
 // Usage: node scripts/rehearse-migration-00014.mjs [--fixture-report] — no other
 // argument is accepted: a typo (`--fixture-repor`) refuses the run rather than
 // silently starting the full Docker rehearsal.
@@ -144,7 +156,11 @@ const dbName = 'rehearse';
 // column, its shape CHECK, the partial unique index with its duplicate-code
 // negative proof, the four post-condition guards each observed firing, and
 // EXPECTED_TEAM_COUNT=59 still holding because 00018 inserts no row.
-const COVERED_THROUGH = 18;
+// Story 4.5 raises it to 19 for 00019_series_editorial_content.sql, and
+// section 8 is that coverage. The bump trails the emit by one commit (the
+// 4.5 commit's CI run, 37760362339, failed on exactly this check); 00019 was
+// already applied to production by the owner when the ceiling caught up.
+const COVERED_THROUGH = 19;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
@@ -1682,7 +1698,164 @@ ROLLBACK;
         psqlValue('SELECT espn_code::text FROM public.teams WHERE id = 31') === '',
     );
 
-    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind.');
+    // 8) Migration 00019 — series.is_featured + series_content (Story 4.5). The
+    //    additive column and table, the seed, the two CHECKs and the cascade
+    //    each observed refusing or acting, RLS with its single read policy, an
+    //    anon INSERT refused BY RLS (granted the table privilege first, so the
+    //    refusal is the policy's and not a missing GRANT), and a re-apply of
+    //    the committed file that changes nothing (it is written idempotent:
+    //    IF NOT EXISTS / the 00011 policy guard). Every write probe runs inside
+    //    a transaction that rolls back.
+    const migration019File = files.find((f) => f.startsWith('00019'));
+    if (migration019File === undefined) {
+      throw new RehearsalFailure(`8: COVERED_THROUGH = ${COVERED_THROUGH} claims 00019's replay, but no 00019* file is on disk`);
+    }
+    const migration019Text = readFileSync(join(migrationsDir, migration019File), 'utf8');
+    console.log(`\n-- 8) Story 4.5: ${migration019File} — the featured flag and the editorial content table --`);
+
+    const PILOT_IDS = [
+      'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a',
+      '06715a85-ec33-46a4-8383-d058055eefe6',
+      '29638c4e-261a-4d09-81aa-5740f76175f5',
+      '626257bc-1678-4c88-84a6-37e0a6cdb49c',
+      '6ecb170c-e781-47f8-b7ee-881ba719d6d5',
+    ];
+    const pilotList = PILOT_IDS.map((id) => `'${id}'`).join(', ');
+
+    // 8a — the column.
+    const featuredShape = psqlValue(`
+      SELECT is_nullable || '|' || data_type || '|' || coalesce(column_default, '')
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'is_featured'
+    `);
+    assert(`8a series.is_featured is boolean NOT NULL DEFAULT false (read ${featuredShape})`, featuredShape === 'NO|boolean|false');
+
+    // 8b — the seed. The fixture archive's series ids are generated in the
+    //      container (the curated CSV carries no production uuids), so it holds
+    //      NONE of the five pilot ids: the seed UPDATE ran over the replay and
+    //      matched 0 rows. That count is asserted as measured, and the UPDATE
+    //      itself — extracted from the committed file — is then shown to flag a
+    //      pilot id once a row carrying it exists.
+    const pilotsInFixture = psqlValue(`SELECT count(*) FROM public.series WHERE id IN (${pilotList})`);
+    const featuredInFixture = psqlValue('SELECT count(*) FROM public.series WHERE is_featured');
+    assert(
+      `8b the seed UPDATE ran without error over the replay: the fixture holds ${pilotsInFixture} of the five pilot ids and ${featuredInFixture} rows are featured`,
+      pilotsInFixture === '0' && featuredInFixture === '0',
+    );
+    const seedUpdate = /UPDATE public\.series\s+SET is_featured = true\s+WHERE id IN \([\s\S]*?\);/.exec(migration019Text)?.[0];
+    if (seedUpdate === undefined) {
+      throw new RehearsalFailure(`8b: could not locate ${migration019File}'s seed UPDATE — the text moved, so this would certify a copy`);
+    }
+    const seeded = psql({
+      file:
+        'BEGIN;\n' +
+        `INSERT INTO public.series (id, year, round, team_a_id, team_b_id) VALUES ('${PILOT_IDS[1]}', 2098, 'Rehearsal Pilot', 1, 2);\n` +
+        `${seedUpdate}\n` +
+        `SELECT 'featured=' || is_featured FROM public.series WHERE id = '${PILOT_IDS[1]}';\n` +
+        'ROLLBACK;\n',
+    });
+    assert(
+      "8b the committed seed UPDATE flags a row carrying a pilot id (inserted and rolled back), and a fresh row's flag defaulted to false first",
+      seeded.status === 0 && /featured=true/.test(seeded.stdout ?? ''),
+      `exit ${seeded.status}: ${seeded.stdout ?? ''}${seeded.stderr ?? ''}`,
+    );
+    assert('8b the probe rolled back: no pilot id in the fixture', psqlValue(`SELECT count(*) FROM public.series WHERE id IN (${pilotList})`) === '0');
+
+    // 8c — the table: key, FK with cascade, the two CHECKs.
+    assert(
+      '8c series_content has PRIMARY KEY (series_id, part) and a series FK with ON DELETE CASCADE',
+      psqlValue("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'public.series_content'::regclass AND contype = 'p'") ===
+        'PRIMARY KEY (series_id, part)' &&
+        /REFERENCES series\(id\) ON DELETE CASCADE|REFERENCES public\.series\(id\) ON DELETE CASCADE/.test(
+          psqlValue("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'public.series_content'::regclass AND contype = 'f'"),
+        ),
+    );
+    const withSeries = (body) =>
+      'BEGIN;\n' +
+      "INSERT INTO public.series (id, year, round, team_a_id, team_b_id) VALUES ('00000000-0000-4000-8000-000000000019', 2097, 'Rehearsal Content', 1, 2);\n" +
+      `${body}\n` +
+      'ROLLBACK;\n';
+    const rejects = (label, pattern, body) => {
+      const res = psql({ file: withSeries(body) });
+      const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+      if (res.status === 0) throw new RehearsalFailure(`${label}: the write unexpectedly SUCCEEDED:\n${out}`);
+      if (!pattern.test(out)) throw new RehearsalFailure(`${label}: rejected for an unexpected reason:\n${out}`);
+      assert(label, true);
+    };
+    rejects(
+      "8c the part CHECK refuses 'other'",
+      /series_content_part_check/,
+      "INSERT INTO public.series_content (series_id, part) VALUES ('00000000-0000-4000-8000-000000000019', 'other');",
+    );
+    rejects(
+      '8c the videos CHECK refuses a non-array (an object)',
+      /series_content_videos_check/,
+      "INSERT INTO public.series_content (series_id, part, videos) VALUES ('00000000-0000-4000-8000-000000000019', 'before', '{}'::jsonb);",
+    );
+    rejects(
+      '8c the primary key refuses a second before part for the same series',
+      /series_content_pkey/,
+      "INSERT INTO public.series_content (series_id, part) VALUES ('00000000-0000-4000-8000-000000000019', 'before');\n" +
+        "INSERT INTO public.series_content (series_id, part) VALUES ('00000000-0000-4000-8000-000000000019', 'before');",
+    );
+    const cascade = psql({
+      file: withSeries(
+        "INSERT INTO public.series_content (series_id, part, headline) VALUES ('00000000-0000-4000-8000-000000000019', 'before', 'h'), ('00000000-0000-4000-8000-000000000019', 'resolution', 'r');\n" +
+          "SELECT 'before_delete=' || count(*) FROM public.series_content WHERE series_id = '00000000-0000-4000-8000-000000000019';\n" +
+          "DELETE FROM public.series WHERE id = '00000000-0000-4000-8000-000000000019';\n" +
+          "SELECT 'after_delete=' || count(*) FROM public.series_content WHERE series_id = '00000000-0000-4000-8000-000000000019';",
+      ),
+    });
+    assert(
+      "8c ON DELETE CASCADE: deleting the series removes both of its content rows (and a default videos value is accepted as '[]')",
+      cascade.status === 0 && /before_delete=2/.test(cascade.stdout ?? '') && /after_delete=0/.test(cascade.stdout ?? ''),
+      `exit ${cascade.status}: ${cascade.stdout ?? ''}${cascade.stderr ?? ''}`,
+    );
+    assert('8c every probe rolled back: series_content is empty', psqlValue('SELECT count(*) FROM public.series_content') === '0');
+
+    // 8d — RLS and its single read policy; an anon INSERT refused by RLS itself.
+    const readPolicies = () =>
+      psqlValue("SELECT string_agg(policyname || '|' || cmd || '|' || array_to_string(roles, ',') || '|' || qual, ';') FROM pg_policies WHERE schemaname = 'public' AND tablename = 'series_content'");
+    assert(
+      '8d RLS is enabled on series_content with exactly one policy: SELECT for anon and authenticated, USING (true)',
+      psqlValue("SELECT relrowsecurity FROM pg_class WHERE oid = 'public.series_content'::regclass") === 't' &&
+        readPolicies() === 'Public can read series content|SELECT|anon,authenticated|true',
+      `policies: ${readPolicies()}`,
+    );
+    const anonWrite = psql({
+      file:
+        'BEGIN;\n' +
+        // Supabase grants table privileges to anon by default; plain Postgres does not. Grant them here so the
+        // refusal below is RLS's, not a missing privilege's.
+        'GRANT SELECT, INSERT ON public.series_content TO anon;\n' +
+        'GRANT SELECT ON public.series TO anon;\n' +
+        'SET LOCAL ROLE anon;\n' +
+        "SELECT 'anon_reads=' || count(*) FROM public.series_content;\n" +
+        "INSERT INTO public.series_content (series_id, part) SELECT id, 'before' FROM public.series LIMIT 1;\n" +
+        'ROLLBACK;\n',
+    });
+    const anonOut = `${anonWrite.stdout ?? ''}${anonWrite.stderr ?? ''}`;
+    assert(
+      '8d with the table privilege granted, anon can read series_content but its INSERT is refused by row-level security',
+      anonWrite.status !== 0 && /anon_reads=0/.test(anonOut) && /new row violates row-level security policy for table "series_content"/.test(anonOut),
+      anonOut,
+    );
+
+    // 8e — re-applying the committed file changes nothing.
+    mustSucceed(`8e ${migration019File} re-applies cleanly over itself`, psql({ file: migration019Text }));
+    assert(
+      '8e the re-apply left one policy, an empty table, the same column shape and 0 featured fixture rows',
+      readPolicies() === 'Public can read series content|SELECT|anon,authenticated|true' &&
+        psqlValue('SELECT count(*) FROM public.series_content') === '0' &&
+        psqlValue(`
+          SELECT is_nullable || '|' || data_type || '|' || coalesce(column_default, '')
+          FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'is_featured'
+        `) === 'NO|boolean|false' &&
+        psqlValue('SELECT count(*) FROM public.series WHERE is_featured') === '0',
+    );
+
+    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind, and Story 4.5\'s 00019 adding series.is_featured (boolean NOT NULL DEFAULT false, its seed UPDATE flagging a pilot id) and series_content with its key, both CHECKs refusing and the cascade acting, RLS on with one read policy and an anon INSERT refused by it, and a clean idempotent re-apply.');
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });

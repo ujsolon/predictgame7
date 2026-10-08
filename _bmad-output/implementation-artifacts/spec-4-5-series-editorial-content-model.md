@@ -169,6 +169,20 @@ context:
   - Until then, `npm run deploy` fails at `prerender` by design, which is what keeps 4.4 and 4.5 from shipping against the old schema.
   - 4.5 stays at `review` in `sprint-status.yaml` until that run is recorded here.
 
+- **00019 applied and verified (2026-10-08).** The owner ran `npx supabase db push`. Read over anon REST:
+  - `is_featured=eq.true` returns exactly the five pilot ids (2013, 2016, 2019, 2025, 2026);
+  - `series_content` returns `200 []`;
+  - an anon `POST` is refused with `401 42501 new row violates row-level security policy`.
+
+  Then `npm run build && npm run og:cards && npm run prerender` exits 0 (183 series pages, 5 featured read from the table), and `probe-deep-links.mjs` against `vite preview --port 4341` is **GREEN, 115 rows**, with row 5 seeing all five pilots archived and featured. The acceptance criteria are met.
+- **Migration rehearsal (CI) went red on `fe43c64`** (run `37760362339`): the commit added `00019` without bumping `scripts/rehearse-migration-00014.mjs`'s `COVERED_THROUGH` (the spec-2-8 E1 same-commit rule). The follow-up commit bumps it to 19 and adds section 8 for 00019's post-conditions:
+  - the column shape and the seed;
+  - the PK, the CHECKs and the cascade;
+  - RLS with one SELECT policy, and an anon insert refused;
+  - re-apply idempotence.
+
+  No local Docker engine was running, so the next CI rehearsal run is the first evidence for section 8. 4.5 moves to `done` once that run is green.
+
 ## Spec Change Log
 
 ## Review Triage Log
