@@ -2,6 +2,23 @@
 
 Raw material for `bmad-retrospective` on Epic 4. Nothing here is decided. Owner suggestion: take the URL topics into `bmad-party-mode` before the retro decides anything.
 
+## 0. What this retro must decide (owner, 2026-10-08)
+
+The retro runs after Story 4.7 and **decides the home of every remaining item**. Small scope ships right after as Epic 4 follow-ups; large scope moves to a later epic. The items:
+- **Story 4.6, flagship five content load:** owner authoring, plus a loader script and the archive-overlay link. It was moved behind the retro because its Home featured cards overlap 4.9. **Deadline: content live by about Feb 4–18, 2027** (6–8 weeks before the Apr 1 Traffic Gate window).
+- **Story 4.9, Home pending-Game-7 highlight redesign:** a design session and a mockup with simulated active series first. It should absorb 4.6's Home featured cards, so one design covers both Home surfaces.
+- **The open `deferred-work.md` entries from Epic 4.** Notably:
+  - bundle size, +20% gzipped from `react-markdown`;
+  - `og:image:alt`;
+  - `series_content.updated_at`;
+  - the PredictPage preload race;
+  - the `?custom=` supersession test;
+  - home-page meta;
+  - stale `gh-pages` pages;
+  - the AGENTS.md coverage note;
+  - the PRD addendum §A.1 event row.
+- **The URL and entry-point ideas below** (items 1–3a).
+
 ## 1. Human-readable series URLs (owner idea, 2026-10-08)
 
 **Proposal.** Advertise a series as `/series/<year>/<slug>` instead of the uuid:

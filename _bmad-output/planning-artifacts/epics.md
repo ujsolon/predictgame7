@@ -882,6 +882,8 @@ so that flagship series can carry full additional content while every other seri
 
 ### Story 4.6: Flagship five content load
 
+*Deferred 2026-10-08 (owner decision): scoped after the Epic 4 retro, together with Story 4.9 and the open deferred items, because its Home featured cards overlap 4.9's Home redesign. The retro decides whether it ships as an Epic 4 follow-up or in a later epic. The flagship content must still be live 6–8 weeks before Apr 1, 2027 (about Feb 4–18, 2027).*
+
 As the owner,
 I want write-ups + video embeds authored and loaded for the 5 flagship series — pinned (owner decision 2026-09-25), worked in chronological order: **2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs**,
 so that the pilot doubles as marketing material and the SEO test runs on pages actually worth sharing — the 3–3 page is the ad, the result page the payoff; prediction links appear only on the 3–3 view.
@@ -903,7 +905,7 @@ so that sharing and indexing work when playoff traffic actually arrives.
 
 **Acceptance Criteria:**
 
-**Given** Stories 4.0–4.6 and 4.8 deployed
+**Given** Stories 4.0–4.5 and 4.8 deployed (*amended 2026-10-08, owner decision: Story 4.6 is deferred to the post-retro scoping together with 4.9, so the drill verifies the epic without flagship content; 4.6 carries its own live check when it ships*)
 **When** the drill runs
 **Then** results recorded in `_bmad-output/implementation-artifacts/`: cold deep-link GET, OG debugger card render on a site series URL (meta from the prerendered page, image from `og/<id>.png`), JS-disabled prerendered page fetch (one bare + one flagship preview — verified spoiler-free — + its result page), share round-trip with SM-3 event observed in PostHog live view
 **And** measurement continuity for Story 4.0's port: the owner observes PostHog live view on the deployed site — the 10 addendum §A.1 events fire with the same names, properties and firing conditions as the **before** leg Story 4.0 recorded (only D1's archive-reset emission and Story 4.4's `prediction_shared` — the second deliberate registry addition, owner decision 2026-10-08 — are new) — recorded side-by-side with that before leg

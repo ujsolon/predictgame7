@@ -8,7 +8,7 @@ Make a completed prediction a circulating artifact and the Game 7 archive a craw
 
 ## Stories
 
-In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.2.9 follows 4.8, because 4.8's live checks need a deploy. Story 4.9 (Home pending-Game-7 highlight redesign, with a design session and a mockup first) was added 2026-10-08 after the 0.2.10 deploy. **Remaining order (owner, 2026-10-08): 4.6 → 4.7 → epic retro → 4.9.** The retro scopes 4.9 together with the open deferred items. Small scope ships right after as Epic 4 follow-ups; large scope moves to a later epic. 4.7 verifies the epic without 4.9.
+In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.2.9 follows 4.8, because 4.8's live checks need a deploy. Story 4.9 (Home pending-Game-7 highlight redesign, with a design session and a mockup first) was added 2026-10-08 after the 0.2.10 deploy. **Remaining order (owner, 2026-10-08, revised the same day): 4.7 → epic retro → scoping of 4.6 + 4.9 + the open deferred items.** 4.6 moved behind the retro because its Home featured cards overlap 4.9's Home redesign. **The retro decides** each item's home: small scope ships right after as Epic 4 follow-ups, large scope moves to a later epic. 4.7 verifies the epic without 4.6 or 4.9 (its Given was amended). The deadline still stands: the flagship content (4.6) must be live by about Feb 4–18, 2027.
 
 - Story 4.0: Analytics isolation layer (AD-1 port)
 - Story 4.1: Series deep-links + 404 SPA fallback
