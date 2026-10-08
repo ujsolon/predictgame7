@@ -24,7 +24,8 @@ export default function Layout({ children }: LayoutProps) {
     <>
       {navigation.map((item) => {
         const Icon = item.icon;
-        const isActive = location.pathname === item.path;
+        // A static shell arrives as `/predict/` (GitHub Pages 301s a directory URL), so the trailing slash is ignored.
+        const isActive = (location.pathname.replace(/\/+$/, '') || '/') === item.path;
         return (
           <Link
             key={item.path}

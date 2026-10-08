@@ -31,14 +31,16 @@ const METHOD_SLUGS = Object.keys(METHOD_LABELS) as MethodSlug[];
  * winner, the final series score, past-tense outcome copy — is rendered, and
  * the document title is winner-free.
  */
-export default function SeriesPreview({ series }: { series: Series }) {
+export default function SeriesPreview({ series, reveal }: { series: Series; reveal?: boolean }) {
   // Winner-free surface: never the stored order, which names the winner first (owner decision 2026-10-07).
   const stored = toSeriesView(series);
   const view = stored && spoilerNeutralView(stored);
   if (!view) return <SeriesNotFound headingLevel="h1" />;
 
   // Only an archived flagship has a result page to reveal; a pending series has none.
-  const hasReveal = view.phase === 'archive' && isFlagship(view.id);
+  // A prerendered preview (Story 4.8) renders from its stripped row, which derives as pending,
+  // so the build-time decision arrives as `reveal` and overrides the derived one.
+  const hasReveal = reveal ?? (view.phase === 'archive' && isFlagship(view.id));
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-16">

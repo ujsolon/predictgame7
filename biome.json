@@ -10,6 +10,7 @@
       "supabase/functions/**/*.ts",
       "supabase/scripts/**/*.ts",
       "scripts/og/**/*.ts",
+      "scripts/prerender/**/*.ts",
       "tests/**/*.{js,jsx,ts,tsx}",
       "tailwind.config.js"
     ]

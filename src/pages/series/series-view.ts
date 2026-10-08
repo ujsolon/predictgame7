@@ -116,7 +116,7 @@ export function spoilerNeutralView(view: SeriesView): SeriesView {
 }
 
 /** "{Year} {Round}", with the stored league before the round when it is not NBA (as 2.10's chip). */
-function yearRound(view: SeriesView): string {
+export function yearRound(view: SeriesView): string {
   return `${view.year} ${view.league !== 'NBA' ? `${view.league} ` : ''}${view.round}`;
 }
 

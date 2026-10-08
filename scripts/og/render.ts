@@ -61,7 +61,8 @@ export interface OgRunDeps {
   logError?: (line: string) => void;
 }
 
-async function fetchSeriesAnon(url: string, anonKey: string): Promise<OgSeriesRow[]> {
+/** The anon `SERIES_SELECT` read of every series. Exported for Story 4.8's prerender, which reads the same rows. */
+export async function fetchSeriesAnon(url: string, anonKey: string): Promise<OgSeriesRow[]> {
   const client = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data, error } = await client.from('series').select(SERIES_SELECT).order('year').order('id');
   if (error) {

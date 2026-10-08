@@ -34,6 +34,28 @@
 //   7. (Story 4.3) An ABA archive series renders the single full-record page:
 //      "ABA" in the eyebrow, seven games, no home/away/venue wording.
 //      Its `/result` (non-flagship) renders the 404.
+//   8. (Story 4.8) JS-disabled fetches (plain HTTP, no browser) of one page per
+//      variant — record, flagship preview, flagship result — and one app-route
+//      shell: HTTP 200, the page content inside `#root` (an empty root for the
+//      shell), and absolute og:title/description/url/image, og:type,
+//      twitter:card and the canonical link.
+//   9. (Story 4.8) All five flagship preview files are clean against the live
+//      Game 7 scores read over anon REST (no score pair in either order, no
+//      `game_number":7`, no winner embed, no "win Game 7" / "4–3"), and each
+//      result file carries the pair.
+//  10. (Story 4.8) `sitemap.xml` answers 200, is well-formed, and lists home,
+//      the four app routes and one URL per live series plus one per flagship
+//      result (rows + flagships); `robots.txt` points at it.
+//  11. (Story 4.8) A cold load of a prerendered page — record, flagship
+//      preview, flagship result — hydrates: zero console errors and zero
+//      uncaught exceptions (React reports a hydration mismatch through them),
+//      the server-rendered first node of `#root` (recorded before the app
+//      script runs) is still connected — hydrateRoot keeps it, createRoot
+//      replaces it — and no `rest/v1/series` request is sent.
+//      Rows 3 and 6 load the prerendered files too (`series/<id>/`, the URL
+//      GitHub Pages 301s to): the `?method=` arrival renders client-side and
+//      redirects, and the reveal click from a hydrated preview focuses the
+//      result `<h1>`.
 //
 // PostHog traffic is answered locally by `openBrowserSession`, so no event from
 // this probe reaches the production project.
@@ -122,6 +144,48 @@ const WAIT = `(async (fn, what, timeout) => {
 })`;
 
 const norm = `((s) => (s || "").replace(/\\s+/g, " ").trim())`;
+
+/** Story 4.8: the site every prerendered URL is absolute under. */
+const SITE_URL = "https://ujsolon.github.io/predictgame7/";
+
+function metaContent(html, key) {
+  const m = new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`).exec(html);
+  return m ? m[1] : null;
+}
+
+/** The markup inside `#root` of a prerendered file, up to the preload script. */
+function rootMarkup(html) {
+  const start = html.indexOf('<div id="root">');
+  if (start < 0) return null;
+  const end = html.indexOf('<script type="application/json" id="pg7-preload">');
+  return end > start ? html.slice(start, end) : html.slice(start);
+}
+
+/** The `#pg7-preload` JSON of a prerendered file, parsed (null when absent or malformed). */
+function parsePreloadOf(html) {
+  const m = /<script type="application\/json" id="pg7-preload">([^<]*)<\/script>/.exec(html);
+  try {
+    return m ? JSON.parse(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `src/lib/spoiler-neutral.ts`'s rule, restated for this plain-JS probe: true when `b` should precede `a`. */
+function swapsForNeutralOrder(a, b) {
+  const word = (t) => (t.nickname && t.nickname.trim()) || t.full_name;
+  const byWord = word(a).localeCompare(word(b), "en", { sensitivity: "base" });
+  if (byWord !== 0) return byWord > 0;
+  const byName = a.full_name.localeCompare(b.full_name, "en", { sensitivity: "base" });
+  if (byName !== 0) return byName > 0;
+  return String(a.id) > String(b.id);
+}
+
+/** Whether `html` is the prerendered file for `path` (GitHub Pages 301s `/x` to `/x/`, and fetch follows). */
+function isPrerenderedFor(html, path) {
+  const clean = path.split("?")[0].replace(/\/+$/, "");
+  return html.includes(`<link rel="canonical" href="${SITE_URL}${clean}/" />`);
+}
 
 function readRoute(expectedH1) {
   return `${WAIT}(() => {
@@ -242,7 +306,7 @@ async function main() {
   }
   const base = opts.base.endsWith("/") ? opts.base : `${opts.base}/`;
   const L = createLedger();
-  console.log(`Story 4.1/4.3 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
+  console.log(`Story 4.1/4.3/4.8 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
 
   // Row 1: the fallback file itself.
   const shellRes = await fetch(base).catch((e) => ({ ok: false, status: e.message }));
@@ -262,13 +326,140 @@ async function main() {
     `series/${FLAGSHIP_2016}`,
     `series/${FLAGSHIP_2016}/result`,
   ];
+  // Since Story 4.8 a path with a prerendered file may be answered by that file
+  // (GitHub Pages 301s `/x` to `/x/`, which fetch follows); `vite preview`
+  // answers the slash-less form with its own SPA fallback. An unknown id has no file.
   for (const path of coldPaths) {
     const res = await fetch(`${base}${path}`);
     const body = Buffer.from(await res.arrayBuffer());
-    L.check(`cold GET /${path} returns the SPA shell`, body.equals(shell), `HTTP ${res.status}`);
+    const unknown = path.startsWith(`series/${unknownId}`);
+    const prerendered = !unknown && isPrerenderedFor(body.toString("utf8"), path);
+    L.check(
+      `cold GET /${path} returns the SPA shell${unknown ? "" : " or its prerendered file"}`,
+      body.equals(shell) || prerendered,
+      `HTTP ${res.status}${prerendered ? ", prerendered" : body.equals(shell) ? ", SPA shell" : ""}`
+    );
   }
 
+  // Rows 8–10 (Story 4.8): what a crawler or unfurler sees, with no JavaScript.
+  const flagshipIds = FLAGSHIPS.map(([id]) => id);
+  const allRows = await restRows("order=year.asc,id.asc", "id,winner_team_id,league,series_game_scores(game_number,home_score,away_score)").catch((e) => ({ error: e.message }));
+  const liveRows = Array.isArray(allRows) ? allRows : [];
+  L.check("every series is readable over anon REST", liveRows.length > 0, allRows.error ?? `${liveRows.length} rows`);
+  const recordRow = liveRows.find((r) => r.winner_team_id != null && !flagshipIds.includes(r.id));
+  const getPage = async (path) => {
+    const res = await fetch(`${base}${path}`);
+    return { status: res.status, html: await res.text() };
+  };
+  const ogComplete = (html, path, image) =>
+    !!metaContent(html, "og:title") &&
+    !!metaContent(html, "og:description") &&
+    metaContent(html, "og:url") === `${SITE_URL}${path}` &&
+    metaContent(html, "og:image") === `${SITE_URL}${image}` &&
+    metaContent(html, "og:type") === "website" &&
+    metaContent(html, "twitter:card") === "summary_large_image" &&
+    html.includes(`<link rel="canonical" href="${SITE_URL}${path}" />`);
+
+  // Row 8: one page per variant, plus a shell.
+  const variants = [
+    recordRow && ["record", `series/${recordRow.id}/`, `og/${recordRow.id}.png`, /win Game 7/],
+    ["flagship preview", `series/${FLAGSHIP_2016}/`, `og/${FLAGSHIP_2016}.png`, /stand three games apiece[\s\S]*See how the series ended/],
+    ["flagship result", `series/${FLAGSHIP_2016}/result/`, `og/${FLAGSHIP_2016}.png`, /win Game 7/],
+  ].filter(Boolean);
+  L.check("an archived non-flagship series exists for the record row", !!recordRow);
+  for (const [label, path, image, content] of variants) {
+    const page = await getPage(path);
+    const root = rootMarkup(page.html) ?? "";
+    console.log(`     JS-disabled /${path}: HTTP ${page.status}, og:title "${metaContent(page.html, "og:title")}"`);
+    L.check(`JS-disabled ${label} /${path}: HTTP 200 with the page content in #root`, page.status === 200 && root.includes('id="series-headline"') && content.test(root), `HTTP ${page.status}`);
+    L.check(`JS-disabled ${label}: complete, absolute OG/Twitter meta and canonical`, ogComplete(page.html, path, image), metaContent(page.html, "og:image") ?? "no og:image");
+  }
+  const shellPage = await getPage("predict/");
+  L.check(
+    "JS-disabled /predict/ shell: HTTP 200, empty root, Fallback meta on og/fallback.png",
+    shellPage.status === 200 && shellPage.html.includes('<div id="root"></div>') && ogComplete(shellPage.html, "predict/", "og/fallback.png") &&
+      metaContent(shellPage.html, "og:title") === "PredictGame7 — Where data meets playoff drama",
+    `HTTP ${shellPage.status}`
+  );
+
+  // Row 9: every flagship preview file is clean against its live Game 7.
+  const flat = (html) => html.split("<!-- -->").join("");
+  for (const id of flagshipIds) {
+    const row = liveRows.find((r) => r.id === id);
+    const scores = row?.series_game_scores || [];
+    const g7 = scores.find((g) => g.game_number === 7);
+    if (!g7) {
+      L.check(`flagship ${id}: a live Game 7 row to check against`, false, "no Game 7 row");
+      continue;
+    }
+    const [h, a] = [g7.home_score, g7.away_score];
+    const pairs = [`${h}–${a}`, `${a}–${h}`, `${h}-${a}`, `${a}-${h}`];
+    const preview = await getPage(`series/${id}/`);
+    const result = await getPage(`series/${id}/result/`);
+    // A Game 7 score can equal a games 1–6 score; only a score the preview cannot otherwise show is checked bare.
+    const earlier = new Set(scores.filter((g) => g.game_number !== 7).flatMap((g) => [g.home_score, g.away_score]));
+    const rootText = (rootMarkup(preview.html) ?? "").replace(/<[^>]*>/g, " ");
+    const bare = [h, a].filter((s) => !earlier.has(s) && new RegExp(`(^|[^\\w.:-])${s}([^\\w.:-]|$)`).test(rootText));
+    const leaks = [
+      // React separates adjacent text nodes with `<!-- -->`, so the pair is matched with those removed.
+      ...pairs.filter((p) => flat(preview.html).includes(p)),
+      ...['game_number":7', 'winner_team":{', "win Game 7", "4–3"].filter((t) => preview.html.includes(t)),
+      ...bare.map((s) => `bare ${s}`),
+    ];
+    L.check(`flagship ${id} preview file carries no Game 7 (${h}–${a}) and no outcome`, preview.status === 200 && leaks.length === 0, leaks.join(", ") || `HTTP ${preview.status}`);
+    // The preload itself: no series-level winner, games 1–6 exactly, teams in
+    // spoiler-neutral order with every game row homed on the neutral-first team.
+    const pre = parsePreloadOf(preview.html);
+    const pv = pre?.series;
+    const games = (pv?.series_game_scores || []).map((g) => g.game_number).sort((x, y) => x - y);
+    const homes = new Set((pv?.series_game_scores || []).map((g) => g.home_team_id));
+    L.check(
+      `flagship ${id} preview preload: winner null, games exactly 1–6, neutral-first team_a homes every game`,
+      !!pv &&
+        pre.variant === "preview" &&
+        pre.reveal === true &&
+        pv.winner_team_id === null &&
+        pv.winner_team === null &&
+        games.join() === "1,2,3,4,5,6" &&
+        !!pv.team_a &&
+        !!pv.team_b &&
+        !swapsForNeutralOrder(pv.team_a, pv.team_b) &&
+        pv.team_a_id === pv.team_a.id &&
+        homes.size === 1 &&
+        homes.has(pv.team_a.id),
+      pv ? `team_a ${pv.team_a?.nickname} · games ${games.join()} · winner ${pv.winner_team_id}` : "no preload"
+    );
+    L.check(`flagship ${id} result file carries the Game 7 pair`, result.status === 200 && pairs.some((p) => flat(result.html).includes(p)), `HTTP ${result.status}`);
+  }
+
+  // Row 10: sitemap and robots.
+  const sitemap = await getPage("sitemap.xml");
+  const locs = [...sitemap.html.matchAll(/<url><loc>([^<]+)<\/loc><\/url>/g)].map((m) => m[1]);
+  const archivedFlagships = flagshipIds.filter((id) => liveRows.some((r) => r.id === id && r.winner_team_id != null)).length;
+  const expectedUrls = 5 + liveRows.length + archivedFlagships;
+  const wellFormed =
+    sitemap.html.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">') &&
+    sitemap.html.trimEnd().endsWith("</urlset>") &&
+    (sitemap.html.match(/<url>/g) || []).length === locs.length &&
+    (sitemap.html.match(/<\/url>/g) || []).length === locs.length &&
+    locs.every((loc) => loc.startsWith(SITE_URL) && loc.endsWith("/"));
+  L.check("sitemap.xml answers 200 and is well-formed", sitemap.status === 200 && wellFormed, `HTTP ${sitemap.status}, ${locs.length} URLs`);
+  L.check(
+    `sitemap lists home, 4 app routes, every series and each flagship result (${expectedUrls} = 5 + ${liveRows.length} rows + ${archivedFlagships} flagships)`,
+    locs.length === expectedUrls && liveRows.every((r) => locs.includes(`${SITE_URL}series/${r.id}/`)) && locs.includes(SITE_URL),
+    `${locs.length} URLs`
+  );
+  const robots = await getPage("robots.txt");
+  L.check("robots.txt answers 200 and points at the sitemap", robots.status === 200 && robots.html.includes(`Sitemap: ${SITE_URL}sitemap.xml`), `HTTP ${robots.status}`);
+
   const S = await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null });
+  // Row 11 (Story 4.8): uncaught exceptions and series reads, for the hydration rows.
+  const exceptions = [];
+  S.cdp.on("Runtime.exceptionThrown", (p) => exceptions.push(p.exceptionDetails?.exception?.description || p.exceptionDetails?.text || "exception"));
+  const seriesRequests = [];
+  S.cdp.on("Network.requestWillBeSent", (p) => {
+    if (p.request.url.includes("/rest/v1/series") && p.request.method !== "OPTIONS") seriesRequests.push(p.request.url);
+  });
   try {
     // Row 2 (render half): each route renders under the base path.
     for (const route of ROUTES) {
@@ -276,14 +467,27 @@ async function main() {
       const r = await S.evaluate(readRoute(route.h1)).catch((e) => ({ error: e.message }));
       L.check(
         `cold GET /${route.path} renders "${route.h1}" at ${new URL(base).pathname}${route.path}`,
-        !r.error && r.pathname === `${new URL(base).pathname}${route.path}`,
+        !r.error && r.pathname.replace(/\/+$/, "") === `${new URL(base).pathname}${route.path}`,
         r.error ?? r.pathname
+      );
+      // Story 4.8: the static shell (`<route>/`, where GitHub Pages lands) renders the route client-side,
+      // with its nav item marked active despite the trailing slash.
+      await S.navigate(`${base}${route.path}/`);
+      const sh = await S.evaluate(readRoute(route.h1)).catch((e) => ({ error: e.message }));
+      const active = sh.error
+        ? null
+        : await S.evaluate(`Array.from(document.querySelectorAll("nav a.bg-accent")).map((a) => a.getAttribute("href"))`);
+      L.check(
+        `shell /${route.path}/ renders "${route.h1}" with its nav item active`,
+        !sh.error && Array.isArray(active) && active.length > 0 && active.every((href) => href === `${new URL(base).pathname}${route.path}`),
+        sh.error ?? JSON.stringify(active)
       );
     }
 
     // Row 3: the share arrival.
     const sentBefore = S.predictRequests.length;
-    await S.navigate(`${base}series/${known.id}?method=elo`);
+    // Story 4.8: the prerendered file (the URL GitHub Pages 301s to) — main.tsx renders it client-side and redirects.
+    await S.navigate(`${base}series/${known.id}/?method=elo`);
     const p = await S.evaluate(READ_PRELOAD).catch((e) => ({ error: e.message }));
     console.log(`     known series ${known.id}${known.label ? ` (${known.label})` : ""}: ${JSON.stringify(p)}`);
     L.check("share arrival redirects to /predict?series=<id>&method=elo", !p.error && p.search === `?series=${known.id}&method=elo`, p.error ?? `${p.pathname}${p.search}`);
@@ -355,7 +559,8 @@ async function main() {
     } catch (e) {
       L.check("the 2016 flagship's Game 7 row is readable over REST", false, e.message);
     }
-    await S.navigate(`${base}series/${FLAGSHIP_2016}`);
+    // Story 4.8: the prerendered (hydrated) preview file.
+    await S.navigate(`${base}series/${FLAGSHIP_2016}/`);
     const pv = await S.evaluate(READ_SERIES_PAGE("/stand three games apiece$/")).catch((e) => ({ error: e.message }));
     console.log(`     flagship preview: ${pv.error ?? JSON.stringify({ h1: pv.h1, title: pv.title, games: pv.games })}`);
     L.check("flagship preview renders games 1–6 only", !pv.error && pv.games.length === 6 && !pv.games.some((g) => g.startsWith("Game 7")), pv.error ?? `${pv.games.length} rows`);
@@ -406,6 +611,49 @@ async function main() {
       await S.navigate(`${base}series/${aba.id}/result`);
       const nr = await S.evaluate(READ_NOT_FOUND).catch((e) => ({ error: e.message }));
       L.check("non-flagship /result renders the 404 with focus on the headline", !nr.error && nr.headline === HEADLINE && nr.focused, nr.error ?? nr.headline);
+    }
+
+    // Row 11 (Story 4.8): a cold load of each prerendered variant hydrates cleanly and never reads the series.
+    const hydrationTargets = [
+      recordRow && ["record", `series/${recordRow.id}/`, "/win Game 7$/"],
+      ["flagship preview", `series/${FLAGSHIP_2016}/`, "/stand three games apiece$/"],
+      ["flagship result", `series/${FLAGSHIP_2016}/result/`, "/win Game 7$/"],
+    ].filter(Boolean);
+    // hydrateRoot adopts the server-rendered nodes; createRoot discards them and
+    // mounts fresh ones (and sets `__reactContainer` on the root just the same).
+    // So the root's first server-rendered element is recorded as the parser
+    // inserts it — before the deferred module script runs — and must still be
+    // connected after load.
+    await S.cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `(() => {
+        const grab = () => {
+          const root = document.getElementById("root");
+          if (root && root.firstElementChild && !window.__pg7FirstRootNode) window.__pg7FirstRootNode = root.firstElementChild;
+          return !!window.__pg7FirstRootNode;
+        };
+        if (grab()) return;
+        const mo = new MutationObserver(() => { if (grab()) mo.disconnect(); });
+        mo.observe(document, { childList: true, subtree: true });
+      })()`,
+    });
+    for (const [label, path, h1Pattern] of hydrationTargets) {
+      const marks = { console: S.consoleMessages.length, exceptions: exceptions.length, series: seriesRequests.length };
+      await S.navigate(`${base}${path}`);
+      const page = await S.evaluate(READ_SERIES_PAGE(h1Pattern)).catch((e) => ({ error: e.message }));
+      // Settle window: hydration errors and any fetch fire after the first paint.
+      await new Promise((r) => setTimeout(r, 2000));
+      const hydrated = await S.evaluate(`(() => {
+        const first = window.__pg7FirstRootNode;
+        return !!first && first.isConnected && document.getElementById("root").firstElementChild === first;
+      })()`);
+      const errors = S.consoleMessages.slice(marks.console).filter((m) => m.type === "error").map((m) => m.text);
+      const thrown = exceptions.slice(marks.exceptions);
+      const reads = seriesRequests.slice(marks.series);
+      console.log(`     ${label} /${path}: ${page.error ?? page.h1} — console errors ${errors.length}, exceptions ${thrown.length}, series reads ${reads.length}`);
+      L.check(`${label}: the prerendered page renders its headline`, !page.error, page.error ?? page.h1);
+      L.check(`${label}: hydrated — the server-rendered root node survives the client mount`, hydrated === true);
+      L.check(`${label}: zero console errors and zero uncaught exceptions on a prerendered load`, errors.length === 0 && thrown.length === 0, [...errors, ...thrown].join(" | ").slice(0, 400));
+      L.check(`${label}: no rest/v1/series request (the preload serves the page)`, reads.length === 0, reads.join(", "));
     }
   } finally {
     S.close();

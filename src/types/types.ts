@@ -40,7 +40,7 @@ export interface Series {
   updated_at?: string | null;
   team_a?: Team;
   team_b?: Team;
-  winner_team?: Team;
+  winner_team?: Team | null;
   series_game_scores?: SeriesGameScore[];
 }
 

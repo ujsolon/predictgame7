@@ -1,4 +1,4 @@
-import { HelmetProvider, Helmet } from "react-helmet-async";
+import { HelmetProvider, Helmet, type HelmetServerState } from "react-helmet-async";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const PageMeta = ({
@@ -14,8 +14,18 @@ const PageMeta = ({
   </Helmet>
 );
 
-export const AppWrapper = ({ children }: { children: React.ReactNode }) => (
-  <HelmetProvider>
+/**
+ * `context` is the prerender's (Story 4.8): on the server, helmet writes the
+ * page's `<title>` and description into it. The client passes none.
+ */
+export const AppWrapper = ({
+  children,
+  context,
+}: {
+  children: React.ReactNode;
+  context?: { helmet?: HelmetServerState };
+}) => (
+  <HelmetProvider context={context}>
     <TooltipProvider>
       {children}
     </TooltipProvider>

@@ -95,9 +95,10 @@ npm run typecheck
 - The current npm scripts include GitHub Pages deployment via:
 
 ```bash
-npm run predeploy
 npm run deploy
 ```
+
+  `npm run deploy` fires `predeploy` once: the gate, then `og:cards` (the OG card PNGs), then `prerender` (static series pages, app-route shells, `sitemap.xml` and `robots.txt`). Both build steps read `.env`; do not run `predeploy` separately first.
 
 ## Data model
 
