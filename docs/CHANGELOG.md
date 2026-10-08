@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.9] - 2026-10-08
+
+### Added
+
+- Every series has its own page. A non-flagship archived series shows its full record: the winner, all seven games and the Game 7 box. Each of the five flagship series, and any pending series, opens on a spoiler-free preview: games 1–6, links to the four prediction methods and the Predict CTA. A flagship's "See how the series ended →" link leads to its result page, which takes focus. Titles are distinct per page, and preview titles never name the winner. The teams on a preview are ordered alphabetically by nickname, because the stored order names the winner first in 177 of 178 series (Story 4.3, owner decision).
+- Every series has a 1200×630 share card, rendered at deploy time to `og/<id>.png`, plus a generic `og/fallback.png`. A card shows the teams, logos and year · round · Game 7, never the score or the winner. The deploy fails on any card it cannot render, including an unreadable logo (Story 4.2).
+- Series pages are prerendered as static HTML at deploy time: 183 pages from the 178 series (one per series, plus a result page per flagship). Each carries its OG/Twitter tags and a canonical link, so links unfurl and crawlers read the content without JavaScript. The browser takes over the page without fetching it again. A preview's embedded data has Game 7 and the winner removed, and a pending series' preview checks the live data in the background (Story 4.8).
+- `/predict`, `/historical`, `/insights` and `/maths` are served from static shells with generic meta and the fallback card, so they answer HTTP 200 instead of going through the 404 fallback. The deploy also writes `sitemap.xml` (188 URLs) and `robots.txt` (Story 4.8).
+
+### Changed
+
+- `npm run deploy` now runs the gate, the card render and the prerender, in that order. The card render and the prerender both need `.env`. The prerender fails the deploy, and removes its own output, on an empty read, a series it cannot show, a missing flagship or a missing card (Stories 4.2, 4.8).
+- A bare `/series/<id>` link opens the series page instead of redirecting to Predict. `?method=<slug>` still opens Predict with the series and method selected (Story 4.3).
+- Directory URLs (`/predict/`, `/series/<id>/`) keep the matching nav item highlighted (Story 4.8).
+
 ## [0.2.8] - 2026-10-07
 
 ### Added
