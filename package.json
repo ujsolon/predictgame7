@@ -1,6 +1,6 @@
 {
   "name": "predict-game-7",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "type": "module",
   "scripts": {
     "build": "vite build && node scripts/verify-build-base.mjs",

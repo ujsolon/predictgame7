@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.10] - 2026-10-08
+
+### Added
+
+- Share. One Share button: in Predict's detailed result (labelled) and in every series page's header (icon, "Share this series"). It opens the phone's share sheet, or copies the link and shows "Link copied.". A series prediction shares `/series/<id>/?method=<slug>`; a custom matchup shares `/predict/?custom=<link>`, which rebuilds the matchup and method on open and runs nothing until Generate; a series page shares its own address. Every share link carries `utm_source=share` (Story 4.4).
+- `prediction_shared` analytics event: one per share that reaches the share sheet or the clipboard, never on a cancel or a failed copy. It is the second deliberate addition to the event registry; the ten original names are unchanged (Story 4.4, owner decision).
+- Series editorial content (FR-13 pilot): migration `00019` adds `series.is_featured` (set for the five pilot series) and a `series_content` table with an optional "before" and "resolution" part per series: headline, markdown write-up and YouTube videos. Reads are public; writes are owner-only. The preview shows the "before" part, the result page the "resolution" part. Videos load from YouTube only when tapped. A preview's page source never carries the resolution. No content is loaded yet (Story 4.6), so every page looks as before (Story 4.5).
+- Home shows each pending Game 7 as a card linking to its series page and to Predict, and "No active series right now — the next Game 7 is coming." when there is none (Story 4.5).
+
+### Changed
+
+- The `/series/<id>?method=` share arrival carries `utm_source` and every other query parameter through to Predict, so share arrivals are attributable (Story 4.4).
+- Flagship series come from `series.is_featured` instead of a hard-coded list (Story 4.5).
+- When a series' stored scores fail validation, the toasts use the same wording as the custom form, for example "Game 2: Score is required" (Story 4.4).
+- The deploy's prerender also fails on invalid editorial content, a missing `public/editorial/` image, or no featured series (Story 4.5).
+
 ## [0.2.9] - 2026-10-08
 
 ### Added
