@@ -182,6 +182,7 @@ context:
   - re-apply idempotence.
 
   No local Docker engine was running, so the next CI rehearsal run is the first evidence for section 8. 4.5 moves to `done` once that run is green.
+- **CI migration rehearsal green (2026-10-08, run `37767944147` on `f6007a2`)**: sections 8a–8e all `ok` (column shape, seed, PK/CHECKs/cascade, RLS, re-apply). 4.5 is `done`.
 
 ## Spec Change Log
 
