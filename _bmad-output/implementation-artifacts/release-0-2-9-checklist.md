@@ -13,7 +13,7 @@ Test series: the 2016 Finals flagship, `06715a85-ec33-46a4-8383-d058055eefe6`.
 | 3 | Sitemap 200 | **ok, 2026-10-08** (agent). 188 `<loc>` entries |
 | — | Full probe against the live site | **GREEN, 2026-10-08** (agent), 92 rows |
 | 4 | Platform OG debugger | **ok, 2026-10-08** (owner, Facebook). Tags as emitted; only `fb:app_id` warned (expected) |
-| 5 | Search Console sitemap submission | **owed: you**, then the agent adds the verification file |
+| 5 | Search Console sitemap submission | **done, 2026-10-08** (owner). URL-prefix property verified with `google11bacc6c3032647c.html` (in `public/`, commit `bd15433`). `sitemap.xml` submitted; first status "Couldn't fetch" (normal for a new property). Re-check handed to Story 4.7 |
 
 ## 4. OG debugger: does the card unfurl?
 
@@ -46,6 +46,8 @@ Crawlers only read `robots.txt` at the host root (`https://ujsolon.github.io/rob
 3. Verification: choose **HTML file**. Google gives you a file named like `google1234abcd.html`. Give the file, or just its name and contents, to the agent. It goes into `public/` and ships on the next `npm run deploy`. Then click **Verify** in Search Console.
 4. Once verified: **Sitemaps** → enter `sitemap.xml` → **Submit**.
 5. Optional: Bing Webmaster Tools → import from Search Console.
+
+**Submitted 2026-10-08.** The agent verified the live file the same day: `200`, `application/xml`, well-formed, 188 `<loc>`, and `200` to the Googlebot user agent. If the report still says "Couldn't fetch" after about 2 days, remove the entry, resubmit `sitemap.xml`, and use URL Inspection → **Test live URL** on a series page. **Story 4.7 owns the re-check:** its sitemap/crawl spot-check records the Sitemaps report status and the indexed count.
 
 ## Re-running checks 1–3 yourself (PowerShell)
 

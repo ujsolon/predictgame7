@@ -188,7 +188,7 @@ The client **hydrates** a prerendered page from a preloaded row, which is stripp
     - Canonical, `og:url`, `og:type` `website`, `og:title` "Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals", the Historic `og:description`, `og:image` `…/og/06715a85-….png` and `twitter:card` `summary_large_image` all read back as emitted.
     - Its only warning was the missing `fb:app_id`, which is expected: the site has no Facebook app.
     - It also listed an empty `og:image:alt`, which is not emitted today (logged in `deferred-work.md`).
-  - **Still owed (owner, not a 4.8 gate):** the Search Console sitemap submission. Steps are in `release-0-2-9-checklist.md`. The verification file lands whenever the owner supplies the token.
+  - **Search Console (owner, 2026-10-08; not a 4.8 gate):** the URL-prefix property is verified (HTML file `google11bacc6c3032647c.html` in `public/`), and `sitemap.xml` is submitted. The first report status was "Couldn't fetch", which is usual for a new property, while the agent confirmed the file live: `200`, `application/xml`, well-formed, 188 URLs, `200` to Googlebot. Story 4.7's sitemap/crawl spot-check owns the re-check.
 - **Live checks were owed at the 0.2.9 release** (owner decision a). Record them below with their dates: a cold deep-link GET (expect GitHub Pages to 301 `/series/<id>` to `/series/<id>/` with the query kept), a JS-disabled `curl`, a sitemap 200, and a platform OG debugger check on a series URL (the owner's manual step). The sitemap also needs a Google Search Console submission, because crawlers read `robots.txt` only at the host root (review row B4).
 
 ## Spec Change Log
