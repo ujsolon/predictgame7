@@ -450,11 +450,14 @@ describe('series header Share — native sheet title (Story 4.4)', () => {
   async function nativeTitleFrom(entry: string, expectedHeadline: string) {
     const share = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'share', { value: share, configurable: true, writable: true });
-    renderApp(entry);
-    await headline(expectedHeadline);
-    fireEvent.click(document.querySelector('[data-share-button]') as HTMLButtonElement);
-    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true, writable: true });
+    try {
+      renderApp(entry);
+      await headline(expectedHeadline);
+      fireEvent.click(document.querySelector('[data-share-button]') as HTMLButtonElement);
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    } finally {
+      Object.defineProperty(navigator, 'share', { value: undefined, configurable: true, writable: true });
+    }
     return share.mock.calls[0][0] as { url: string; title: string };
   }
 

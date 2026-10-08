@@ -135,6 +135,31 @@ context:
 - Given `npm run gate`, then green. Given the probe, then GREEN.
 - Given a completed prediction, when its share link is opened in a fresh profile, then the same series (or custom matchup) and method are selected with zero re-entry, and nothing runs until Generate.
 
+### Review Findings
+
+Pass 2 (2026-10-09) — owner's independent re-review on a separate model, over `909b8c2..8b9a44d`. Layers: blind-hunter, edge-case-hunter, verification-gap (zero gaps; it traced every behaviour to its pinning test), acceptance-auditor (no AC violations). 21 raw findings, 18 unique.
+
+- [x] [Review][Patch] `buildSeriesRequest`'s dead-branch comment states a runtime guarantee the code does not have [`src/lib/prediction-request.ts:60-62`] — the comment claims `validateScores` "rejects every non-number", but `scoreError` coerces via `Number(value)` and accepts numeric strings; the branch is unreachable only because series scores arrive as JS numbers from `INTEGER` PostgREST columns, and if it ever fired, `SERIES_TOO_SHORT` would misdescribe a non-numeric-score anomaly. Fix: state the real invariant in the comment. **Fixed (pass 2, 2026-10-09).**
+- [x] [Review][Patch] `nativeTitleFrom` leaks the `navigator.share` stub into later tests when an expectation throws [`src/pages/__tests__/series-pages.test.tsx:450-458`] — the restore at :457 runs only on the success path; a failing `waitFor`/`headline` leaves `share` stubbed for the rest of the file (this file already has a history of intermittent first-test failures), cascading misattributed red. Fix: restore in `finally`. **Fixed (pass 2, 2026-10-09).**
+- [x] [Review][Patch] Stale owner pointer on the deferred `og:image:alt` entry [`_bmad-output/implementation-artifacts/deferred-work.md:713`] — "Natural owner: Story 4.4 or Epic 5's AA pass (5.2)": Story 4.4 closed without taking it, so the pointer names a dead trigger. Fix: re-point to 5.2 / the post-retro scoping. **Fixed (pass 2, 2026-10-09).**
+- [x] [Review][Defer] The `?custom=` branch's `seriesLoadSeq` supersession has no in-flight-preload test [`src/pages/PredictPage.tsx:142`] — deferred: already filed in `deferred-work.md` under pass 1 (row V2, 2026-10-08); not re-filed.
+- [x] [Review][Defer] PRD addendum §A.1 does not list `prediction_shared` — deferred: already filed in `deferred-work.md` under pass 1 (row B2, 2026-10-08); a planning-artifact edit for the owner; not re-filed.
+
+**Rejected (pass 2):**
+- Encoder has no length cap while the decoder rejects >4096 chars (`share-payload.ts`) — low; needs ~1,400-char team names; fix adds a guard. Pass 1 E2/B4 already rejected it; nothing new.
+- `toast.*` unguarded while `track` is guarded (`ShareButton.tsx:51-52`) — false; sonner's `toast()` enqueues without a demonstrated throw path; `track` is guarded because an external analytics SDK can fail init. Guarding a non-throwing call adds an unreachable state.
+- No `disabled`/`aria-busy` during the in-flight share (`ShareButton.tsx`) — low; the pending window is the OS sheet (modal over the page) or a millisecond clipboard write; the fix adds visible state the frozen one-tap spec does not describe.
+- "Pick a series, or build the matchup yourself" vs the Historical link (`SeriesNotFound.tsx`) — false; both actions exist in the same card (series picker + custom grid); the link is 4.1's onward action. Pass 1 B6.
+- `?custom=` arrival never clears `customFieldErrors` — false; the effect at `PredictPage.tsx:162-164` clears them on every `selectedSeries`/`selectedMethod` change, and the arrival sets both.
+- Probe captures `:focus-visible` but never asserts it (`probe-deep-links.mjs:303`) — false; focus arrives via real CDP keyboard Tab, so `:focus-visible` is the genuine state when `boxShadow`/`outlineStyle` are asserted at :597; the field is diagnostic output.
+- No test pins `?series=`-over-`?custom=` precedence — low; the behaviour itself was rejected in pass 1 (B7) as a hand-made-URL-only concern; pinning it is speculative coverage.
+- `SeriesRoute` carry-through re-encodes `%20` as `+` — low; `URLSearchParams` parses `+` back to a space, `utm_source=share` contains neither, and byte-identical passthrough would need manual serialization.
+- Custom-result Share silently disappears when `sharePayloadFromForm` returns null (`PredictPage.tsx:1277-1283`) — false; the reset effect (:96-115, `customInput` in its deps) clears the result on any edit, so while a result paints, the form is exactly what passed validation and the payload is non-null.
+- `buildCustomRequest` can return `{ok:false, fields:{}}`, a silent no-op — false; the form's only writer stores `Number(value) | undefined` (`PredictPage.tsx:87-90`), and `scoreError` rejects `undefined`, `NaN` and `Infinity`, so empty fields implies `completeScores` is non-null. Pass 1 B9's refutation holds.
+- Clipboard fallback after a non-abort native-share failure deviates from the frozen block — false as an open violation; disclosed in Implementation Notes and adjudicated in pass 1 (E5/B5): without the fallback that path shows nothing, and its failure lands on the spec's own non-dead-end toast.
+- `decodeSharePayload` trims names, so it is not identity for hand-made untrimmed payloads — false; the frozen contract requires malformed→null (holds) and the matrix pins the canonical "Montréal" round-trip; the encoder only emits trimmed names.
+- Spec frontmatter `done` vs sprint-status `review` in the same commit — false at HEAD; `a7e6381` synced sprint-status to `done`.
+
 ## Implementation Notes
 
 - 2026-10-08 (implementation): built as specced; frozen block untouched.

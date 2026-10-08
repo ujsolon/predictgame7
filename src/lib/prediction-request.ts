@@ -57,8 +57,11 @@ export function buildSeriesRequest(series: Series, method: MethodSlug): SeriesRe
   const error = validateScores(scores);
   if (error) return { ok: false, error };
   const complete = completeScores(scores);
-  // Unreachable once `validateScores` passes (it rejects every non-number);
-  // kept so the narrowing is checked rather than cast.
+  // Unreachable in practice, but the guarantee is the read path, not
+  // `validateScores`: `scoreError` coerces via `Number(value)`, so it would
+  // pass a numeric string — what makes that impossible is that PostgREST
+  // returns INTEGER columns as JS numbers. Kept so the narrowing is checked
+  // rather than cast.
   if (!complete) return { ok: false, error: SERIES_TOO_SHORT };
 
   const game7 = sorted.find((r) => r.game_number === 7);
