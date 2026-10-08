@@ -178,7 +178,18 @@ The client **hydrates** a prerendered page from a preloaded row, which is stripp
   - `og:cards` writes 178 + 1 cards.
   - `prerender` writes 183 series pages (173 record + 5 preview + 5 result) from 178 rows, plus 4 shells and a sitemap of 188 URLs. `dist/404.html` is still a byte copy of `dist/index.html`.
   - `probe-deep-links.mjs` against `vite preview --port 4337` is GREEN, with 92 rows ok.
-- **Live checks are owed at the 0.2.9 release** (owner decision a). Record them below with their dates: a cold deep-link GET (expect GitHub Pages to 301 `/series/<id>` to `/series/<id>/` with the query kept), a JS-disabled `curl`, a sitemap 200, and a platform OG debugger check on a series URL (the owner's manual step). The sitemap also needs a Google Search Console submission, because crawlers read `robots.txt` only at the host root (review row B4).
+- **Live checks, 0.2.9 deploy (2026-10-08), run by the agent with `curl` and the probe:**
+  - **Cold deep link: ok.** `GET /series/06715a85-…?method=elo` returns `301` with `Location: …/series/06715a85-…/?method=elo` (the query is kept), then `200`.
+  - **JS-disabled fetch: ok.** The flagship preview's raw HTML carries the headline "Cavaliers and Warriors stand three games apiece", the absolute `og:image` `…/og/06715a85-….png` (`200`, `image/png`, 84,684 bytes), and no Game 7 score, "win Game 7" or `"game_number":7`. With the `facebookexternalhit/1.1` user agent it receives the full OG/Twitter set.
+  - **Sitemap: ok.** `sitemap.xml` returns `200` `application/xml` with 188 `<loc>` entries. `robots.txt` returns `200`, and the `/predict/` shell returns `200`.
+  - **Probe: GREEN.** `node scripts/probe-deep-links.mjs https://ujsolon.github.io/predictgame7/`: 92 rows ok.
+  - **Platform OG debugger: ok, 2026-10-08 (owner, Facebook Sharing Debugger)** on the flagship preview URL.
+    - Response 206: Facebook's ranged fetch, normal.
+    - Canonical, `og:url`, `og:type` `website`, `og:title` "Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals", the Historic `og:description`, `og:image` `…/og/06715a85-….png` and `twitter:card` `summary_large_image` all read back as emitted.
+    - Its only warning was the missing `fb:app_id`, which is expected: the site has no Facebook app.
+    - It also listed an empty `og:image:alt`, which is not emitted today (logged in `deferred-work.md`).
+  - **Still owed (owner, not a 4.8 gate):** the Search Console sitemap submission. Steps are in `release-0-2-9-checklist.md`. The verification file lands whenever the owner supplies the token.
+- **Live checks were owed at the 0.2.9 release** (owner decision a). Record them below with their dates: a cold deep-link GET (expect GitHub Pages to 301 `/series/<id>` to `/series/<id>/` with the query kept), a JS-disabled `curl`, a sitemap 200, and a platform OG debugger check on a series URL (the owner's manual step). The sitemap also needs a Google Search Console submission, because crawlers read `robots.txt` only at the host root (review row B4).
 
 ## Spec Change Log
 
