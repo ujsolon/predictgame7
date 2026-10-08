@@ -8,7 +8,7 @@ Make a completed prediction a circulating artifact and the Game 7 archive a craw
 
 ## Stories
 
-In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.2.9 follows 4.8, because 4.8's live checks need a deploy.
+In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.2.9 follows 4.8, because 4.8's live checks need a deploy. Story 4.9 (Home pending-Game-7 highlight redesign, with a design session and a mockup first) was added 2026-10-08 after the 0.2.10 deploy. It must land before 4.7 if the highlight is to be part of the verified epic.
 
 - Story 4.0: Analytics isolation layer (AD-1 port)
 - Story 4.1: Series deep-links + 404 SPA fallback

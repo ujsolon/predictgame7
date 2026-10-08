@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-08-2026 19:12
+last_updated: 10-08-2026 20:23
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -387,11 +387,14 @@ development_status:
   # 2026-10-08: 0.2.9 deployed; live checks recorded (cold deep link, JS-off fetch, sitemap 200, probe GREEN 92 rows, FB debugger ok).
   4-8-prerendered-series-pages-og-meta-route-shells-sitemap: done
   # 2026-10-08: review pass 1 closed — 4 patches (share-title pins, double-tap guard, CDP focus+contrast row, deferred pointer), 3 deferred, 11 rejected.
-  4-4-share-button-attribution-fr-31-sm-3: review
+  # 2026-10-08: 0.2.10 deployed; owner verified Share live on Predict and the series pages (link round-trip works).
+  4-4-share-button-attribution-fr-31-sm-3: done
   # 2026-10-08: review pass 1 closed — 8 patches, 2 deferred (bundle size, updated_at), 10 rejected. Stays at review until the owner applies
   # 00019 (npx supabase db push) and the prerender + probe run GREEN against it; 4.4 + 4.5 cannot deploy before that.
   # 2026-10-08: 00019 applied + verified; prerender + probe GREEN (115); CI migration rehearsal green on f6007a2 (run 37767944147, section 8 ok).
   4-5-series-editorial-content-model-fr-13-pilot: done
+  # 2026-10-08: added after the 0.2.10 deploy (owner) — the Home empty state was withdrawn the same day; design session + mockup first.
+  4-9-home-pending-game-7-highlight-redesign: backlog
   4-6-flagship-five-content-load: backlog
   4-7-epic-verification-the-sharing-round-trip-in-production: backlog
   epic-4-retrospective: optional

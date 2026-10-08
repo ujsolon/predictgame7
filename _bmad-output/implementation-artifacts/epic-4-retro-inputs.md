@@ -41,6 +41,18 @@ Open question from the owner: should these map to anything at all? Possible read
 
 Neither has a requirement in the PRD today, so either would be new FR scope and should go through `bmad-prd` / correct-course, not a story.
 
+## 3a. How does anyone reach a series page? (owner, 2026-10-08, after 0.2.10)
+
+The pages at `/series/<id>/` render as designed, but **nothing in the app links to them**. Predict and Historical do not, and Home does not since the empty state was withdrawn (cards appear only while a series is pending). Today a series page is reached only from outside: a share link (4.4), the sitemap or search, or a typed URL.
+
+What is already planned, and what is not:
+- **Planned (Story 4.6):** "flagship series are discoverable as such — Home hotspot/featured cards and archive views link through to the enriched pages". EXPERIENCE.md also specs an archive-overlay "View full series page" link, rendering only when editorial content exists. That covers the **five flagships**, and only once 4.6 ships.
+- **Not planned anywhere:** an in-app path to the other 173 full-record pages. Candidates for the retro or party mode:
+  - a "Series page" link in Historical's record overlay for every series;
+  - a link from Predict's series card or result to the selected series' page;
+  - folding this into the readable-URL / `/series/` index idea in item 1–2 above.
+- **Why it matters:** the pages are the SEO asset (AD-7). Internal links are also how crawlers weigh them, so an orphaned page set ranks worse than a linked one, even with the sitemap.
+
 ## 4. Other notes from the epic
 
 - `robots.txt` at `/predictgame7/robots.txt` is never read by crawlers; only the host root counts. Sitemap discovery depends on the Search Console submission (`release-0-2-9-checklist.md` § 5).
