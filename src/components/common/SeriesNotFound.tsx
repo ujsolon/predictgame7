@@ -6,6 +6,10 @@ import PageMeta from '@/components/common/PageMeta';
 export const SERIES_NOT_FOUND_HEADLINE = "This series doesn't exist.";
 export const SERIES_NOT_FOUND_LINE = 'It may have been removed, or the link is wrong.';
 
+/** The same treatment for a `?custom=` share link that does not decode (Story 4.4). */
+export const MATCHUP_NOT_FOUND_HEADLINE = "This matchup link doesn't work.";
+export const MATCHUP_NOT_FOUND_LINE = 'It may be incomplete or mistyped. Pick a series, or build the matchup yourself.';
+
 interface SeriesNotFoundProps {
   /**
    * `h1` when the block IS the page (`/series/<id>`): it sets the document
@@ -14,6 +18,9 @@ interface SeriesNotFoundProps {
    * series region): no title change and no focus theft.
    */
   headingLevel?: 'h1' | 'h2';
+  /** Copy override for a variant of the same treatment (Story 4.4: a bad `?custom=` link). */
+  headline?: string;
+  line?: string;
 }
 
 /**
@@ -21,7 +28,11 @@ interface SeriesNotFoundProps {
  * State Patterns · Unknown series id; DESIGN.md · Error/empty states): icon
  * tile → title → one line → one onward action, `max-w-md`.
  */
-export default function SeriesNotFound({ headingLevel = 'h1' }: SeriesNotFoundProps) {
+export default function SeriesNotFound({
+  headingLevel = 'h1',
+  headline = SERIES_NOT_FOUND_HEADLINE,
+  line = SERIES_NOT_FOUND_LINE,
+}: SeriesNotFoundProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isPage = headingLevel === 'h1';
 
@@ -33,7 +44,7 @@ export default function SeriesNotFound({ headingLevel = 'h1' }: SeriesNotFoundPr
 
   return (
     <div className="w-full max-w-md space-y-2 text-left" data-series-not-found="">
-      {isPage && <PageMeta title={SERIES_NOT_FOUND_HEADLINE} description={SERIES_NOT_FOUND_LINE} />}
+      {isPage && <PageMeta title={headline} description={line} />}
       <div className="mb-4 inline-flex rounded-lg bg-accent p-2 text-foreground" aria-hidden="true">
         <SearchX className="h-5 w-5" />
       </div>
@@ -46,9 +57,9 @@ export default function SeriesNotFound({ headingLevel = 'h1' }: SeriesNotFoundPr
             : 'text-xl font-medium text-foreground'
         }
       >
-        {SERIES_NOT_FOUND_HEADLINE}
+        {headline}
       </Heading>
-      <p className="text-sm text-on-muted">{SERIES_NOT_FOUND_LINE}</p>
+      <p className="text-sm text-on-muted">{line}</p>
       <Link
         to="/historical"
         // ≥44px hit area (NFR-U1) on the single onward action.

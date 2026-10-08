@@ -794,9 +794,8 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
     await chooseMethod();
     submitPrediction();
     await waitFor(() =>
-      expect(db.toast.error).toHaveBeenCalledWith(
-        'Game 2 is missing scores. Please enter scores for all 6 games.'
-      )
+      // Story 4.4 (D3): one rule set and one wording on both paths, prefixed "Game N:".
+      expect(db.toast.error).toHaveBeenCalledWith('Game 2: Score is required')
     );
     expect(db.invoke).not.toHaveBeenCalled();
   });
@@ -807,7 +806,7 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
     await chooseMethod();
     submitPrediction();
     await waitFor(() =>
-      expect(db.toast.error).toHaveBeenCalledWith('Game 1 scores must be whole numbers')
+      expect(db.toast.error).toHaveBeenCalledWith('Game 1: Must be a whole number')
     );
     expect(db.invoke).not.toHaveBeenCalled();
   });
@@ -819,7 +818,7 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
     await chooseMethod();
     submitPrediction();
     await waitFor(() =>
-      expect(db.toast.error).toHaveBeenCalledWith('Game 4 scores cannot be negative')
+      expect(db.toast.error).toHaveBeenCalledWith("Game 4: Can't be negative")
     );
     expect(db.invoke).not.toHaveBeenCalled();
   });
@@ -833,8 +832,8 @@ describe('PredictPage series-path regressions (Story 1.4)', () => {
     submitPrediction();
 
     await waitFor(() => expect(db.invoke).toHaveBeenCalledTimes(1));
-    // The series path builds this string inline (not via collectRangeHints) —
-    // pinned here so the two paths cannot drift undetected forever.
+    // Since Story 4.4 (D3) both paths build this string through
+    // `collectRangeHints`; pinned here so the series surface cannot drift.
     expect(db.toast.warning).toHaveBeenCalledTimes(1);
     expect(db.toast.warning).toHaveBeenCalledWith(
       'Note: Game 1 scores (48-91) are outside the typical 50-200 range'

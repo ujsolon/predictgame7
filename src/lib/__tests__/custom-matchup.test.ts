@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
+import {
+  collectRangeHints,
+  collectTeamNameHints,
+  SCORE_KEYS,
+  scoreError,
+  validateCustomMatchup,
+  validateScores,
+} from '@/lib/custom-matchup';
 
 const validInput = {
   team_a: 'Boston Celtics',
@@ -131,5 +138,42 @@ describe('collectTeamNameHints — unrecognized names advise, never block', () =
   it('an unrecognized name never produces a field error', () => {
     expect(validateCustomMatchup(custom({ team_a: 'Nowhere FC' }))).toEqual({});
     expect(collectTeamNameHints(custom({ team_a: 'Nowhere FC' })).length).toBe(1);
+  });
+});
+
+// Story 4.4 (D3): one score rule set behind both paths. The series path keeps
+// its toast surface, now in the custom form's wording prefixed "Game N:".
+describe('validateScores — the series path on the shared rule set', () => {
+  it('passes a complete, valid set of scores', () => {
+    expect(validateScores(custom({}))).toBeNull();
+  });
+
+  it('words each rule exactly as the custom form does, prefixed with the game', () => {
+    expect(validateScores(custom({ game_2_score_b: 0 }))).toBe(`Game 2: ${scoreError(0)}`);
+    expect(validateScores(custom({ game_2_score_b: 0 }))).toBe('Game 2: Score is required');
+    expect(validateScores(custom({ game_3_score_a: undefined }))).toBe('Game 3: Score is required');
+    expect(validateScores(custom({ game_1_score_a: 99.5 }))).toBe('Game 1: Must be a whole number');
+    expect(validateScores(custom({ game_4_score_b: -5 }))).toBe("Game 4: Can't be negative");
+  });
+
+  it('agrees with validateCustomMatchup field by field', () => {
+    for (const bad of [0, -1, 99.5, undefined, Number.NaN]) {
+      for (const key of SCORE_KEYS) {
+        const fields = validateCustomMatchup(custom({ [key]: bad }));
+        const game = key.slice(5, 6);
+        expect(validateScores(custom({ [key]: bad }))).toBe(`Game ${game}: ${fields[key]}`);
+      }
+    }
+  });
+
+  it('reports the first failure in grid order', () => {
+    expect(validateScores(custom({ game_5_score_a: -1, game_2_score_b: 0 }))).toBe('Game 2: Score is required');
+  });
+
+  it('treats an out-of-range score as a hint only, never a failure', () => {
+    expect(validateScores(custom({ game_1_score_a: 48 }))).toBeNull();
+    expect(collectRangeHints(custom({ game_1_score_a: 48 }))).toEqual([
+      'Note: Game 1 scores (48-98) are outside the typical 50-200 range',
+    ]);
   });
 });

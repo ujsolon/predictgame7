@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 describe('EVENTS registry', () => {
-  it("holds addendum §A.1's ten names, verbatim and nothing else", () => {
+  it("holds addendum §A.1's ten names verbatim, plus Story 4.4's prediction_shared, and nothing else", () => {
     expect(Object.values(EVENTS).sort()).toEqual(
       [
         'prediction_generated',
@@ -32,6 +32,8 @@ describe('EVENTS registry', () => {
         'contact_form_submitted',
         'historical_series_expanded',
         'historical_filter_applied',
+        // The one new name (Story 4.4, owner decision 2026-10-08, option a).
+        'prediction_shared',
       ].sort()
     );
   });

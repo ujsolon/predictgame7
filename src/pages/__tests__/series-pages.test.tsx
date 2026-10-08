@@ -395,3 +395,64 @@ describe('/series/:id — 404, redirect and retry rows', () => {
     );
   });
 });
+
+// Story 4.4 · the header Share button shares the page's own canonical URL
+// (trailing-slash directory form) plus `utm_source=share`.
+describe('series header Share (Story 4.4)', () => {
+  async function shareFrom(entry: string, expectedHeadline: string) {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true, writable: true });
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true });
+    renderApp(entry);
+    await headline(expectedHeadline);
+    const buttons = document.querySelectorAll('[data-share-button]');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].getAttribute('aria-label')).toBe('Share this series');
+    fireEvent.click(buttons[0]);
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(db.capture).toHaveBeenCalledTimes(1));
+    return writeText.mock.calls[0][0] as string;
+  }
+
+  it('result page: …/series/<id>/result/?utm_source=share (matrix: series header share)', async () => {
+    const url = await shareFrom(`/series/${FLAGSHIP_2016_ID}/result`, 'Cavaliers win Game 7');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/result/?utm_source=share`);
+    expect(db.capture.mock.calls[0]).toEqual(['prediction_shared', { surface: 'series', kind: 'series', channel: 'clipboard' }]);
+  });
+
+  it('preview page: …/series/<id>/?utm_source=share', async () => {
+    const url = await shareFrom(`/series/${FLAGSHIP_2016_ID}`, 'Cavaliers and Warriors stand three games apiece');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/?utm_source=share`);
+  });
+
+  it('full-record page: …/series/<id>/?utm_source=share', async () => {
+    const url = await shareFrom(`/series/${NON_FLAGSHIP_ID}`, 'Cavaliers win Game 7');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${NON_FLAGSHIP_ID}/?utm_source=share`);
+  });
+});
+
+// Story 4.4 review: the native sheet's title is the page's own title — winner-free on the preview.
+describe('series header Share — native sheet title (Story 4.4)', () => {
+  async function nativeTitleFrom(entry: string, expectedHeadline: string) {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true, writable: true });
+    renderApp(entry);
+    await headline(expectedHeadline);
+    fireEvent.click(document.querySelector('[data-share-button]') as HTMLButtonElement);
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true, writable: true });
+    return share.mock.calls[0][0] as { url: string; title: string };
+  }
+
+  it('flagship preview: the winner-free page title', async () => {
+    const { title, url } = await nativeTitleFrom(`/series/${FLAGSHIP_2016_ID}`, 'Cavaliers and Warriors stand three games apiece');
+    expect(title).toBe('Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7');
+    expect(title).not.toMatch(/win|over|4–3/);
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/?utm_source=share`);
+  });
+
+  it('flagship result: the outcome title', async () => {
+    const { title } = await nativeTitleFrom(`/series/${FLAGSHIP_2016_ID}/result`, 'Cavaliers win Game 7');
+    expect(title).toBe('Cleveland Cavaliers vs Golden State Warriors, 2016 Finals: Cavaliers win Game 7 · PredictGame7');
+  });
+});

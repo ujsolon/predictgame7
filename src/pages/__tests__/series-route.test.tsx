@@ -124,6 +124,30 @@ describe('SeriesRoute (Story 4.1, as amended by Story 4.3)', () => {
     expect(screen.getByTestId('predict-probe').textContent).not.toContain('method');
   });
 
+  // Story 4.4: attribution survives the redirect (SM-3) — every parameter other
+  // than `series` and `method` rides along, in order.
+  it('carries utm_source through the redirect (Story 4.4 matrix: share arrival)', async () => {
+    renderRoute(`/series/${SERIES_ID}?method=elo&utm_source=share`);
+
+    expect(await screen.findByTestId('predict-probe')).toHaveTextContent(
+      `/predict?series=${SERIES_ID}&method=elo&utm_source=share`
+    );
+    expect(db.capture).not.toHaveBeenCalled();
+  });
+
+  it('carries every other parameter in order, and never a second series or method', async () => {
+    renderRoute(`/series/${SERIES_ID}?utm_source=share&method=elo&series=other&ref=x%20y&utm_source=dup`);
+
+    const probe = await screen.findByTestId('predict-probe');
+    expect(probe.textContent).toBe(`/predict?series=${SERIES_ID}&method=elo&utm_source=share&ref=x+y&utm_source=dup`);
+  });
+
+  it('keeps utm_source when it drops an unknown method slug', async () => {
+    renderRoute(`/series/${SERIES_ID}?method=foo&utm_source=share`);
+
+    expect((await screen.findByTestId('predict-probe')).textContent).toBe(`/predict?series=${SERIES_ID}&utm_source=share`);
+  });
+
   it('renders the 404 treatment for a well-formed id that names no row (matrix: unknown id)', async () => {
     db.single = { data: null, error: null };
     renderRoute(`/series/${SERIES_ID}`);

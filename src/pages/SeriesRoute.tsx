@@ -13,7 +13,8 @@ import { usePreload } from '@/prerender/preload';
  * `/series/:id` (Story 4.1, Story 4.3). One fetch (`SERIES_SELECT`), then:
  * - `?method=` present → the share arrival: redirect (history replace) to
  *   `/predict?series=<id>`, carrying `&method=<slug>` when the slug is known
- *   (Story 4.1, unchanged); an unknown slug is dropped, never an error;
+ *   (Story 4.1); an unknown slug is dropped, never an error; every other
+ *   parameter (`utm_source` above all) follows in order (Story 4.4);
  * - an archived non-flagship series → the single full-record page;
  * - a flagship archive or a pending series → the spoiler-free preview;
  * - an unknown or malformed id (no request at all for the latter), or a row
@@ -50,6 +51,11 @@ export default function SeriesRoute() {
     const params = new URLSearchParams({ series: id });
     const method = searchParams.get('method');
     if (isMethodSlug(method)) params.set('method', method);
+    // Story 4.4: every other parameter rides along, in order — `utm_source`
+    // must reach the landing `$pageview` (SM-3).
+    for (const [key, value] of searchParams) {
+      if (key !== 'series' && key !== 'method') params.append(key, value);
+    }
     return <Navigate to={`/predict?${params.toString()}`} replace />;
   }
 

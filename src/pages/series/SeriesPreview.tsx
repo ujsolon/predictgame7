@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import SeriesNotFound from '@/components/common/SeriesNotFound';
+import ShareButton from '@/components/common/ShareButton';
 import { isFlagship } from '@/lib/flagship-series';
 import { METHOD_LABELS } from '@/lib/method-display';
+import { seriesPageSharePath } from '@/lib/share';
 import type { MethodSlug } from '@/types/prediction';
 import type { Series } from '@/types/types';
 import ScoreStrip from './ScoreStrip';
@@ -46,7 +48,20 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
     <div className="mx-auto w-full max-w-3xl space-y-16">
       <PageMeta title={previewTitle(view)} description={previewDescription(view)} />
 
-      <SeriesHero eyebrow={seriesEyebrow(view)} headline={previewHeadline(view)} standfirst="Game 7 stands.">
+      <SeriesHero
+        eyebrow={seriesEyebrow(view)}
+        headline={previewHeadline(view)}
+        standfirst="Game 7 stands."
+        action={
+          <ShareButton
+            appearance="icon"
+            path={seriesPageSharePath(view.id, 'page')}
+            title={previewTitle(view)}
+            surface="series"
+            kind="series"
+          />
+        }
+      >
         <ScoreStrip view={view} mode="preview" />
       </SeriesHero>
 

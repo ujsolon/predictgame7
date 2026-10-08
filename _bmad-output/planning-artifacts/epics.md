@@ -906,7 +906,7 @@ so that sharing and indexing work when playoff traffic actually arrives.
 **Given** Stories 4.0–4.6 and 4.8 deployed
 **When** the drill runs
 **Then** results recorded in `_bmad-output/implementation-artifacts/`: cold deep-link GET, OG debugger card render on a site series URL (meta from the prerendered page, image from `og/<id>.png`), JS-disabled prerendered page fetch (one bare + one flagship preview — verified spoiler-free — + its result page), share round-trip with SM-3 event observed in PostHog live view
-**And** measurement continuity for Story 4.0's port: the owner observes PostHog live view on the deployed site — the 10 addendum §A.1 events fire with the same names, properties and firing conditions as the **before** leg Story 4.0 recorded (only D1's archive-reset emission is new) — recorded side-by-side with that before leg
+**And** measurement continuity for Story 4.0's port: the owner observes PostHog live view on the deployed site — the 10 addendum §A.1 events fire with the same names, properties and firing conditions as the **before** leg Story 4.0 recorded (only D1's archive-reset emission and Story 4.4's `prediction_shared` — the second deliberate registry addition, owner decision 2026-10-08 — are new) — recorded side-by-side with that before leg
 **And** a sitemap/crawl spot-check: a sample of prerendered series URLs resolves 200 on the live domain
 **And** deploy date recorded against the ≥6–8-week pre-window target; if slipping, owner escalation noted
 

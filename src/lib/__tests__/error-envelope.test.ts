@@ -207,6 +207,10 @@ describe('isPredictionResult', () => {
     expect(isPredictionResult(null)).toBe(false);
     expect(isPredictionResult([])).toBe(false);
     expect(isPredictionResult({ ...validResult, method_used: 'bayesian' })).toBe(false);
+    // Own keys only (deferred 4.1 row B10, fixed by Story 4.4): an inherited
+    // property name is not a method, which the old `in METHOD_LABELS` let through.
+    expect(isPredictionResult({ ...validResult, method_used: 'toString' })).toBe(false);
+    expect(isPredictionResult({ ...validResult, method_used: '__proto__' })).toBe(false);
     expect(isPredictionResult({ ...validResult, confidence_level: 'Certain' })).toBe(false);
     expect(isPredictionResult({ ...validResult, win_probability_b: Number.NaN })).toBe(false);
     expect(isPredictionResult({ ...validResult, contributing_factors: 'Home form' })).toBe(false);

@@ -65,6 +65,31 @@ export interface PredictionResult {
 }
 
 /**
+ * The twelve Games 1-6 scores of a shared custom matchup, in grid order:
+ * game 1 team A, game 1 team B, game 2 team A, … game 6 team B.
+ */
+export type ShareScores = [
+  number, number, number, number, number, number,
+  number, number, number, number, number, number,
+];
+
+/**
+ * The `?custom=` share-link payload (AD-6, Story 4.4) — what a custom-matchup
+ * share carries so the receiving page can prefill it with zero re-entry. The
+ * schema lives here (AD-2) so the encoder and the decoder derive from one
+ * contract; the codec itself (JSON → UTF-8 → URL-safe base64, no padding) is
+ * client-only, in `src/lib/share-payload.ts`. Never sent to `predict-game-7`.
+ */
+export interface SharePayload {
+  /** Schema version; a decoder rejects any other value. */
+  v: 1;
+  team_a: string;
+  team_b: string;
+  scores: ShareScores;
+  method: MethodSlug;
+}
+
+/**
  * The failure wire — the body beside every non-2xx from `predict-game-7`, both
  * the 400 rejections from the request boundary and the 500 from the catch arm.
  * The client surfaces `error` verbatim as the panel line, so these strings are

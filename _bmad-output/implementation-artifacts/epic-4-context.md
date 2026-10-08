@@ -37,7 +37,11 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
   - an accessible name on the Share button ("Share this series");
   - iframe titles on video embeds.
 - **Voice.** Never use "oracle", "guarantee", "lock" or accuracy-claiming framing in microcopy, meta or CTAs.
-- **Analytics.** The 10 existing event names are preserved verbatim. The one deliberate addition is the archive reset's `historical_filter_applied {filter_type:'reset'}`. Story 4.0 recorded the measurement-continuity before leg; Story 4.7 records the after leg and the side-by-side comparison.
+- **Analytics.** The 10 existing event names are preserved verbatim. There are two deliberate additions:
+  - the archive reset's `historical_filter_applied {filter_type:'reset'}` (Story 4.0, D1);
+  - Story 4.4's `prediction_shared` (owner decision 2026-10-08, option a), the registry's one new name. It fires once per share that reaches the native sheet or the clipboard, with `{ surface: 'predict' | 'series', kind: 'series' | 'custom', channel: 'native' | 'clipboard' }`; a cancel or a failed copy emits nothing.
+
+  Story 4.0 recorded the measurement-continuity before leg; Story 4.7 records the after leg and the side-by-side comparison, and lists both additions.
 - **Live verification is an acceptance criterion, not a follow-up.** Record each check with its date:
   - a cold deep-link GET;
   - a platform OG debugger check on a series URL;

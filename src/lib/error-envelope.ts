@@ -19,17 +19,18 @@
  * No React, no toast, no state: the page renders each class, and every
  * falsifiable decision lives here so it can be unit-tested.
  */
-import { METHOD_LABELS } from '@/lib/method-display';
+import { isMethodSlug } from '@/lib/method-display';
 import type { ConfidenceLevel, PredictionResult } from '@/types/prediction';
 
 export type ServiceFailureReason = 'server' | 'transport' | 'invalid-response';
 
-export type PredictionFailure =
-  | { kind: 'invalid-input'; fields: Record<string, string> }
-  | { kind: 'service'; reason: ServiceFailureReason; message: string; status?: number };
-
-/** The service arm — the only class the invoke classifier can produce. */
-export type ServiceFailure = Extract<PredictionFailure, { kind: 'service' }>;
+/**
+ * The one failure class the invoke classifier produces. Invalid custom input
+ * is not a class here: it never reaches the wire, and the page renders it as
+ * `validateCustomMatchup`'s field map (the dead `invalid-input` arm was
+ * deleted by Story 4.4, D3).
+ */
+export type ServiceFailure = { kind: 'service'; reason: ServiceFailureReason; message: string; status?: number };
 
 /**
  * Copy per service class. Names what failed and happens next (the panel's
@@ -43,9 +44,11 @@ export const SERVICE_MESSAGES = {
   unreadable: 'The prediction service returned an unreadable result.',
 } as const;
 
-// The method domain comes from `METHOD_LABELS` — `Record<MethodSlug, string>`,
-// exhaustive by construction (AD-2) — so a contract slug rename fails the
-// typecheck there instead of silently rejecting every healthy response here.
+// The method domain comes from `isMethodSlug`, an own-key check over
+// `METHOD_LABELS` — `Record<MethodSlug, string>`, exhaustive by construction
+// (AD-2) — so a contract slug rename fails the typecheck there instead of
+// silently rejecting every healthy response here. Own keys only: an inherited
+// name such as `toString` is not a method (deferred 4.1 row B10).
 // Confidence has no such map in the frontend, so it is typed against the union.
 const CONFIDENCE_LEVELS: Record<ConfidenceLevel, true> = { High: true, Medium: true, Low: true };
 
@@ -65,7 +68,7 @@ export function isPredictionResult(value: unknown): value is PredictionResult {
   if (!isFiniteNumber(result.win_probability_a) || !isFiniteNumber(result.win_probability_b)) return false;
   if (typeof result.confidence_level !== 'string' || !(result.confidence_level in CONFIDENCE_LEVELS)) return false;
   if (!isFiniteNumber(result.computation_time_ms)) return false;
-  if (typeof result.method_used !== 'string' || !(result.method_used in METHOD_LABELS)) return false;
+  if (typeof result.method_used !== 'string' || !isMethodSlug(result.method_used)) return false;
   if (!Array.isArray(result.contributing_factors)) return false;
   for (const factor of result.contributing_factors) {
     if (!factor || typeof factor !== 'object') return false;

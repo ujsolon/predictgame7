@@ -69,6 +69,22 @@ describe('series pages render without a browser (SSR)', () => {
     expect(html).not.toMatch(/\b(home|away)\b/i);
   });
 
+  it('every series variant server-renders its icon-only Share button (Story 4.4)', () => {
+    const pages = [
+      ssr(`/series/${FLAGSHIP_2016_ID}`, <SeriesPreview series={flagship2016} />),
+      ssr('/series/x', <SeriesPreview series={pending2026} />),
+      ssr(`/series/${FLAGSHIP_2016_ID}/result`, <SeriesFullRecord series={flagship2016} variant="result" />),
+      ssr(`/series/${NON_FLAGSHIP_ID}`, <SeriesFullRecord series={nonFlagship2018} variant="record" />),
+    ];
+    for (const { html } of pages) {
+      const button = /<button[^>]*data-share-button[^>]*>/.exec(html)?.[0] ?? '';
+      expect(button).toContain('type="button"');
+      expect(button).toContain('aria-label="Share this series"');
+      // The share URL is built on click, so it is nowhere in the markup.
+      expect(html).not.toContain('utm_source');
+    }
+  });
+
   it('an unshowable row renders the 404 block, still without a browser', () => {
     const broken: Series = { ...nonFlagship2018, series_game_scores: [] };
     const { html } = ssr('/series/x', <SeriesFullRecord series={broken} variant="record" />);

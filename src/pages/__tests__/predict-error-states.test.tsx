@@ -392,3 +392,25 @@ describe('PredictPage error states (Story 1.3)', () => {
     expect(db.toast.success).toHaveBeenCalledWith('Prediction generated successfully');
   });
 });
+
+// Story 4.4: a `?custom=` link that does not decode reuses Story 4.1's
+// in-region notice. It is the alternative treatment of the same region as the
+// preload retry panel, so an in-app move from a failed `?series=` preload to a
+// dead `?custom=` must leave exactly one of them — never two live regions.
+describe('PredictPage ?custom= failure states (Story 4.4)', () => {
+  it('replaces a failed preload panel with the matchup notice, and sends nothing', async () => {
+    db.single = { data: null, error: new Error('network miss') };
+    const { goTo } = renderPageWithNavigation(`/predict?series=${SERIES_ID}`);
+    await waitFor(() => expect(screen.getByText("Couldn't load this series.")).toBeInTheDocument());
+
+    goTo('/predict?custom=abc&utm_source=share');
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-series-not-found] h2')?.textContent).toBe("This matchup link doesn't work."),
+    );
+    expect(screen.queryByText("Couldn't load this series.")).toBeNull();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(db.invoke).not.toHaveBeenCalled();
+    expect(db.toast.error).not.toHaveBeenCalled();
+  });
+});

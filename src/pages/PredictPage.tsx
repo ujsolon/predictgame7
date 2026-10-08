@@ -8,18 +8,22 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/db/supabase';
 import { getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, getTypedTeamCode, resolveTeamLogoUrl } from '@/lib/team-logos';
-import { isMethodSlug, METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
+import { isMethodSlug, METHOD_DESCRIPTIONS, METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import { isSeriesId } from '@/lib/series-id';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
-import SeriesNotFound from '@/components/common/SeriesNotFound';
-import { collectRangeHints, collectTeamNameHints, validateCustomMatchup } from '@/lib/custom-matchup';
+import SeriesNotFound, { MATCHUP_NOT_FOUND_HEADLINE, MATCHUP_NOT_FOUND_LINE } from '@/components/common/SeriesNotFound';
+import ShareButton from '@/components/common/ShareButton';
+import { GAME_NUMBERS, scoreKey } from '@/lib/custom-matchup';
+import { buildCustomRequest, buildSeriesRequest } from '@/lib/prediction-request';
+import { customPredictionSharePath, seriesPredictionSharePath } from '@/lib/share';
+import { decodeSharePayload, formFromSharePayload, sharePayloadFromForm } from '@/lib/share-payload';
 import { classifyInvokeResult, parseInvokeBody, SERVICE_MESSAGES, type ServiceFailure } from '@/lib/error-envelope';
 import { deriveSeriesPhase, isSeriesPending, seriesSourceForPhase } from '@/lib/series-phase';
 // The projection is shared with Home's pending-Game-7 read (Story 2.7, D2).
 import { SERIES_SELECT } from '@/lib/series-query';
 import { cn } from '@/lib/utils';
 import type { Series, Team } from '@/types/types';
-import type { MethodSlug, PredictionInput, PredictionResult } from '@/types/prediction';
+import type { MethodSlug, PredictionForm, PredictionInput, PredictionResult, ScoreKey } from '@/types/prediction';
 import { Check, Settings, TrendingUp, Trophy, Loader2, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { captureError, EVENTS, track } from '@/lib/analytics';
@@ -29,7 +33,6 @@ type SeriesSource = 'current' | 'historical' | 'custom';
 interface SelectedSeries {
   source: SeriesSource;
   data?: Series;
-  customData?: PredictionInput;
 }
 
 // supabase-js has no generated Database types in this app, so `series` rows come
@@ -54,7 +57,9 @@ export default function PredictPage() {
   const [seriesLoadFailed, setSeriesLoadFailed] = useState(false);
   // Story 4.1: a `?series=` id that is malformed or names no row. Not
   // retryable, so it is the in-region 404 treatment, never the retry panel.
-  const [seriesNotFound, setSeriesNotFound] = useState(false);
+  // Story 4.4: `'custom'` is the same treatment for a `?custom=` share link
+  // that does not decode.
+  const [seriesNotFound, setSeriesNotFound] = useState<false | 'series' | 'custom'>(false);
   // The Active group's empty state is a claim about the whole archive, so it
   // may only render once the archive has actually answered — before that the
   // honest state is "unknown", not "nothing is pending".
@@ -77,22 +82,13 @@ export default function PredictPage() {
   const [selectedDecade, setSelectedDecade] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
-  const [customInput, setCustomInput] = useState<PredictionInput>({
-    team_a: '',
-    team_b: '',
-    game_1_score_a: undefined as any,
-    game_1_score_b: undefined as any,
-    game_2_score_a: undefined as any,
-    game_2_score_b: undefined as any,
-    game_3_score_a: undefined as any,
-    game_3_score_b: undefined as any,
-    game_4_score_a: undefined as any,
-    game_4_score_b: undefined as any,
-    game_5_score_a: undefined as any,
-    game_5_score_b: undefined as any,
-    game_6_score_a: undefined as any,
-    game_6_score_b: undefined as any,
-  });
+  // Story 4.4 (D3): the derived form type — a blank score is simply absent.
+  const [customInput, setCustomInput] = useState<PredictionForm>({ team_a: '', team_b: '' });
+  const setCustomScore = (key: ScoreKey, value: string) => {
+    const next: PredictionForm = { ...customInput };
+    next[key] = value === '' ? undefined : Number(value);
+    setCustomInput(next);
+  };
 
   // Declared before the `?series=` effect on purpose: effects run in
   // declaration order, so on mount (and on every StrictMode remount pass) the
@@ -136,6 +132,23 @@ export default function PredictPage() {
       // An unknown slug is ignored, never an error.
       const method = searchParams.get('method');
       loadSeriesById(seriesId, isMethodSlug(method) ? method : null);
+    } else if (searchParams.has('custom')) {
+      // Story 4.4: a custom-matchup share arrival prefills the form — both
+      // names, the twelve scores and the method — and, like `?series=`, runs
+      // nothing until Generate (D1). A payload that does not decode is the
+      // not-found treatment in the series region, with no request at all.
+      const payload = decodeSharePayload(searchParams.get('custom'));
+      // Supersedes any `?series=` preload still in flight from an earlier URL.
+      seriesLoadSeq.current++;
+      setSeriesLoadFailed(false);
+      if (payload) {
+        setSeriesNotFound(false);
+        setCustomInput(formFromSharePayload(payload));
+        setSelectedSeries({ source: 'custom' });
+        setSelectedMethod(payload.method);
+      } else {
+        setSeriesNotFound('custom');
+      }
     } else {
       // Leaving a not-found link for plain `/predict` retires its notice.
       setSeriesNotFound(false);
@@ -191,7 +204,7 @@ export default function PredictPage() {
     // with no request at all (Story 4.1).
     if (!isSeriesId(seriesId)) {
       setSeriesLoadFailed(false);
-      setSeriesNotFound(true);
+      setSeriesNotFound('series');
       return;
     }
     try {
@@ -218,7 +231,7 @@ export default function PredictPage() {
         // A genuinely absent row is not retryable: the in-region 404
         // treatment (Story 4.1), and the picker stays usable beside it.
         setSeriesLoadFailed(false);
-        setSeriesNotFound(true);
+        setSeriesNotFound('series');
       }
     } catch (err) {
       // Query failure (broken link, unreadable id, network miss on mount):
@@ -254,108 +267,34 @@ export default function PredictPage() {
 
     if (attempt.series.source === 'custom') {
       // Invalid input is reported inline before submit — the request never
-      // leaves the browser (Story 1.3 I/O matrix).
-      const fields = validateCustomMatchup(customInput);
-      setCustomFieldErrors(fields);
-      const firstInvalid = Object.keys(fields)[0];
-      if (firstInvalid) {
+      // leaves the browser (Story 1.3 I/O matrix). Decision 4: both names are
+      // required, so no 'Team A'/'Team B' placeholder supplies a request.
+      const built = buildCustomRequest(customInput, attempt.method);
+      setCustomFieldErrors(built.ok ? {} : built.fields);
+      if (!built.ok) {
         // No summary toast on this path (EXPERIENCE.md · Inline field error),
         // so focus carries the announcement: the field's error is reachable
         // through its own `aria-describedby` (WCAG 4.1.3 / 3.3.1).
-        document.getElementById(firstInvalid)?.focus();
+        const firstInvalid = Object.keys(built.fields)[0];
+        if (firstInvalid) document.getElementById(firstInvalid)?.focus();
         return;
       }
-
-      // A score outside 50-200 stays a non-blocking hint, not a field error.
-      for (const hint of collectRangeHints(customInput)) toast.warning(hint);
-      // Story 1.4 / Decision 4: an unrecognized team name gets the same
-      // non-blocking treatment — the request proceeds and the generic
-      // Team A/Team B placeholder logo stays shown.
-      for (const hint of collectTeamNameHints(customInput)) toast.warning(hint);
-
-      // Decision 4: both names are required above, so the 'Team A'/'Team B'
-      // placeholder fallback no longer silently supplies a request.
-      inputData = {
-        ...customInput,
-        team_a: (customInput.team_a ?? '').trim(),
-        team_b: (customInput.team_b ?? '').trim(),
-        home_team: undefined,
-        method: attempt.method,
-      } as PredictionInput;
+      // A score outside 50-200, then an unrecognized team name (Story 1.4 /
+      // Decision 4): non-blocking hints — the request proceeds and the
+      // generic Team A/Team B placeholder logo stays shown.
+      for (const hint of built.hints) toast.warning(hint);
+      inputData = built.request;
     } else if (attempt.series.data) {
-      const series = attempt.series.data;
-      const scores = series.series_game_scores ?? [];
-      const sortedScores = [...scores].sort((a, b) => a.game_number - b.game_number);
-
       // Series-path checks stay toasts: they guard the whole flow with
-      // server-provided data, they are not per-field user input errors.
-      const validateScores = (input: any) => {
-        for (let i = 1; i <= 6; i++) {
-          const scoreA = input[`game_${i}_score_a`];
-          const scoreB = input[`game_${i}_score_b`];
-
-          if (scoreA === undefined || scoreA === null || scoreA === '' || scoreA === 0 ||
-              scoreB === undefined || scoreB === null || scoreB === '' || scoreB === 0) {
-            toast.error(`Game ${i} is missing scores. Please enter scores for all 6 games.`);
-            return false;
-          }
-
-          const sA = Number(scoreA);
-          const sB = Number(scoreB);
-
-          if (!Number.isInteger(sA) || !Number.isInteger(sB)) {
-            toast.error(`Game ${i} scores must be whole numbers`);
-            return false;
-          }
-
-          if (sA < 0 || sB < 0) {
-            toast.error(`Game ${i} scores cannot be negative`);
-            return false;
-          }
-
-          if (sA < 50 || sA > 200 || sB < 50 || sB > 200) {
-            toast.warning(`Note: Game ${i} scores (${sA}-${sB}) are outside the typical 50-200 range`);
-          }
-        }
-        return true;
-      };
-
-      if (sortedScores.length < 6) {
-        toast.error('Selected series does not include enough game scores for prediction.');
+      // server-provided data, not per-field user input (Story 1.3 Decision 1),
+      // in the shared rule wording prefixed "Game N:" (Story 4.4, D3).
+      const built = buildSeriesRequest(attempt.series.data, attempt.method);
+      if (!built.ok) {
+        toast.error(built.error);
         return;
       }
-
-      const seriesInput: any = {
-        series_id: series.id,
-        team_a: series.team_a?.full_name || 'Team A',
-        team_b: series.team_b?.full_name || 'Team B',
-        method: attempt.method,
-      };
-
-      for (let i = 1; i <= 6; i++) {
-        const scoreRow = sortedScores.find((row) => row.game_number === i);
-        if (!scoreRow) {
-          toast.error(`Game ${i} is missing for the selected series.`);
-          return;
-        }
-
-        const isTeamAHome = scoreRow.home_team_id === series.team_a_id;
-        seriesInput[`game_${i}_score_a`] = isTeamAHome ? scoreRow.home_score : scoreRow.away_score;
-        seriesInput[`game_${i}_score_b`] = isTeamAHome ? scoreRow.away_score : scoreRow.home_score;
-      }
-
-      if (!validateScores(seriesInput)) {
-        return;
-      }
-
-      const game7score = sortedScores.find((row) => row.game_number === 7);
-      seriesInput.home_team = game7score
-        ? game7score.home_team_id === series.team_a_id
-          ? series.team_a?.full_name
-          : series.team_b?.full_name
-        : undefined;
-
-      inputData = seriesInput as PredictionInput;
+      for (const hint of built.hints) toast.warning(hint);
+      inputData = built.request;
     } else {
       toast.error('Invalid series selection');
       return;
@@ -666,7 +605,15 @@ export default function PredictPage() {
                         is announced the way the retry panel is (WCAG 4.1.3). */}
                     {seriesNotFound && (
                       <div role="status" className="px-4">
-                        <SeriesNotFound headingLevel="h2" />
+                        {seriesNotFound === 'custom' ? (
+                          <SeriesNotFound
+                            headingLevel="h2"
+                            headline={MATCHUP_NOT_FOUND_HEADLINE}
+                            line={MATCHUP_NOT_FOUND_LINE}
+                          />
+                        ) : (
+                          <SeriesNotFound headingLevel="h2" />
+                        )}
                       </div>
                     )}
 
@@ -727,25 +674,25 @@ export default function PredictPage() {
 
                     {selectedSeries && (
                       <div className="space-y-2 pt-2 border-t border-border/50">
-                        {[1, 2, 3, 4, 5, 6].map((g) => {
+                        {GAME_NUMBERS.map((g) => {
+                          const keyA = scoreKey(g, 'a');
+                          const keyB = scoreKey(g, 'b');
                           const scoreRow = selectedSeries.source === 'custom'
                             ? undefined
                             : selectedSeries.data?.series_game_scores?.find((row) => row.game_number === g);
-                          const scoreA = selectedSeries.source === 'custom' 
-                            ? (customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined)
+                          const scoreA = selectedSeries.source === 'custom'
+                            ? customInput[keyA]
                             : scoreRow
                               ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.home_score : scoreRow.away_score)
                               : undefined;
                           
                           const scoreB = selectedSeries.source === 'custom'
-                            ? (customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined)
+                            ? customInput[keyB]
                             : scoreRow
                               ? (scoreRow.home_team_id === selectedSeries.data?.team_a_id ? scoreRow.away_score : scoreRow.home_score)
                               : undefined;
 
                           if (selectedSeries.source === 'custom') {
-                            const keyA = `game_${g}_score_a`;
-                            const keyB = `game_${g}_score_b`;
                             const errorA = customFieldErrors[keyA];
                             const errorB = customFieldErrors[keyB];
                             return (
@@ -760,11 +707,8 @@ export default function PredictPage() {
                                       className={cn('h-8 text-center text-xs px-1', errorA && 'border-destructive')}
                                       aria-invalid={errorA ? true : undefined}
                                       aria-describedby={errorA ? `${keyA}-error` : undefined}
-                                      value={(customInput[`game_${g}_score_a` as keyof PredictionInput] as number | undefined) ?? ''}
-                                      onChange={(e) => setCustomInput({ 
-                                        ...customInput, 
-                                        [`game_${g}_score_a`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                      })}
+                                      value={scoreA ?? ''}
+                                      onChange={(e) => setCustomScore(keyA, e.target.value)}
                                       placeholder="A"
                                     />
                                     {errorA && (
@@ -779,11 +723,8 @@ export default function PredictPage() {
                                       className={cn('h-8 text-center text-xs px-1', errorB && 'border-destructive')}
                                       aria-invalid={errorB ? true : undefined}
                                       aria-describedby={errorB ? `${keyB}-error` : undefined}
-                                      value={(customInput[`game_${g}_score_b` as keyof PredictionInput] as number | undefined) ?? ''}
-                                      onChange={(e) => setCustomInput({ 
-                                        ...customInput, 
-                                        [`game_${g}_score_b`]: e.target.value === '' ? undefined : Number(e.target.value) 
-                                      })}
+                                      value={scoreB ?? ''}
+                                      onChange={(e) => setCustomScore(keyB, e.target.value)}
                                       placeholder="B"
                                     />
                                     {errorB && (
@@ -1005,20 +946,7 @@ export default function PredictPage() {
                         ) : (
                           <span className="block space-y-4 pt-2">
                             <span className="block text-xs text-muted-foreground leading-relaxed">
-                              {(() => {
-                                switch (selectedMethod) {
-                                  case 'logistic_regression':
-                                    return "A statistical model that predicts the probability of a binary outcome based on individual game point differentials from the series.";
-                                  case 'bayes':
-                                    return "A Bayesian inference model that sequentially updates win probability using point differentials from each game as evidence.";
-                                  case 'elo':
-                                    return "An Elo-based rating system where team ratings update after each game based on the result and margin of victory.";
-                                  case 'exponential_smoothing':
-                                    return "A momentum-based model that applies a decay factor, giving exponentially more weight to recent game results.";
-                                  default:
-                                    return "";
-                                }
-                              })()}
+                              {METHOD_DESCRIPTIONS[selectedMethod]}
                             </span>
                           </span>
                         )}
@@ -1043,7 +971,7 @@ export default function PredictPage() {
                       onClick={() => {
                         setSelectedMethod('logistic_regression');
                         setIsMethodDialogOpen(false);
-                        toast.success('Logistic Regression selected');
+                        toast.success(`${METHOD_LABELS.logistic_regression} selected`);
                         track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'logistic_regression' });
                       }}
                     >
@@ -1066,7 +994,7 @@ export default function PredictPage() {
                       onClick={() => {
                         setSelectedMethod('bayes');
                         setIsMethodDialogOpen(false);
-                        toast.success('Bayes Method selected');
+                        toast.success(`${METHOD_LABELS.bayes} selected`);
                         track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'bayes' });
                       }}
                     >
@@ -1089,7 +1017,7 @@ export default function PredictPage() {
                       onClick={() => {
                         setSelectedMethod('elo');
                         setIsMethodDialogOpen(false);
-                        toast.success('Elo Rating selected');
+                        toast.success(`${METHOD_LABELS.elo} selected`);
                         track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'elo' });
                       }}
                     >
@@ -1112,7 +1040,7 @@ export default function PredictPage() {
                       onClick={() => {
                         setSelectedMethod('exponential_smoothing');
                         setIsMethodDialogOpen(false);
-                        toast.success('Exponential Smoothing selected');
+                        toast.success(`${METHOD_LABELS.exponential_smoothing} selected`);
                         track(EVENTS.PREDICTION_METHOD_SELECTED, { method: 'exponential_smoothing' });
                       }}
                     >
@@ -1342,11 +1270,34 @@ export default function PredictPage() {
         const teamALogo = resolveTeamLogoUrl(prediction.team_a_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_a?.logo_url) || getTeamLogo(teamAName);
         const teamBLogo = resolveTeamLogoUrl(prediction.team_b_logo) || resolveTeamLogoUrl(selectedSeries?.data?.team_b?.logo_url) || getTeamLogo(teamBName);
         const mathsAnchor = METHOD_MATHS_ANCHORS[prediction.method_used];
+        // Story 4.4: the share link reproduces this result's series (or custom
+        // matchup) and method with zero re-entry. A custom form that would not
+        // pass its own validation is never shared — unreachable while a result
+        // is on screen, since any edit clears it.
+        const sharedPayload =
+          selectedSeries?.source === 'custom' ? sharePayloadFromForm(customInput, prediction.method_used) : null;
+        const sharePath = selectedSeries?.data
+          ? seriesPredictionSharePath(selectedSeries.data.id, prediction.method_used)
+          : sharedPayload
+            ? customPredictionSharePath(sharedPayload)
+            : null;
+        const shareTitle = `${teamAName} vs ${teamBName} — Game 7 on PredictGame7`;
         return (
           <div className="space-y-8">
             <Card>
               <CardHeader>
-                <CardTitle>Prediction Result</CardTitle>
+                <div className="flex items-start justify-between gap-4">
+                  <CardTitle>Prediction Result</CardTitle>
+                  {sharePath && (
+                    <ShareButton
+                      appearance="labelled"
+                      path={sharePath}
+                      title={shareTitle}
+                      surface="predict"
+                      kind={selectedSeries?.data ? 'series' : 'custom'}
+                    />
+                  )}
+                </div>
                 <CardDescription className="flex items-center gap-2">
                   <span>Method: {METHOD_LABELS[prediction.method_used] ?? prediction.method_used}</span>
                   <span className="text-muted-foreground/30">•</span>

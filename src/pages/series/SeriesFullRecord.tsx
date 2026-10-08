@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { Link, useNavigationType } from 'react-router-dom';
 import PageMeta from '@/components/common/PageMeta';
 import SeriesNotFound from '@/components/common/SeriesNotFound';
+import ShareButton from '@/components/common/ShareButton';
+import { seriesPageSharePath } from '@/lib/share';
 import type { Series } from '@/types/types';
 import ScoreStrip from './ScoreStrip';
 import SeriesHero from './SeriesHero';
@@ -48,6 +50,15 @@ export default function SeriesFullRecord({ series, variant }: SeriesFullRecordPr
         headline={outcomeHeadline(view.winner)}
         headingRef={headingRef}
         focusable={isResult}
+        action={
+          <ShareButton
+            appearance="icon"
+            path={seriesPageSharePath(view.id, isResult ? 'result' : 'page')}
+            title={outcomeTitle(view, view.winner)}
+            surface="series"
+            kind="series"
+          />
+        }
       >
         <ScoreStrip view={view} mode="full" />
       </SeriesHero>

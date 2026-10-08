@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { METHOD_LABELS } from '@/lib/method-display';
+import { METHOD_DESCRIPTIONS, METHOD_LABELS } from '@/lib/method-display';
 import {
   ACCEPTED_METHOD_SLUGS,
   SCORE_FIELDS,
@@ -40,6 +40,15 @@ describe('predict-game-7 request boundary (Story 2.0 / D2)', () => {
     // check fires on membership drift only — the display map's key order is a copy
     // decision, and a reorder of it must not read as a broken contract.
     expect([...ACCEPTED_METHOD_SLUGS].sort()).toEqual(Object.keys(METHOD_LABELS).sort());
+  });
+
+  it('describes every accepted slug, and nothing else (Story 4.4, D3)', () => {
+    // The method card's description used to be a `switch` with a silent `""`
+    // default, so a new slug would have shipped with no description at all.
+    expect([...ACCEPTED_METHOD_SLUGS].sort()).toEqual(Object.keys(METHOD_DESCRIPTIONS).sort());
+    for (const slug of ACCEPTED_METHOD_SLUGS) {
+      expect(METHOD_DESCRIPTIONS[slug].trim().length).toBeGreaterThan(0);
+    }
   });
 
   it('carries the twelve score fields the contract declares, in grid order', () => {

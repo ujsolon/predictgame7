@@ -56,6 +56,18 @@
 //      GitHub Pages 301s to): the `?method=` arrival renders client-side and
 //      redirects, and the reveal click from a hydrated preview focuses the
 //      result `<h1>`.
+//  12. (Story 4.4) Share round-trip. From a completed series prediction (the
+//      known series, Elo) and from a custom one ("Montréal", Bayes), the
+//      detailed view's Share button is focusable with a >=44x44 box; a real
+//      CDP click with `navigator.share` removed and `navigator.clipboard.writeText`
+//      stubbed captures the URL (`…/series/<id>/?method=elo&utm_source=share`,
+//      `…/predict/?custom=<payload>&utm_source=share`), "Link copied." shows,
+//      and `prediction_shared` is decoded locally with its props. Each URL is
+//      then opened in a FRESH browser (new Chrome, new profile): the same
+//      series or matchup and method are selected, no predict-game-7 request is
+//      sent, and the landing `$pageview` (decoded locally) carries
+//      `utm_source=share`. Row 12 sends two real predict-game-7 requests (the
+//      two predictions being shared); the function is stateless.
 //
 // PostHog traffic is answered locally by `openBrowserSession`, so no event from
 // this probe reaches the production project.
@@ -221,6 +233,99 @@ const READ_PRELOAD = `${WAIT}(() => {
   };
 }, "the preloaded series and method on Predict", 30000)`;
 
+/** Story 4.4: fills an input the way a fan types — React reads the native value setter. */
+const SET_INPUT = `((id, value) => {
+  const el = document.getElementById(id);
+  if (!el) throw new Error("no input #" + id);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+})`;
+
+/** Story 4.4: removes the native sheet and captures what the clipboard is given. */
+const STUB_SHARE_TARGETS = `(() => {
+  window.__pg7Shared = [];
+  Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: (text) => { window.__pg7Shared.push(text); return Promise.resolve(); } },
+    configurable: true,
+  });
+  return true;
+})()`;
+
+/** Story 4.4: the detailed view's Share button — focusable, its box, and its center for a real click. */
+const READ_SHARE_BUTTON = `${WAIT}(() => {
+  const b = document.querySelector("[data-share-button]");
+  if (!b) return null;
+  b.scrollIntoView({ block: "center" });
+  b.focus();
+  const r = b.getBoundingClientRect();
+  return {
+    text: (b.textContent || "").trim(),
+    focused: document.activeElement === b,
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+    x: r.left + r.width / 2,
+    y: r.top + r.height / 2,
+  };
+}, "the Share button", 30000)`;
+
+/** Story 4.4: a `?custom=` arrival's prefilled form, read once both names are in. */
+/**
+ * Story 4.4: the focused element's focus indicator and colors. The effective
+ * background is the first ancestor-or-self with an opaque background color
+ * (white when none is), which is what the foreground is composited over.
+ */
+const READ_FOCUS_STYLE = `(() => {
+  const a = document.activeElement;
+  if (!a) return { error: "nothing focused" };
+  const cs = getComputedStyle(a);
+  let bg = "rgb(255, 255, 255)";
+  let bgFrom = "default white";
+  for (let n = a; n; n = n.parentElement) {
+    const c = getComputedStyle(n).backgroundColor;
+    const parts = c.match(/[\d.]+/g) || [];
+    if (parts.length >= 3 && (parts.length < 4 || Number(parts[3]) === 1)) {
+      bg = c;
+      bgFrom = n.tagName.toLowerCase() + (n.id ? "#" + n.id : "");
+      break;
+    }
+  }
+  return {
+    isShare: a.hasAttribute("data-share-button"),
+    focusVisible: a.matches(":focus-visible"),
+    boxShadow: cs.boxShadow,
+    outlineStyle: cs.outlineStyle,
+    outlineWidth: cs.outlineWidth,
+    color: cs.color,
+    bg,
+    bgFrom,
+  };
+})()`;
+
+const READ_CUSTOM_ARRIVAL = `${WAIT}(() => {
+  const a = document.getElementById("team_a");
+  if (!a || !a.value) return null;
+  const buttons = Array.from(document.querySelectorAll("button"));
+  const generate = buttons.find((b) => /Click to generate prediction/.test(b.textContent || ""));
+  const scores = [];
+  for (let g = 1; g <= 6; g++) for (const side of ["a", "b"]) scores.push(Number((document.getElementById("game_" + g + "_score_" + side) || {}).value));
+  const method = buttons.find((b) => /^\\s*(Not selected|Logistic Regression|Bayes Method|Elo Rating|Exponential Smoothing)/.test(b.textContent || ""));
+  return {
+    pathname: location.pathname,
+    search: location.search,
+    teamA: a.value,
+    teamB: document.getElementById("team_b").value,
+    scores,
+    methodText: method ? method.textContent : "",
+    generateEnabled: !!generate && !generate.disabled,
+    resultShown: (document.body.textContent || "").includes("Predicted Winner"),
+  };
+}, "the prefilled custom matchup", 30000)`;
+
+/** Story 4.4: the custom matchup row 12 shares, games 1–6 in grid order. */
+const CUSTOM_SCORES = [101, 91, 92, 102, 103, 93, 94, 104, 105, 95, 96, 106];
+
 const READ_NOT_FOUND = `${WAIT}(() => {
   const n = ${norm};
   const h1 = document.querySelector("[data-series-not-found] h1");
@@ -306,7 +411,7 @@ async function main() {
   }
   const base = opts.base.endsWith("/") ? opts.base : `${opts.base}/`;
   const L = createLedger();
-  console.log(`Story 4.1/4.3/4.8 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
+  console.log(`Story 4.1/4.3/4.4/4.8 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
 
   // Row 1: the fallback file itself.
   const shellRes = await fetch(base).catch((e) => ({ ok: false, status: e.message }));
@@ -452,6 +557,8 @@ async function main() {
   const robots = await getPage("robots.txt");
   L.check("robots.txt answers 200 and points at the sitemap", robots.status === 200 && robots.html.includes(`Sitemap: ${SITE_URL}sitemap.xml`), `HTTP ${robots.status}`);
 
+  // Row 12 (Story 4.4): the URLs the two shares copy, opened afterwards in fresh browsers.
+  const shared = { series: null, custom: null };
   const S = await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null });
   // Row 11 (Story 4.8): uncaught exceptions and series reads, for the hydration rows.
   const exceptions = [];
@@ -460,6 +567,25 @@ async function main() {
   S.cdp.on("Network.requestWillBeSent", (p) => {
     if (p.request.url.includes("/rest/v1/series") && p.request.method !== "OPTIONS") seriesRequests.push(p.request.url);
   });
+  // Row 12 (Story 4.4): focus a Share button by real keyboard — Shift+Tab off
+  // it, then Tab back on — and measure the focus indicator and contrast.
+  const pressTab = async (shift) => {
+    const modifiers = shift ? 8 : 0;
+    await S.cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers });
+    await S.cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, modifiers });
+  };
+  const measureShareFocus = async (label, minContrast, what) => {
+    await S.evaluate(`(() => { const b = document.querySelector("[data-share-button]"); b.scrollIntoView({ block: "center" }); b.focus(); return true; })()`);
+    await pressTab(true);
+    await pressTab(false);
+    const f = await S.evaluate(READ_FOCUS_STYLE).catch((e) => ({ error: e.message }));
+    const ratio = f.error ? 0 : contrast(f.color, f.bg);
+    console.log(
+      `     ${label} keyboard focus: ${f.error ?? JSON.stringify({ focusVisible: f.focusVisible, boxShadow: f.boxShadow, outline: `${f.outlineStyle} ${f.outlineWidth}`, color: f.color, bg: `${f.bg} (${f.bgFrom})`, contrast: `${ratio.toFixed(2)}:1` })}`
+    );
+    L.check(`${label}: Tab lands on the Share button and paints a visible focus indicator`, !f.error && f.isShare && (f.boxShadow !== "none" || f.outlineStyle !== "none"), f.error ?? `${f.boxShadow} / outline ${f.outlineStyle}`);
+    L.check(`${label}: ${what} contrast >= ${minContrast}:1 on its effective background`, !f.error && ratio >= minContrast, f.error ?? `${f.color} on ${f.bg} = ${ratio.toFixed(2)}:1`);
+  };
   try {
     // Row 2 (render half): each route renders under the base path.
     for (const route of ROUTES) {
@@ -570,6 +696,16 @@ async function main() {
       pv.error ?? (g7Scores ? "" : "no Game 7 score to check against")
     );
     L.check("flagship preview title is winner-free", !pv.error && / — Game 7, /.test(pv.title) && !/ win /.test(pv.title), pv.error ?? pv.title);
+    // Story 4.4: the hero's icon-only Share button on the hydrated page.
+    const hs = await S.evaluate(READ_SHARE_BUTTON).catch((e) => ({ error: e.message }));
+    const hsLabel = await S.evaluate(`(document.querySelector("[data-share-button]") || { getAttribute: () => null }).getAttribute("aria-label")`);
+    L.check(
+      'series header Share: icon-only, aria-label "Share this series", takes focus, >=44x44',
+      !hs.error && hs.text === "" && hsLabel === "Share this series" && hs.focused && hs.w >= 44 && hs.h >= 44,
+      hs.error ?? `${hs.w}x${hs.h} focused=${hs.focused} label=${hsLabel}`
+    );
+    // Icon-only: a non-text graphic, so WCAG 1.4.11's 3:1.
+    await measureShareFocus("series header Share", 3, "icon (non-text, 1.4.11)");
     // A real pointer click on the reveal link (CDP mouse events, not element.click()).
     const box = await S.evaluate(`(() => {
       const a = Array.from(document.querySelectorAll("a")).find((el) => /See how the series ended/.test(el.textContent || ""));
@@ -655,9 +791,138 @@ async function main() {
       L.check(`${label}: zero console errors and zero uncaught exceptions on a prerendered load`, errors.length === 0 && thrown.length === 0, [...errors, ...thrown].join(" | ").slice(0, 400));
       L.check(`${label}: no rest/v1/series request (the preload serves the page)`, reads.length === 0, reads.join(", "));
     }
+    // Row 12 (Story 4.4): share from a completed series prediction and from a custom one.
+    const clickAt = async (box) => {
+      for (const type of ["mousePressed", "mouseReleased"]) {
+        await S.cdp.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+      }
+    };
+    const findButton = (pattern) => `Array.from(document.querySelectorAll("button")).find((b) => ${pattern}.test(b.textContent || ""))`;
+    const generateAndOpenDetails = async () => {
+      await S.evaluate("window.__p1RunSample(60000)");
+      await S.evaluate(`${WAIT}(() => !!${findButton("/View Detailed Analysis/")}, "View Detailed Analysis", 30000)`);
+      await S.evaluate(`${findButton("/View Detailed Analysis/")}.click(), true`);
+      await S.evaluate(`${WAIT}(() => (document.body.textContent || "").includes("Prediction Result"), "the detailed view", 30000)`);
+    };
+    const shareFromDetails = async (label, kind) => {
+      await S.evaluate(STUB_SHARE_TARGETS);
+      const btn = await S.evaluate(READ_SHARE_BUTTON).catch((e) => ({ error: e.message }));
+      L.check(
+        `${label}: the Share button reads "Share", takes focus and is >=44x44`,
+        !btn.error && btn.focused && btn.w >= 44 && btn.h >= 44 && btn.text === "Share",
+        btn.error ?? `${btn.w}x${btn.h} focused=${btn.focused}`
+      );
+      if (btn.error) return null;
+      // Labelled: text, so 4.5:1. Measured before the click, so no hover state.
+      await measureShareFocus(`${label} Share`, 4.5, "label text");
+      const mark = S.analytics.length;
+      await clickAt(btn);
+      const url = await S.evaluate(`${WAIT}(() => window.__pg7Shared && window.__pg7Shared[0], "the copied URL", 15000)`).catch((e) => ({ error: e.message }));
+      const toast = await S.evaluate(
+        `${WAIT}(() => Array.from(document.querySelectorAll("[data-sonner-toast]")).some((t) => /Link copied\\./.test(t.textContent || "")), "the Link copied toast", 15000)`
+      ).catch(() => false);
+      L.check(`${label}: the "Link copied." toast shows`, toast === true);
+      const event = await S.waitForAnalytics((e) => S.analytics.indexOf(e) >= mark && e.event === "prediction_shared");
+      L.check(
+        `${label}: prediction_shared decoded locally with { surface: 'predict', kind: '${kind}', channel: 'clipboard' }`,
+        !!event && event.properties.surface === "predict" && event.properties.kind === kind && event.properties.channel === "clipboard",
+        event ? JSON.stringify({ surface: event.properties.surface, kind: event.properties.kind, channel: event.properties.channel }) : "no event decoded"
+      );
+      return typeof url === "string" ? url : null;
+    };
+    const site = `${new URL(base).origin}${new URL(base).pathname}`;
+
+    // 12a: the known series, Elo.
+    await S.navigate(`${base}predict?series=${known.id}&method=elo`);
+    try {
+      await S.evaluate(READ_PRELOAD);
+      await generateAndOpenDetails();
+      shared.series = await shareFromDetails("share (series)", "series");
+      L.check(
+        "share (series): the copied URL is the trailing-slash series page with method and utm_source",
+        shared.series === `${site}series/${known.id}/?method=elo&utm_source=share`,
+        shared.series ?? "nothing copied"
+      );
+    } catch (e) {
+      L.check("share (series): drive the series to a shared result", false, e.message);
+    }
+
+    // 12b: "Montréal" vs "Miami Heat", Bayes.
+    await S.navigate(`${base}predict`);
+    try {
+      await S.evaluate(`(async () => {
+        await window.__drill.openSeriesDialog();
+        await window.__p1.clickDialogOption(/Custom Matchup/, "Custom Matchup", 15000);
+        await window.__p1.waitFor(() => !document.querySelector('[role="dialog"]') && document.getElementById("team_a"), "the custom form", 15000);
+        return true;
+      })()`);
+      const set = (id, value) => S.evaluate(`${SET_INPUT}(${JSON.stringify(id)}, ${JSON.stringify(String(value))})`);
+      await set("team_a", "Montréal");
+      await set("team_b", "Miami Heat");
+      for (let i = 0; i < 12; i++) await set(`game_${Math.floor(i / 2) + 1}_score_${i % 2 === 0 ? "a" : "b"}`, CUSTOM_SCORES[i]);
+      await S.evaluate("window.__p1SelectMethod(/Bayes Method/, 15000)");
+      await generateAndOpenDetails();
+      shared.custom = await shareFromDetails("share (custom)", "custom");
+      const prefix = `${site}predict/?custom=`;
+      L.check(
+        "share (custom): the copied URL is /predict/ with a ?custom= payload and utm_source",
+        typeof shared.custom === "string" && shared.custom.startsWith(prefix) && /^[A-Za-z0-9_-]+&utm_source=share$/.test(shared.custom.slice(prefix.length)),
+        shared.custom ?? "nothing copied"
+      );
+    } catch (e) {
+      L.check("share (custom): drive the custom matchup to a shared result", false, e.message);
+    }
   } finally {
     S.close();
   }
+
+  // Row 12, second half: each shared URL in a fresh browser — new Chrome, new profile.
+  const openFresh = async (label, url, read, verify) => {
+    if (!url) {
+      L.check(`fresh open (${label}): a shared URL to open`, false, "nothing was shared");
+      return;
+    }
+    const F = await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null });
+    try {
+      await F.navigate(url);
+      const r = await F.evaluate(read).catch((e) => ({ error: e.message }));
+      console.log(`     fresh open (${label}): ${JSON.stringify(r)}`);
+      verify(r);
+      // Settle window: a request fired a tick after the preload painted must still count.
+      await new Promise((res) => setTimeout(res, 1500));
+      L.check(
+        `fresh open (${label}): nothing runs on arrival — no predict-game-7 request, no result`,
+        !r.error && F.predictRequests.length === 0 && !r.resultShown && r.generateEnabled,
+        r.error ?? `${F.predictRequests.length} request(s)`
+      );
+      const pv = await F.waitForAnalytics((e) => e.event === "$pageview" && /[?&]utm_source=share(&|$)/.test(String(e.properties.$current_url || "")));
+      const seen = F.analytics.filter((e) => e.event === "$pageview").map((e) => e.properties.$current_url);
+      L.check(`fresh open (${label}): the landing $pageview carries utm_source=share`, !!pv, pv ? pv.properties.$current_url : `pageviews: ${JSON.stringify(seen)}`);
+    } finally {
+      F.close();
+    }
+  };
+
+  await openFresh("series", shared.series, READ_PRELOAD, (r) => {
+    L.check(
+      "fresh open (series): redirects to /predict?series=<id>&method=elo&utm_source=share",
+      !r.error && r.search === `?series=${known.id}&method=elo&utm_source=share`,
+      r.error ?? `${r.pathname}${r.search}`
+    );
+    L.check(
+      "fresh open (series): the same series and Elo are selected",
+      !r.error && (known.codes ? r.seriesText.includes(`${known.codes[0]} vs ${known.codes[1]}`) : / vs /.test(r.seriesText)) && r.methodText.includes("Elo Rating") && r.games.length === 6,
+      r.error ?? `${r.seriesText} · ${r.methodText}`
+    );
+  });
+  await openFresh("custom", shared.custom, READ_CUSTOM_ARRIVAL, (r) => {
+    L.check(
+      "fresh open (custom): the same matchup — both names, non-ASCII intact, and all 12 scores — is prefilled",
+      !r.error && r.teamA === "Montréal" && r.teamB === "Miami Heat" && r.scores.join() === CUSTOM_SCORES.join(),
+      r.error ?? `${r.teamA} vs ${r.teamB} · ${r.scores.join(",")}`
+    );
+    L.check("fresh open (custom): Bayes is the selected method", !r.error && /Bayes Method/.test(r.methodText), r.error ?? r.methodText.slice(0, 60));
+  });
 
   if (L.failures.length) {
     console.log(`\nRED: ${L.failures.length} assertion(s) failed — ${L.failures.join("; ")}`);
