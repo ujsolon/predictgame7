@@ -21,6 +21,54 @@ The retro runs after Story 4.7 and **decides the home of every remaining item**.
 - **Story 4.7's partial row 5 (analytics properties):** 8 of 10 §A.1 events were confirmed live by name and trigger, but their properties were not read live, `custom_series_selected` was not walked, and `contact_form_submitted` is skipped by design. Option: a committed headless live walk (`openBrowserSession`, PostHog answered locally) that decodes every event's properties against Story 4.0's record. It was offered and declined for now (owner decision b, 2026-10-08). Decide whether it is needed before Story 3.4's SM metrics read these events.
 - **Search Console status:** the sitemap was submitted 2026-10-08, and the first status was "Couldn't fetch". Before the retro, read the Sitemaps report and the Pages (indexed) count, and decide whether discovery needs more (URL Inspection on the flagships, or internal links per item 3a).
 
+## 0a. Party-mode triage outcomes (2026-10-09, owner decisions; the retro records them)
+
+Installed-agent room, pre-retro. Each item was tested for three things: does it still hold, what does it collide with, and when does it ship.
+
+**Owner decisions**
+- **Readable series URLs: YES.** The form is `/series/<year>/<slug>`, landing **first**. GitHub Pages cannot redirect, and uuid URLs are already shared and indexed, so every URL/meta change must land before the Feb cache-warming window. The uuid pages stay, emitted deliberately as **canonical stubs** pointing at the slug. This also resolves the stale-`gh-pages`-pages deferral: additive publishes would otherwise keep stale uuid pages.
+- **`/series/` and `/series/<year>`:** a thin redirect (a static stub with a no-JS redirect) to `/historical` and `/historical?year=<year>`. Historical must learn to read `?year=`; today `yearFilter` is local state (`HistoricalPage.tsx:52`).
+- **Everything below ships before Feb 4–18, 2027**, in this order:
+  1. **Docs-truth commit** (this retro window, under the standing rule below):
+     - the AGENTS.md coverage notes (`scripts/og`, `scripts/prerender` checked; `probe-deep-links.mjs` named; the analytics guardrail naming);
+     - the PRD addendum §A.1 pointer for `prediction_shared`;
+     - the `share-og` wording in the epic context.
+  2. **Readable URLs.** First task: pin the three missing tests (analytics init and barrel purity, the `?custom=` supersession, the Predict preload race), because the URL work refactors `main.tsx`, routing and Predict's arrival code. Then:
+     - slugs;
+     - the uuid canonical stubs;
+     - the `/series/` and year redirects;
+     - `og:image:alt`, winner-free and naming the matchup, because the same file emits the OG tags.
+  3. **Entry points:** a series-page link in Historical's record overlay for **every** series, a link from Predict's selected series, and `?year=`. The reset button gets its accessible name and a 44px target, since it is in the same file.
+  4. **Story 4.9 design session** (before any Home code). It covers:
+     - Home's purpose;
+     - the pending-Game-7 card **and** the flagship featured cards (taken over from 4.6);
+     - the Home image budget;
+     - the third-party font;
+     - the favicon path;
+     - fixing the stale OG mockup ("3 variants" / custom VS block).
+  5. **Home build** per the approved mockup.
+  6. **Story 4.6:** the owner writes the five flagships (**real content required by Feb**; guidelines alone are not enough). A loader script writes `series_content`, sets `updated_at` on every write (resolves that deferral), and enforces the licensed-image rule.
+  7. **As room allows:**
+     - the bundle trim (measured: ~0.4 s of 2.4 s; secondary to Home images);
+     - the analytics property walk (must precede Story 3.4's metrics).
+
+     `/teams` and `/games` go to a later epic, through the PRD.
+- **Content storage: keep A (the hybrid).** Text and YouTube ids stay in `series_content` rows, written by the owner. Images stay in the repo under `public/editorial/`. **Images must be openly licensed, with a credit line**, and the build refuses an image without one (as it does for missing alt text) and resizes images to WebP with `sharp`.
+  - **Contributor/open-source authoring is parked:** under A it is not possible. If it is ever wanted, the migration is B, files as the CMS (`content/series/<year>/<slug>/…md`, one PR per page), with slugs as the folder names.
+  - Free-form per-page styling was rejected in favour of a future block/component kit.
+- **Standing rule (owner OK).** Agents edit AGENTS.md and the PRD addendum **only between epics** (retro window), in one batched commit with the diff shown to the owner first. The addendum takes pointers only. Mid-epic findings go to `deferred-work.md`. A dangerous-now statement may be fixed only with the owner's explicit OK.
+
+**Measured during the session** (live, phone viewport, Slow 4G + 4× CPU, 3 runs):
+- **Home:** LCP ~13.3 s, full load ~34 s.
+- **Predict:** FCP ~3.7 s.
+- **Prerendered series preview:** FCP ~1.6 s (the 4.8 payoff, and an argument for prerendering Home later).
+- **JS bundle:** 308 KB transfer, ~2.4 s on Slow 4G.
+- **Home's weight:** `KLing_court.jpg` 1.78 MB, `KLing_trophy.jpg` 1.63 MB, `KLing_dashboards.jpg` 1.48 MB (CSS backgrounds). The LCP image is `nba_game7_moments.jpg` (314 KB).
+- **Font:** loads from `resource-static.bj.bcebos.com`, a third-party CDN.
+- **Favicon:** requested at the domain root `/favicon.png`, outside `/predictgame7/`.
+
+**Still open for the retro to place:** Search Console status (the sitemap's first read failed; re-check), and Story 4.7's partial row 5 (the analytics property walk, step 7 above).
+
 ## 1. Human-readable series URLs (owner idea, 2026-10-08)
 
 **Proposal.** Advertise a series as `/series/<year>/<slug>` instead of the uuid:
