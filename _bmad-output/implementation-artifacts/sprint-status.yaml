@@ -405,6 +405,9 @@ development_status:
   # 2026-10-09 (Epic 4 retro): Stories 6.0 (PredictPage refactor) and 6.8 (one team order, home team first) added; order 6.0 -> 6.8 -> 6.1 -> ... -> 6.7.
   epic-6: backlog
   6-0-predictpage-refactor: backlog
+  # 2026-10-09 (owner): 6.9 ABA venue spike + 6.10 archive re-key (42 NBA/BAA rows measured) added; order 6.0 -> 6.9 -> 6.10 -> 6.8 -> 6.1 -> ... -> 6.7.
+  6-9-aba-game-7-venue-spike: backlog
+  6-10-re-key-archive-home-court-first: backlog
   6-8-one-team-order-home-team-first: backlog
   6-1-readable-series-urls: backlog
   6-2-series-page-entry-points: backlog

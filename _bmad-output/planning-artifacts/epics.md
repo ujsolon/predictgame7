@@ -149,7 +149,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 
 ## Epic List
 
-Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: **6.0 → 6.8 → 6.1** → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Stories 6.0 and 6.8 were added by the Epic 4 retro on 2026-10-09; 6.8 keeps its number and runs second, as 4.8 did.
+Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: **6.0 → 6.9 → 6.10 → 6.8 → 6.1** → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Stories 6.0, 6.8, 6.9 and 6.10 were added by the Epic 4 retro and the owner's follow-up decision on 2026-10-09; they keep their numbers and run in this order, as 4.8 did.
 
 ### Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 Users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by a regression suite that every later epic builds on. **Story 1 is the toolchain foundation: migrate `rolldown-vite` shim → `vite@^8` + Vitest + CI test gate — done now, off-peak, while no release pressure exists** (owner decision 2026-09-25; satisfies the spine's "migrate at next dependency touch" and retires the Deferred test-compat question). Then: AD-2 contract consolidation (`_shared/contract.ts`, stale unions deleted), FR-8 error-state overhaul (invalid-input vs service-failure), regression tests on the four highest-risk paths, documented failure-case catalog + manual QA matrix. All new/changed UI carries an AA-clean AC (Radix primitives, contrast tokens, keyboard/screen-reader).
@@ -951,7 +951,7 @@ As a developer, I want `src/pages/PredictPage.tsx` (1,418 lines, one component, 
 
 ### Story 6.8: One team order on every surface: home team first
 
-*Added by the Epic 4 retrospective (open question 1; owner decision 2026-10-09, option C). It supersedes the 2026-10-07 owner decision E14 (alphabetical, spoiler-neutral order on winner-free surfaces). It runs right after 6.0 and before 6.1, because 6.1's readable URLs put the team order into the slug.*
+*Added by the Epic 4 retrospective (open question 1; owner decision 2026-10-09, option C). It supersedes the 2026-10-07 owner decision E14 (alphabetical, spoiler-neutral order on winner-free surfaces). It runs after 6.0, 6.9 and 6.10 (which make the stored order home-court first) and before 6.1, because 6.1's readable URLs put the team order into the slug.*
 
 As a fan, I want every "X vs Y" on the site in the same order, home team first, so that one series never appears in two orders.
 
@@ -962,11 +962,40 @@ As a fan, I want every "X vs Y" on the site in the same order, home team first, 
 
 **When** the story ships, **Then**:
 - every one of those surfaces puts the **home team** first, through one shared helper;
-- "home team" is the **real Game 7 home team** (`series_game_scores` game 7 `home_team_id`), which is a real venue only for `league IN ('NBA','BAA')` (migration `00016`, AGENTS.md), and for live pending series it is the pipeline's real home side. **The fallback for the 18 ABA archive series (no real venue) is an open question for this story's planning.** The stored `team_a` must not be presented as "home": in the archive it is a winner-slot placeholder.
+- "home team" is the **real Game 7 home team**. After Story 6.10 the data carries it: `series.team_a_id` is the home-court team for every series (the pipeline's "`team_a` = Game 1's home team" convention stays, since the Game 1 host is the Game 7 host). So the display rule is simply **stored order, `team_a` first**, through one helper, and the alphabetical `spoilerNeutralView`/`neutralPair` ordering is retired.
 - the owner accepts that home-first correlates with the outcome (Game 7 home teams won 117 of 160 NBA/BAA Game 7s). The preview's spoiler discipline otherwise stands: no Game 7 score, winner or result text on preview surfaces, and the B10 page-source rule holds.
 - the request payload to `predict-game-7` is unchanged (display only).
 - the hotspot caption change is recorded as a `caption` value change for analytics continuity.
 - the spoiler-neutral helper and its tests are retired or repurposed, with the E14 deferred-work entry annotated as superseded.
+
+### Story 6.9: ABA Game 7 venue spike
+
+*Added 2026-10-09 (owner decision, Epic 4 retro follow-up). It runs after 6.0 and before 6.10.*
+
+As the owner, I want the real Game 7 home team for the 18 ABA archive series, so that "home team first" (6.8) is true for every series, not only the 160 NBA/BAA ones that migration `00016` gave real venues.
+
+**Given** the 18 archived ABA series (`league = 'ABA'`), whose stored `team_a`/home sides are winner-slot placeholders, **When** the spike runs (research only, no writes), **Then** it records:
+- which source(s) give the Game 7 host per series, with its terms or licence and its reliability, as Story 2.12's venue probe did;
+- per-series coverage: the home team found and cross-checked, or not found;
+- a committed curation file in the `00016` emission style, for 6.10 to consume.
+
+Any series the sources cannot settle is named, and the owner rules on it (a stated "venue unknown" fallback, or a manual pick with a citation).
+
+### Story 6.10: Re-key the archive to home-court first
+
+*Added 2026-10-09 (owner decision, Epic 4 retro follow-up). Measured live 2026-10-09: of 160 archived NBA/BAA series, 118 already store the real Game 7 home team as `team_a`; **42 do not** (41 NBA + 1 BAA, e.g. the 2016 Finals). The 18 ABA rows follow 6.9. There are 0 pending rows.*
+
+As the owner, I want `series.team_a_id` to be the home-court (Game 7 home) team for every series, so that the stored order is the display order everywhere (6.8).
+
+**Given** the measurement above and 6.9's ABA result, **When** a migration (`00020`, written by the agent, rehearsed like `00014`/`00016` in the throwaway Postgres and the CI migration rehearsal, **applied by the owner** with `npx supabase db push`) runs, **Then**:
+- for each re-keyed series, `team_a_id`/`team_b_id` swap. Every `series_game_scores` row of that series keeps its teams and scores correct by team id: games 1–6 follow the convention that the home side is `team_a`, and Game 7 keeps its real venue;
+- `winner_team_id` and phase derivation (AD-4) are unchanged;
+- the insights cache is refreshed and its home-court census re-verified;
+- the pipeline's "`team_a` = Game 1's home team" assertion (`plan.ts:217`) still holds for all rows;
+- `docs/CURRENT_DATA_MODEL.md` is updated in the same commit;
+- AGENTS.md's archive rule ("winner-slot fiction … `team_a` is the winner in 177 of 178") is rewritten in a between-epics window;
+- the next deploy regenerates the cards and pages;
+- a post-apply anon read shows `team_a` = Game 7 home for all NBA/BAA rows, and for the ABA rows per 6.9.
 
 ### Story 6.1: Readable series URLs
 As a reader who sees a series link in search or chat, I want `/series/<year>/<slug>` URLs, so that the link says what it is.
