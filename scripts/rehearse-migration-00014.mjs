@@ -127,6 +127,18 @@
 // swap and the guards — every rejected run then measured to have left the
 // database byte-identical.
 //
+// Since Story 6.11 section 10 rehearses 00021 (the 1968 ABA Finals added to the
+// archive). The ordered replay applies it after 00020 over the fixture, so
+// every post-replay pin reads 179 series and 60 teams rows (59 seeded + PTP).
+// Section 10 re-seeds the post-00020 state with PTP removed (the state
+// production is in before 00021), measures the clean insert (team 61, the
+// series PTP-first, seven real-venue games, 4-3 with 3-3 after six, every
+// earlier row byte-identical), the re-apply no-op, each pre-guard refusing a
+// tampered pre-state (00020 not applied, PTP / id 61 taken, NOB missing, the
+// archive resized, a partial or divergent 1968 row) and each post-condition
+// guard refusing a corruption injected after the insert — every rejected run
+// measured to have left the database byte-identical.
+//
 // Usage: node scripts/rehearse-migration-00014.mjs [--fixture-report] — no other
 // argument is accepted: a typo (`--fixture-repor`) refuses the run rather than
 // silently starting the full Docker rehearsal.
@@ -180,7 +192,16 @@ const dbName = 'rehearse';
 // already applied to production by the owner when the ceiling caught up.
 // Story 6.10 raises it to 20 in the same commit that writes
 // 00020_archive_home_court_first.sql, and section 9 is that coverage.
-const COVERED_THROUGH = 20;
+// Story 6.11 raises it to 21 in the same commit that writes
+// 00021_add_1968_aba_finals.sql, and section 10 is that coverage.
+const COVERED_THROUGH = 21;
+
+// Story 6.11: after the ordered replay 00021 has added the PTP row (id 61) to
+// the 59 seeded teams and the 1968 ABA Finals to the 178-series fixture. The
+// seed-parse pin (venueBackfill.EXPECTED_TEAM_COUNT, 00005 + 00007) stays 59;
+// these are the post-replay table counts.
+const TEAMS_AFTER_REPLAY = venueBackfill.EXPECTED_TEAM_COUNT + 1;
+const SERIES_AFTER_REPLAY = 179;
 
 // Story 6.10: the one archived series whose LIVE slot order differs from the
 // curated CSV's (and therefore from the fixture's) — the 2026 WCF, stored
@@ -744,8 +765,8 @@ function main() {
       // The deferred AC, made executable: the committed 00016 applied inside
       // the ordered replay over the seeded fixture — census guards and all.
       assert(
-        `ordered replay applied the committed ${migration016File} over the seeded fixture: 178 series rows and a live league column`,
-        replaySeriesRows === '178' &&
+        `ordered replay applied the committed ${migration016File} over the seeded fixture: ${SERIES_AFTER_REPLAY} series rows (the 178-series fixture + 00021's 1968 ABA Finals) and a live league column`,
+        replaySeriesRows === String(SERIES_AFTER_REPLAY) &&
           psqlValue("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series' AND column_name = 'league'") === '1' &&
           psqlValue('SELECT count(*) FROM public.series WHERE league IS NULL') === '0',
       );
@@ -1601,7 +1622,8 @@ ROLLBACK;
     //    replayed seed, the partial unique index refuses a DUPLICATE non-null
     //    code, the shape CHECK refuses a name where an identity belongs, the
     //    four post-condition guards are each observed firing, and
-    //    EXPECTED_TEAM_COUNT = 59 still holds because 00018 inserts no row.
+    //    EXPECTED_TEAM_COUNT = 59 still holds because 00018 inserts no row
+    //    (the table reads TEAMS_AFTER_REPLAY = 60 here: 00021 adds PTP).
     const migration018File = files.find((f) => f.startsWith('00018'));
     if (migration018File === undefined) {
       throw new RehearsalFailure(`7: COVERED_THROUGH = ${COVERED_THROUGH} claims 00018's replay, but no 00018* file is on disk`);
@@ -1620,10 +1642,10 @@ ROLLBACK;
       WHERE table_schema = 'public' AND table_name = 'teams' AND column_name = 'espn_code'
     `);
     assert(
-      `7a 00018 is additive: ${venueBackfill.EXPECTED_TEAM_COUNT} teams rows after the replay (read ${teamsCount}), the column is nullable ${colShape}, ${espnNonNull} modern franchises carry a code and ${espnNull} historical ones stay NULL, with ${espnDistinct} distinct values`,
-      teamsCount === String(venueBackfill.EXPECTED_TEAM_COUNT) && colShape === 'YES|text' &&
+      `7a 00018 is additive: ${TEAMS_AFTER_REPLAY} teams rows after the replay (${venueBackfill.EXPECTED_TEAM_COUNT} seeded + 00021's PTP; read ${teamsCount}), the column is nullable ${colShape}, ${espnNonNull} modern franchises carry a code and ${espnNull} historical ones stay NULL, with ${espnDistinct} distinct values`,
+      teamsCount === String(TEAMS_AFTER_REPLAY) && colShape === 'YES|text' &&
         espnNonNull === '30' && espnDistinct === '30' &&
-        espnNull === String(venueBackfill.EXPECTED_TEAM_COUNT - 30),
+        espnNull === String(TEAMS_AFTER_REPLAY - 30),
     );
     const diverged = psqlValue(`
       SELECT string_agg(full_name || ':' || abbreviation || '/' || espn_code, ',' ORDER BY id)
@@ -1694,7 +1716,7 @@ ROLLBACK;
       psqlValue("SELECT count(*) FROM public.teams WHERE espn_code = 'ATL'") === '1',
     );
     assert(
-      '7c the rejected write left Boston on its own code, and the index really is partial — the 29 NULL historical rows coexist inside it',
+      '7c the rejected write left Boston on its own code, and the index really is partial — the 30 NULL historical rows (29 seeded + the PTP row of 00021) coexist inside it',
       psqlValue('SELECT espn_code FROM public.teams WHERE id = 2') === 'BOS' &&
         /WHERE \(espn_code IS NOT NULL\)/.test(psqlValue("SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'idx_teams_espn_code'")),
     );
@@ -2229,7 +2251,309 @@ ROLLBACK;
       withCorruption(`UPDATE public.series SET is_featured = true WHERE id = ${s20(1998, 'CHI', 'IND')};`),
     );
 
-    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind, and Story 4.5\'s 00019 adding series.is_featured (boolean NOT NULL DEFAULT false, its seed UPDATE flagging a pilot id) and series_content with its key, both CHECKs refusing and the cascade acting, RLS on with one read policy and an anon INSERT refused by it, and a clean idempotent re-apply, and Story 6.10\'s 00020 re-keying 42 NBA/BAA + 6 ABA series to home-court first over the live-shape fixture (Game 7 and game 1 home = team_a on 178/178, per-team scores and winners unchanged, 117 of 160 and ABA 12 of 18, the real SAS-home games 3, 4, 6 of the 2026 WCF left alone), its re-apply a byte-identical no-op, and all eleven of its guards observed refusing a tampered state that then proved to have left nothing behind.');
+    // 10) Migration 00021 — the 1968 ABA Finals added to the archive (Story 6.11).
+    //     Every seed is section 9's live pre-00020 shape + the committed 00020 +
+    //     PTP removed: the state production is in before 00021. Every rejected
+    //     run is measured to have left the database byte-identical (full-table
+    //     fingerprint, teams included), never asserted.
+    const migration021File = files.find((f) => f.startsWith('00021'));
+    if (migration021File === undefined) {
+      throw new RehearsalFailure(`10: COVERED_THROUGH = ${COVERED_THROUGH} claims 00021's replay, but no 00021* file is on disk`);
+    }
+    const migration021Text = readFileSync(join(migrationsDir, migration021File), 'utf8').replace(/\r\n?/g, '\n');
+    console.log(`\n-- 10) Story 6.11: ${migration021File} — the 1968 ABA Finals added to the archive --`);
+
+    const POST_MARKER_21 = '-- ==== 00021 POST-CONDITIONS ====';
+    const markerParts21 = migration021Text.split(POST_MARKER_21);
+    if (markerParts21.length !== 2) {
+      throw new RehearsalFailure(`10: ${migration021File} must carry the post-condition marker exactly once (found ${markerParts21.length - 1})`);
+    }
+    const [m21Head, m21Tail] = markerParts21;
+    const preGuards21 = new Set([...m21Head.matchAll(/RAISE EXCEPTION '00021 guard (\w+):/g)].map((m) => m[1]));
+    const postGuards21 = [...m21Tail.matchAll(/RAISE EXCEPTION '00021 guard (\w+):/g)].map((m) => m[1]);
+    assert(
+      `10 the committed file carries 4 pre-guards above the post-condition marker (${[...preGuards21].join(', ')}) and 6 post-condition guards below it (${postGuards21.join(', ')}) — each fired below`,
+      preGuards21.size === 4 && postGuards21.length === 6 && new Set(postGuards21).size === 6,
+    );
+
+    const tablesFingerprint = () =>
+      `${fullFingerprint()}|${psqlValue("SELECT md5(coalesce((SELECT string_agg(to_jsonb(t)::text, '#' ORDER BY t.id) FROM public.teams t), ''))")}`;
+    // The fixture seed rewrites series and games only, so the teams table is
+    // reset here, BEFORE the seed (whose 00016 resolves NOB by abbreviation):
+    // any series on a team above id 60 dropped, PTP (added by the replay) and
+    // any tamper row above id 60 removed, and a tampered NOB abbreviation restored.
+    const resetTeams21 = () =>
+      mustSucceed(
+        '10 teams reset to the 59-row seed (PTP and tamper rows removed, NOB restored)',
+        psql({ sql: "DELETE FROM public.series WHERE team_a_id > 60 OR team_b_id > 60; DELETE FROM public.teams WHERE id > 60; UPDATE public.teams SET abbreviation = 'NOB' WHERE id = 46 AND abbreviation <> 'NOB';" }),
+      );
+    const seedPre00021 = () => {
+      resetTeams21();
+      seedPre00020();
+      mustSucceed('10 committed 00020 applied over the re-seeded fixture', psql({ file: migration020Text }));
+    };
+    const s21 = s20(1968, 'PTP', 'NOB');
+    const archivedCount = () => countWhere('winner_team_id IS NOT NULL');
+
+    // 10a — the pre-state is production's, measured.
+    seedPre00021();
+    const pre21 = {
+      archived: archivedCount(),
+      teams: psqlValue('SELECT count(*) FROM public.teams'),
+      ptp: psqlValue("SELECT count(*) FROM public.teams WHERE abbreviation = 'PTP' OR id = 61"),
+      nob: psqlValue("SELECT id FROM public.teams WHERE abbreviation = 'NOB'"),
+      notHomeFirst: nbaCandidates(),
+      aba1968: countWhere("year = 1968 AND league = 'ABA'"),
+      nba1968: countWhere("year = 1968 AND league <> 'ABA'"),
+      census: census(),
+    };
+    assert(
+      "10a the seeded pre-state is production's pre-00021: 178 archived, 59 teams, no PTP and no id 61, NOB is id 46, 00020 applied (0 NBA/BAA Game 7 hosts off team_a), no 1968 ABA series (the one 1968 series is the NBA Eastern Division Finals), census 117 of 160",
+      pre21.archived === 178 && pre21.teams === '59' && pre21.ptp === '0' && pre21.nob === '46' && pre21.notHomeFirst === 0 && pre21.aba1968 === 0 && pre21.nba1968 === 1 && pre21.census === '117 of 160',
+      JSON.stringify(pre21),
+    );
+    const otherRowsFingerprint = () =>
+      psqlValue(
+        `SELECT md5(coalesce((SELECT string_agg(to_jsonb(t)::text, '#' ORDER BY t.id) FROM public.teams t WHERE t.id <> 61), '')) || '|' ||
+                md5(coalesce((SELECT string_agg(to_jsonb(s)::text, '#' ORDER BY s.id) FROM public.series s WHERE 61 NOT IN (s.team_a_id, s.team_b_id)), '')) || '|' ||
+                md5(coalesce((SELECT string_agg(to_jsonb(g)::text, '#' ORDER BY g.series_id, g.game_number) FROM public.series_game_scores g
+                               JOIN public.series s ON s.id = g.series_id WHERE 61 NOT IN (s.team_a_id, s.team_b_id)), ''))`,
+      );
+    const otherBefore = otherRowsFingerprint();
+
+    // 10b — the clean apply.
+    const apply21 = psql({ file: migration021Text });
+    mustSucceed(`10b ${migration021File} applies cleanly over the post-00020 fixture`, apply21);
+    assert(
+      '10b the apply announced the insert into the 178-series archive',
+      /00021: adding PTP \(id 61\) and the 1968 ABA Finals with its seven games to the 178-series archive/.test(`${apply21.stdout ?? ''}${apply21.stderr ?? ''}`),
+    );
+    assert(
+      '10b teams row 61 is exactly (Pittsburgh Pipers, PTP, Pittsburgh, Pipers, assets/teams/Pittsburgh_Pipers.gif, espn_code NULL), MNP (id 44) untouched, 60 teams',
+      psqlValue("SELECT full_name || '|' || abbreviation || '|' || city || '|' || nickname || '|' || logo_url || '|' || coalesce(espn_code, 'NULL') FROM public.teams WHERE id = 61") ===
+        'Pittsburgh Pipers|PTP|Pittsburgh|Pipers|assets/teams/Pittsburgh_Pipers.gif|NULL' &&
+        psqlValue("SELECT abbreviation || '|' || full_name FROM public.teams WHERE id = 44") === 'MNP|Minnesota Pipers' &&
+        psqlValue('SELECT count(*) FROM public.teams') === '60',
+    );
+    assert(
+      '10b the series is (1968, Finals, ABA, team_a PTP, team_b NOB, winner PTP, is_featured false)',
+      psqlValue(
+        `SELECT s.year || '|' || s.round || '|' || s.league || '|' || ${abbrOf('s.team_a_id')} || '|' || ${abbrOf('s.team_b_id')} || '|' || ${abbrOf('s.winner_team_id')} || '|' || s.is_featured
+           FROM public.series s WHERE s.id = ${s21}`,
+      ) === '1968|Finals|ABA|PTP|NOB|PTP|false',
+    );
+    // The expected rows derived independently from the committed CSV (00021's
+    // input), never copied from the migration's literals.
+    const [finalsHeader, ...finalsDataLines] = readFileSync(join(repoRoot, 'supabase', 'scripts', 'pipeline', 'data', 'aba_1968_finals.csv'), 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== '' && !line.startsWith('#'));
+    if (finalsHeader !== 'game_number,date,home,away,home_score,away_score,source,cross_check') {
+      throw new RehearsalFailure(`10: aba_1968_finals.csv header is "${finalsHeader}" — the positional read below would mis-key; resolve the file, never this check`);
+    }
+    const csvGames21 = finalsDataLines.map((line) => {
+      const [, , home, away, hs, as] = line.split(',');
+      return `${home} ${hs}-${as} ${away} w=${Number(hs) > Number(as) ? home : away}`;
+    });
+    const games21 = [1, 2, 3, 4, 5, 6, 7].map((n) => gameRow(1968, 'PTP', 'NOB', n));
+    assert(
+      `10b its seven games are aba_1968_finals.csv's, at real venues, each winner by score (read ${games21.join('; ')})`,
+      csvGames21.length === 7 && JSON.stringify(games21) === JSON.stringify(csvGames21),
+      `CSV ${csvGames21.join('; ')}`,
+    );
+    assert(
+      `10b 179 archived series; Game 7 and game 1 home = team_a on 179/179; the NBA/BAA census still 117 of 160 (read ${census()})`,
+      archivedCount() === 179 && homeIsTeamA(7) === 179 && homeIsTeamA(1) === 179 && census() === '117 of 160',
+      `archived ${archivedCount()}, g7 ${homeIsTeamA(7)}, g1 ${homeIsTeamA(1)}`,
+    );
+    assert('10b every earlier teams, series and game row is byte-identical', otherRowsFingerprint() === otherBefore);
+
+    // 10c — re-apply: a no-op that passes every guard.
+    const fpAfter21 = tablesFingerprint();
+    const reapply21 = psql({ file: migration021Text });
+    mustSucceed(`10c ${migration021File} re-applies cleanly over itself`, reapply21);
+    assert(
+      '10c the re-apply announced the no-op and left all three tables byte-identical',
+      /already present exactly as specified; no row is written/.test(`${reapply21.stdout ?? ''}${reapply21.stderr ?? ''}`) && tablesFingerprint() === fpAfter21,
+    );
+
+    // 10d — each pre-guard refusing a tampered PRE-state on a full apply.
+    const rejected21 = (label, pattern, tamperSql, fileText, seed = seedPre00021) => {
+      seed();
+      if (tamperSql !== '') mustSucceed(`${label}: tamper SQL applied`, psql({ file: tamperSql }));
+      const before = tablesFingerprint();
+      const res = psql({ file: fileText });
+      const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+      if (res.status === 0) throw new RehearsalFailure(`${label}: 00021 unexpectedly SUCCEEDED — the guard cannot fail:\n${out}`);
+      if (!pattern.test(out)) throw new RehearsalFailure(`${label}: rejected for an unexpected reason:\n${out}`);
+      assert(`${label} — abort observed; all three tables byte-identical afterwards`, tablesFingerprint() === before);
+    };
+    const seedApplied00021 = () => {
+      seedPre00021();
+      mustSucceed('10 committed 00021 applied (re-apply tamper base)', psql({ file: migration021Text }));
+    };
+    rejected21(
+      '10d guard archive_state: applied before 00020 (the 42/0 check reads 42) aborts — apply 00020 first',
+      /00021 guard archive_state: 42 archived NBA\/BAA series have a Game 7 host that is not team_a — 00020 is not applied[\s\S]*Apply 00020 first/,
+      '',
+      migration021Text,
+      () => {
+        resetTeams21();
+        seedPre00020();
+      },
+    );
+    rejected21(
+      '10d guard archive_state: a 177-series archive (one archived series deleted) aborts naming 177 of 178',
+      /00021 guard archive_state: 177 archived series, expected exactly 178 \(first run\)/,
+      `DELETE FROM public.series WHERE id = ${s20(1998, 'CHI', 'IND')};`,
+      migration021Text,
+    );
+    rejected21(
+      '10d guard team_slot: PTP held by another id aborts naming it',
+      /00021 guard team_slot: PTP, id 61 or the name Pittsburgh Pipers is taken by a row this migration did not write \(62 PTP Pittsburgh Pipers\)/,
+      "INSERT INTO public.teams (id, full_name, abbreviation, city, nickname) VALUES (62, 'Pittsburgh Pipers', 'PTP', 'Pittsburgh', 'Pipers');",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard team_slot: id 61 held by another team aborts naming it',
+      /00021 guard team_slot: PTP, id 61 or the name Pittsburgh Pipers is taken by a row this migration did not write \(61 RTM Rehearsal Tamper\)/,
+      "INSERT INTO public.teams (id, full_name, abbreviation) VALUES (61, 'Rehearsal Tamper', 'RTM');",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard team_slot: the full_name Pittsburgh Pipers under another id and code aborts naming it (not a bare teams_full_name_key violation)',
+      /00021 guard team_slot: PTP, id 61 or the name Pittsburgh Pipers is taken by a row this migration did not write \(62 PPX Pittsburgh Pipers\)/,
+      "INSERT INTO public.teams (id, full_name, abbreviation) VALUES (62, 'Pittsburgh Pipers', 'PPX');",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard team_slot: an id-61 PTP row that differs only in logo_url is not the exact row and aborts naming it',
+      /00021 guard team_slot: PTP, id 61 or the name Pittsburgh Pipers is taken by a row this migration did not write \(61 PTP Pittsburgh Pipers\)/,
+      "INSERT INTO public.teams (id, full_name, abbreviation, city, nickname, logo_url) VALUES (61, 'Pittsburgh Pipers', 'PTP', 'Pittsburgh', 'Pipers', 'assets/teams/pipers_other.png');",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard nob_present: NOB missing (abbreviation renamed) aborts naming 0',
+      /00021 guard nob_present: 0 teams rows carry abbreviation NOB/,
+      "UPDATE public.teams SET abbreviation = 'NOX' WHERE abbreviation = 'NOB';",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard series_slot: the exact PTP row present without its series (a partial state) aborts',
+      /00021 guard series_slot: partial state — the PTP team row is exact and the 1968 PTP\/NOB series is absent/,
+      "INSERT INTO public.teams (id, full_name, abbreviation, city, nickname, logo_url) VALUES (61, 'Pittsburgh Pipers', 'PTP', 'Pittsburgh', 'Pipers', 'assets/teams/Pittsburgh_Pipers.gif');",
+      migration021Text,
+    );
+    rejected21(
+      '10d guard series_slot: a re-apply over a divergent Game 7 score refuses to overwrite',
+      /00021 guard series_slot: the 1968 PTP\/NOB series exists but its game rows differ from this migration's \(7 rows, 6 matching/,
+      `UPDATE public.series_game_scores SET home_score = 121 WHERE series_id = ${s21} AND game_number = 7;`,
+      migration021Text,
+      seedApplied00021,
+    );
+    rejected21(
+      '10d guard series_slot: a re-apply over a divergent venue (game 3 hosts swapped, each team keeping its score and the winner) refuses to overwrite',
+      /00021 guard series_slot: the 1968 PTP\/NOB series exists but its game rows differ from this migration's \(7 rows, 6 matching/,
+      `UPDATE public.series_game_scores g SET home_team_id = g.away_team_id, away_team_id = g.home_team_id, home_score = g.away_score, away_score = g.home_score
+         WHERE g.series_id = ${s21} AND g.game_number = 3;`,
+      migration021Text,
+      seedApplied00021,
+    );
+    rejected21(
+      '10d guard series_slot: a re-apply over the series stored NOB-first refuses',
+      /00021 guard series_slot: 1 1968 PTP\/NOB series exist \(1968 Finals NOB\/PTP ABA winner 61\) and 0 match this migration exactly/,
+      `UPDATE public.series s SET team_a_id = s.team_b_id, team_b_id = s.team_a_id WHERE s.id = ${s21};`,
+      migration021Text,
+      seedApplied00021,
+    );
+    rejected21(
+      '10d guard archive_state: a re-apply over a 178-series archive (an earlier series un-archived) aborts naming 178, at least 179',
+      /00021 guard archive_state: 178 archived series, expected at least 179 \(re-apply run\)/,
+      `UPDATE public.series SET winner_team_id = NULL WHERE id = ${s20(1998, 'CHI', 'IND')};`,
+      migration021Text,
+      seedApplied00021,
+    );
+    {
+      // The archive grows after 00021 (a series archived later): the exact
+      // re-apply must stay a no-op, not abort on its own 179.
+      seedApplied00021();
+      mustSucceed(
+        '10d a 180th archived series (home-court first) added after 00021',
+        psql({
+          sql: `INSERT INTO public.series (year, round, team_a_id, team_b_id, winner_team_id, league)
+                  VALUES (2090, 'Rehearsal Extra', 10, 6, 10, 'NBA');
+                INSERT INTO public.series_game_scores (series_id, game_number, home_team_id, away_team_id, home_score, away_score, winner_team_id)
+                  SELECT id, 7, 10, 6, 100, 90, 10 FROM public.series WHERE year = 2090;`,
+        }),
+      );
+      const before180 = tablesFingerprint();
+      const reapply180 = psql({ file: migration021Text });
+      mustSucceed(`10d ${migration021File} re-applies over a 180-series archive`, reapply180);
+      assert(
+        '10d over a 180-series archive the exact re-apply is still a no-op (archive_state and archived_count accept >= 179) and leaves all three tables byte-identical',
+        /already present exactly as specified; no row is written/.test(`${reapply180.stdout ?? ''}${reapply180.stderr ?? ''}`) && tablesFingerprint() === before180 && archivedCount() === 180,
+      );
+    }
+
+    // 10e — each post-condition guard refusing a corruption injected after the
+    //       insert (the committed text, split at its marker).
+    const withCorruption21 = (sql) => `${m21Head}\n-- rehearsal corruption (section 10e)\n${sql}\n${POST_MARKER_21}${m21Tail}`;
+    const g21 = (n) => `(SELECT g.id FROM public.series_game_scores g WHERE g.series_id = ${s21} AND g.game_number = ${n})`;
+    rejected21(
+      '10e guard archived_count: an earlier series un-archived alongside the insert lands 178 and aborts',
+      /00021 guard archived_count: 178 archived series after the insert run, expected exactly 179/,
+      '',
+      withCorruption21(`UPDATE public.series SET winner_team_id = NULL WHERE id = ${s20(1998, 'CHI', 'IND')};`),
+    );
+    rejected21(
+      '10e guard new_series_archive: a Finals with game 5 missing aborts naming 6 game rows',
+      /00021 guard new_series_archive: the 1968 PTP\/NOB series reads 1 row\(s\), winner PTP, 6 game rows/,
+      '',
+      withCorruption21(`DELETE FROM public.series_game_scores WHERE id = ${g21(5)};`),
+    );
+    rejected21(
+      '10e guard series_score: game 2 turned into a PTP win reads 5-2 and aborts',
+      /00021 guard series_score: the 1968 Finals reads PTP 5 - NOB 2 \(4 - 2 after six\)/,
+      '',
+      withCorruption21(`UPDATE public.series_game_scores SET home_score = 110, winner_team_id = home_team_id WHERE id = ${g21(2)};`),
+    );
+    rejected21(
+      '10e guard hosts_are_team_a: game 1 moved to New Orleans aborts naming the hosts',
+      /00021 guard hosts_are_team_a: Game 1 \/ Game 7 hosted by team_a reads "7=PTP"/,
+      '',
+      withCorruption21(
+        `UPDATE public.series_game_scores g SET home_team_id = g.away_team_id, away_team_id = g.home_team_id, home_score = g.away_score, away_score = g.home_score WHERE g.id = ${g21(1)};`,
+      ),
+    );
+    rejected21(
+      '10e guard hosts_are_team_a: Game 7 alone moved to New Orleans aborts naming the hosts',
+      /00021 guard hosts_are_team_a: Game 1 \/ Game 7 hosted by team_a reads "1=PTP"/,
+      '',
+      withCorruption21(
+        `UPDATE public.series_game_scores g SET home_team_id = g.away_team_id, away_team_id = g.home_team_id, home_score = g.away_score, away_score = g.home_score WHERE g.id = ${g21(7)};`,
+      ),
+    );
+    rejected21(
+      '10e guard games_match_literals: game 3 stored 110-101 (still an NOB win) aborts naming 2 differing rows',
+      /00021 guard games_match_literals: 2 game rows of the 1968 Finals differ/,
+      '',
+      withCorruption21(`UPDATE public.series_game_scores SET home_score = 110 WHERE id = ${g21(3)};`),
+    );
+    rejected21(
+      '10e guard other_rows_unchanged: an earlier series flagged featured aborts naming 1 lost / 1 gained',
+      /00021 guard other_rows_unchanged: 1 row images of the earlier archive \(teams, series, game rows\) lost and 1 gained/,
+      '',
+      withCorruption21(`UPDATE public.series SET is_featured = true WHERE id = ${s20(1998, 'CHI', 'IND')};`),
+    );
+    rejected21(
+      '10e guard other_rows_unchanged: a second 1968 PTP series (PTP vs IND, pending) is NOT excluded by the narrowed fingerprint and aborts naming 0 lost / 1 gained',
+      /00021 guard other_rows_unchanged: 0 row images of the earlier archive \(teams, series, game rows\) lost and 1 gained/,
+      '',
+      withCorruption21(
+        `INSERT INTO public.series (year, round, team_a_id, team_b_id, league) VALUES (1968, 'Rehearsal Second PTP', 61, (SELECT id FROM public.teams WHERE abbreviation = 'IND'), 'ABA');`,
+      ),
+    );
+
+    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind, and Story 4.5\'s 00019 adding series.is_featured (boolean NOT NULL DEFAULT false, its seed UPDATE flagging a pilot id) and series_content with its key, both CHECKs refusing and the cascade acting, RLS on with one read policy and an anon INSERT refused by it, and a clean idempotent re-apply, and Story 6.10\'s 00020 re-keying 42 NBA/BAA + 6 ABA series to home-court first over the live-shape fixture (Game 7 and game 1 home = team_a on 178/178, per-team scores and winners unchanged, 117 of 160 and ABA 12 of 18, the real SAS-home games 3, 4, 6 of the 2026 WCF left alone), its re-apply a byte-identical no-op, and all eleven of its guards observed refusing a tampered state that then proved to have left nothing behind, and Story 6.11\'s 00021 adding PTP (id 61) and the 1968 ABA Finals PTP-first with seven real-venue games (4-3, 3-3 after six; 179 archived, Game 7 and game 1 home = team_a on 179/179, 117 of 160 unchanged, every earlier row byte-identical), its re-apply a byte-identical no-op (also over a 180-series archive), and all ten of its guards observed refusing a tampered state that then proved to have left nothing behind.');
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });

@@ -34,7 +34,7 @@
 //   npm run preview, then (Story 2.7, the epic drill — see the block above runFakeSeries):
 //   node scripts/measure-predict-latency.mjs --fake-pending   # §6.5 (c): six rows + NULL winner
 //   node scripts/measure-predict-latency.mjs --fake-short     # + a five-row row: excluded, reported
-//   node scripts/measure-predict-latency.mjs --archive-read   # /historical 178 + chips + gloss, /insights 160
+//   node scripts/measure-predict-latency.mjs --archive-read   # /historical 179 + chips + gloss, /insights 160
 //
 // The run reports two independent numbers per sample, because conflating them is
 // what made the earlier mobile reading look like a network problem:
@@ -871,7 +871,7 @@ async function main() {
 //   --archive-read  no override: /historical against production, reading the
 //                   announced total, every row's league chip, one chipped
 //                   record's gloss, and /insights' two denominators — the
-//                   178-vs-160 pair shown rather than inferred.
+//                   179-vs-160 pair shown rather than inferred.
 //
 // Production stays read-only: the override rewrites RESPONSES in the browser,
 // the only writes are the anon REST GETs the app already makes plus the normal
@@ -1640,9 +1640,11 @@ async function runArchiveRead(opts) {
     const chips = h.rows.filter((r) => r.chip);
     const tally = chips.reduce((acc, r) => ({ ...acc, [r.chip]: (acc[r.chip] ?? 0) + 1 }), {});
     console.log(`     announced at load: "${h.announced.text}"; after paging: "${h.finalAnnouncement}"; rows rendered ${h.rows.length}; chips ${JSON.stringify(tally)}`);
-    L.check("the announced archive total is 178", h.announced.total === 178, h.announced.text);
-    L.check("all 178 rows render once paged through", h.rows.length === 178, `rendered ${h.rows.length}`);
-    L.check("19 rows carry a league chip (18 ABA + 1 BAA), no NBA chip", chips.length === 19 && tally.ABA === 18 && tally.BAA === 1 && !tally.NBA, JSON.stringify(tally));
+    // Story 6.11: 179 / 19 ABA once the owner applies `00021` (the 1968 ABA Finals); production
+    // reads 178 / 18 ABA until then, so these three lines are red before that apply by design.
+    L.check("the announced archive total is 179", h.announced.total === 179, h.announced.text);
+    L.check("all 179 rows render once paged through", h.rows.length === 179, `rendered ${h.rows.length}`);
+    L.check("20 rows carry a league chip (19 ABA + 1 BAA), no NBA chip", chips.length === 20 && tally.ABA === 19 && tally.BAA === 1 && !tally.NBA, JSON.stringify(tally));
     const baa = await S.evaluate(`window.__drill.openRecord(/BAA/)`);
     console.log(`     chipped record: ${JSON.stringify(baa)}`);
     L.check("a chipped record repeats its chip and carries the gloss sentence", baa.chip === "BAA" && /^BAA is the league that became the NBA in 1949/.test(baa.gloss ?? ""));

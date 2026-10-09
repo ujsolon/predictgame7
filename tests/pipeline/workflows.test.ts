@@ -367,14 +367,19 @@ describe('the three new jobs — the pins that are not pipeline-specific', () =>
 describe('migration-rehearsal.yml — the replay certification (CAP-5)', () => {
   it('triggers on exactly the paths that can expire the verdict (D-2 = B, widened by the owner 2026-10-03)', () => {
     const triggers = triggersOf(REHEARSAL);
-    // The trigger set equals the rehearsal's input set: the two data files are
-    // read by `scripts/rehearse-migration-00014.mjs` (`:347`, `:525`, `:573`),
-    // so an edit to either can expire the verdict just as a migration can.
-    // Story 6.10 adds aba_game7_venues.csv, read by the rehearsal's section 9.
+    // The trigger set equals the rehearsal's input set. `scripts/rehearse-migration-00014.mjs`
+    // reads four data files (named, not line-referenced, so this comment cannot go stale):
+    // `docs/NBASeriesResults.xlsx` (the real-score fixture, section 6d),
+    // `game7_venues_curated.csv` via `venueBackfill.ts` (the fixture archive the ordered
+    // replay seeds before 00016, and section 5), `aba_game7_venues.csv` (section 9,
+    // 00020's ABA swap set; Story 6.10) and `aba_1968_finals.csv` (section 10, 00021's
+    // seven games; Story 6.11). An edit to any of them can expire the verdict just as a
+    // migration can.
     const expected = [
       'docs/NBASeriesResults.xlsx',
       'scripts/rehearse-migration-00014.mjs',
       'supabase/migrations/**',
+      'supabase/scripts/pipeline/data/aba_1968_finals.csv',
       'supabase/scripts/pipeline/data/aba_game7_venues.csv',
       'supabase/scripts/pipeline/data/game7_venues_curated.csv',
       'supabase/scripts/pipeline/venueBackfill.ts',

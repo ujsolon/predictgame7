@@ -765,3 +765,15 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-6-10-re-key-archive-home-court-first.md`
   summary: `src/lib/spoiler-neutral.ts:4-5` and `src/prerender/preload.ts:61-65` justify the alphabetical ordering with "archived rows store the winner as `team_a` in 177/178". That stops being true once `00020` is applied (`team_a` = home-court host).
   evidence: Review pass 1, blind-hunter (B12) and verification-gap (other finding). 6.10 is data-only by its frozen scope. Story 6.8 retires the spoiler-neutral ordering and must remove or rewrite both comments.
+
+## Deferred from: Story 6.11 (spec-6-11-add-1968-aba-finals.md, 2026-10-09)
+
+- source_spec: `spec-6-11-add-1968-aba-finals.md`
+  summary: AGENTS.md's archive rule (the "Archive venues and slot order" bullet rewritten for Story 6.10) says "for all 178 archived series" three times and "177 spreadsheet-sourced rows"; once `00021` is applied the archive is **179** (160 NBA/BAA + 19 ABA), and the 1968 ABA Finals carries real venues for all seven games, so games 1–6 are a convention for the 177 spreadsheet-sourced rows only and real for two series (the 2026 WCF and the 1968 ABA Finals).
+  evidence: Spec 6.11 (Boundaries · AGENTS.md): AGENTS.md changes only between epics, and this is not dangerous now — the 42/0 check stays valid (`00021` adds an ABA series, which that check does not count) and the new row is home-first like every other. Rewrite the bullet in the next between-epics window: "179", "19 ABA", and the second real-venue series. Authoritative boundary meanwhile: `docs/CURRENT_DATA_MODEL.md` § "Story 6.11 status".
+- source_spec: `spec-6-11-add-1968-aba-finals.md` (review iteration 1, D1) — target: Story 6.8
+  summary: `src/lib/team-logos.ts` has no `PTP` / "Pittsburgh Pipers" alias, so a typed custom matchup "Pittsburgh Pipers" finds no logo and "Pipers" resolves to `MNP` (Minnesota Pipers). The seed→alias oracle in `src/lib/__tests__/team-logos.test.ts` reads only `00005` + `00007`, so it cannot see a team a later migration adds.
+  evidence: Review pass 1, verification-gap. Archive surfaces resolve `teams.logo_url` first, so only the custom-matchup path is affected. App code is out of 6.11's scope (Never). 6.8 already edits the team-name surfaces: add the PTP alias entry, and widen the oracle to every `INSERT INTO public.teams` across `supabase/migrations/*.sql` (00021 inserts PTP through `INSERT … SELECT 61, 'Pittsburgh Pipers', 'PTP', …`, so the reader must accept that shape too).
+- source_spec: `spec-6-11-add-1968-aba-finals.md` (review iteration 1, D2) — target: Story 6.8
+  summary: Stale "178" in comments under `src/` once `00021` is applied: `src/pages/HistoricalPage.tsx:24`, `:84-90`, `:229`; `src/lib/insights.ts:6`; `src/lib/spoiler-neutral.ts`; `src/prerender/preload.ts`.
+  evidence: Review pass 1, blind-hunter + edge-case-hunter. The 1968 Finals' `PP`/`PTP` initialism case also adds a 40th series / 48th team cell / 21st franchise to the count in the `HistoricalPage.tsx:229` comment. Comment-only; `spoiler-neutral.ts` is retired by 6.8 anyway, so 6.8 rewrites these together.

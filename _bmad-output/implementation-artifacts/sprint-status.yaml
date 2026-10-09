@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-09-2026 17:29
+last_updated: 10-09-2026 17:45
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -410,10 +410,10 @@ development_status:
   # 2026-10-09: spike done — 18/18 ABA Game 7 hosts settled by two sources (BR + Wikipedia, 9 box scores re-read); 6 rows to swap in 6.10. Review: 6 patches, 2 deferred (1968 archive gap, info: note rule), 2 rejected.
   6-9-aba-game-7-venue-spike: done
   # 2026-10-09: built + reviewed (pass 1: ~13 patches incl. the WCF real-venue correction, 1 deferred to 6.8, 1 rejected); gate 878; Docker rehearsal GREEN.
-  # Stays at review until the owner applies 00020 (before 00021) and the anon check reads 0; then insights refresh + deploy.
+  # 00020 APPLIED (anon read 2026-10-09: 42/0 check reads 0). Stays at review until insights refresh + deploy.
   6-10-re-key-archive-home-court-first: review
-  # 2026-10-09 (owner): 6.11 adds the 1968 ABA Finals (PTP over NOB 4-3; scores owner-supplied); migration 00021 applied with 6.10's 00020.
-  6-11-add-1968-aba-finals: backlog
+  # 2026-10-09 (owner): 6.11 adds the 1968 ABA Finals (PTP over NOB 4-3; scores owner-supplied). Stays at review until the owner applies 00021 (alone), reads back 179, refreshes insights and deploys.
+  6-11-add-1968-aba-finals: review
   6-8-one-team-order-home-team-first: backlog
   6-1-readable-series-urls: backlog
   6-2-series-page-entry-points: backlog

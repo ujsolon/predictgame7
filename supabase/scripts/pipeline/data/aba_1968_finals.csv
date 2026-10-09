@@ -1,0 +1,37 @@
+# aba_1968_finals.csv — Story 6.11: the seven games of the 1968 ABA Finals (Pittsburgh Pipers
+#   4, New Orleans Buccaneers 3), the series the 6.9 spike found missing from the archive.
+#   The input of supabase/migrations/00021_add_1968_aba_finals.sql, whose literal game rows
+#   tests/pipeline/aba-1968-finals.test.ts pins to this file (and this file to the spec's
+#   owner-supplied table). Scores are owner-supplied (basketball-reference) and cross-checked.
+#
+# Columns (in this exact order; no field contains a comma, so no quoting is used):
+#   game_number  — 1..7
+#   date         — ISO date of the game (1968)
+#   home         — teams.abbreviation of the real home team (PTP = Pittsburgh Pipers, id 61,
+#                  added by 00021; NOB = New Orleans Buccaneers, id 46). Real venues for all
+#                  seven games — not the archive's games 1-6 convention.
+#   away         — teams.abbreviation of the visiting team
+#   home_score   — final score of the home team
+#   away_score   — final score of the visiting team
+#   source       — primary citation (basketball-reference.com season page, "Finals" series
+#                  box), of the shape <URL> (Finals Game <n> <date> <visitor> <pts> @ <home> <pts>)
+#   cross_check  — independent citation: the Wikipedia "1968 ABA playoffs" article
+#                  (CC BY-SA 4.0), of the shape <URL> (ABA Finals Game <n> <date> <visitor>
+#                  <pts> <home> <pts> at <arena> <city>)
+#
+# Sources and method: each page read once with the agent's web tool on 2026-10-09; no
+#   script, no fetcher committed. basketball-reference.com ABA_1968 (1 read) and Wikipedia
+#   "1968 ABA playoffs" (1 read). Both pages agree on every score and every venue of all
+#   seven games (7 of 7). Coverage check from the same two pages: the 1968 Division
+#   Semifinals were best-of-five and the Division Finals went 4-1, so the Finals is the only
+#   1968 ABA series that went seven games. Game 4 went to overtime (Wikipedia). Home-court
+#   team (Game 1 and Game 7 host) is PTP, the series' team_a, which won the series 4-3; the home
+#   side won 3 of the 7 games (games 1, 3, 7) and lost 4 (games 2, 4, 5, 6).
+game_number,date,home,away,home_score,away_score,source,cross_check
+1,1968-04-18,PTP,NOB,120,112,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 1 April 18 New Orleans Buccaneers 112 @ Pittsburgh Pipers 120),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 1 April 18 New Orleans 112 Pittsburgh 120 at Civic Arena Pittsburgh)
+2,1968-04-20,PTP,NOB,100,109,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 2 April 20 New Orleans Buccaneers 109 @ Pittsburgh Pipers 100),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 2 April 20 New Orleans 109 Pittsburgh 100 at Civic Arena Pittsburgh)
+3,1968-04-24,NOB,PTP,109,101,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 3 April 24 Pittsburgh Pipers 101 @ New Orleans Buccaneers 109),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 3 April 24 Pittsburgh 101 New Orleans 109 at Loyola Field House New Orleans)
+4,1968-04-25,NOB,PTP,105,106,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 4 April 25 Pittsburgh Pipers 106 @ New Orleans Buccaneers 105),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 4 April 25 Pittsburgh 106 New Orleans 105 OT at Loyola Field House New Orleans)
+5,1968-04-27,PTP,NOB,108,111,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 5 April 27 New Orleans Buccaneers 111 @ Pittsburgh Pipers 108),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 5 April 27 New Orleans 111 Pittsburgh 108 at Civic Arena Pittsburgh)
+6,1968-05-01,NOB,PTP,112,118,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 6 May 1 Pittsburgh Pipers 118 @ New Orleans Buccaneers 112),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 6 May 1 Pittsburgh 118 New Orleans 112 at Loyola Field House New Orleans)
+7,1968-05-04,PTP,NOB,122,113,https://www.basketball-reference.com/playoffs/ABA_1968.html (Finals Game 7 May 4 New Orleans Buccaneers 113 @ Pittsburgh Pipers 122),https://en.wikipedia.org/wiki/1968_ABA_playoffs (ABA Finals Game 7 May 4 New Orleans 113 Pittsburgh 122 at Civic Arena Pittsburgh)

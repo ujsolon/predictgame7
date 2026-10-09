@@ -2,9 +2,10 @@
 //
 // What it asserts, each as a MEASURED LITERAL (a mismatch is a red finding, never a re-pin —
 // spec-2-7 Boundaries · Always):
-//   - 178 series, 1,246 score rows, every series exactly seven, zero null winners (Story 2.1's
-//     audit, FR-19);
-//   - league composition 159 NBA + 1 BAA + 18 ABA, zero NULL (Story 2.8's `00016`, post-apply);
+//   - 179 series, 1,253 score rows, every series exactly seven, zero null winners (Story 2.1's
+//     audit, FR-19; 178 / 1,246 before Story 6.11's `00021` added the 1968 ABA Finals);
+//   - league composition 159 NBA + 1 BAA + 19 ABA, zero NULL (Story 2.8's `00016`, post-apply;
+//     18 ABA before `00021`);
 //   - the Game-7 census over `league IN ('NBA','BAA')` game-7 rows ONLY: population 160, home wins
 //     117 (43 home losses). That population is the only archived home-court evidence there is —
 //     every other archived `home_team_id` is a winner-slot fiction (AGENTS.md, `00016`), so the
@@ -12,7 +13,7 @@
 //   - `insights_cache.game_6_winner_stats.total_game_sevens` = 160 (Story 2.5's `00017`), plus
 //     `home_team_stats` agreeing with the census the script just measured (117 of 160).
 //
-// The archive's 178 and the insights' 160 are printed side by side at the end — the reconciliation
+// The archive's 179 and the insights' 160 are printed side by side at the end — the reconciliation
 // the epic asks to be shown, not inferred.
 //
 // Read path: PostgREST GETs with the anon key from `.env` (client-visible by design, NFR-S1; read,
@@ -28,12 +29,17 @@ import { readFileSync } from "node:fs";
 
 const PAGE = 500;
 
+// Story 6.11 re-pinned the archive totals deliberately (owner decision 2026-10-09): migration
+// `00021` adds the 1968 ABA Finals — one series, seven score rows, one ABA league row. Until the
+// owner applies `00021`, production reads the pre-6.11 figures (178 / 1,246 / 18 ABA) and this
+// script is red on exactly those three lines by design. The NBA/BAA census and the insights
+// figures do not move: an ABA series does not enter them.
 const PINNED = {
-  series: 178,
-  scoreRows: 1246,
+  series: 179,
+  scoreRows: 1253,
   rowsPerSeries: 7,
   nullWinners: 0,
-  league: { NBA: 159, BAA: 1, ABA: 18 },
+  league: { NBA: 159, BAA: 1, ABA: 19 },
   nullLeague: 0,
   g7Population: 160,
   g7HomeWins: 117,

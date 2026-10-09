@@ -32,7 +32,7 @@ function membersFromSql(key: string): string[] {
 }
 
 describe('migration 00017 — shape of the three-row write', () => {
-  it('sits below the head: 00018, 00019 and 00020 are the only migrations above it, and nothing else', () => {
+  it('sits below the head: 00018, 00019, 00020 and 00021 are the only migrations above it, and nothing else', () => {
     const files = readdirSync(join(repoRoot, 'supabase', 'migrations'))
       .filter((f) => f.endsWith('.sql'))
       .sort();
@@ -41,11 +41,12 @@ describe('migration 00017 — shape of the three-row write', () => {
     // head, so a bare `> 17 → []` would have gone red for the right migration.
     // Listing the accepted set keeps a stray 00019 red — the reader has to come
     // name the new head instead of watching a number drift. Story 4.5 named 00019;
-    // Story 6.10 named 00020.
+    // Story 6.10 named 00020; Story 6.11 named 00021.
     expect(files.filter((f) => Number(f.slice(0, 5)) > 17)).toEqual([
       '00018_teams_espn_code.sql',
       '00019_series_editorial_content.sql',
       '00020_archive_home_court_first.sql',
+      '00021_add_1968_aba_finals.sql',
     ]);
   });
 
