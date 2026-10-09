@@ -4,7 +4,7 @@
 
 **Scope:** Stories 4.0–4.5 and 4.8. Story 4.7's Given was amended on 2026-10-08: 4.6 (flagship content) and 4.9 (Home highlight redesign) move to post-retro scoping, and each carries its own live check when it ships.
 
-**Result:** six of the seven acceptance criteria are met on the deployed site. Row 5 is **partial** by owner decision (b, 2026-10-08), and its gap is handed to the Epic 4 retro. One harness defect was found and fixed during the drill (§ 4).
+**Result:** all seven acceptance criteria are met on the deployed site. Row 5 was recorded as partial on 2026-10-08 (owner decision b). On 2026-10-09 the owner asked for the headless walk after all, and it closed row 5 the same day (§ 5). One harness defect was found and fixed during the drill (§ 4).
 
 | # | AC check | Result | Evidence |
 |---|---|---|---|
@@ -12,7 +12,7 @@
 | 2 | OG debugger card render | **ok** | § 2 |
 | 3 | JS-disabled fetch: bare + flagship preview (spoiler-free) + its result | **ok** | § 3 |
 | 4 | Share round-trip, with the SM-3 event in PostHog live view | **ok** | § 4 |
-| 5 | Measurement continuity vs Story 4.0's before leg | **partial** (owner decision b): names and trigger points confirmed live; properties not read live | § 5 |
+| 5 | Measurement continuity vs Story 4.0's before leg | **ok** (closed 2026-10-09 by the headless property walk; it was partial on 2026-10-08) | § 5 |
 | 6 | Sitemap/crawl spot-check | **ok** | § 6 |
 | 7 | Deploy date vs the ≥6–8-week pre-window target | **ok, ahead** (provisional: 4.6 and 4.9 not yet deployed) | § 7 |
 
@@ -82,6 +82,16 @@ The full side-by-side table is in [analytics-continuity-4-7.md](analytics-contin
   - the archive reset, identified via its icon-only button (the property itself was not copied);
   - `prediction_shared`.
 - SDK behaviour is unchanged. `Pageleave` appears only because this walk had a full page navigation.
+
+**Closed 2026-10-09: headless property walk.** The command `node scripts/probe-analytics-walk.mjs https://ujsolon.github.io/predictgame7/` is **GREEN** (exit 0), run 2026-10-09T00:37:56Z against the live bundle `index-DCF4RgKj.js`.
+- **Coverage:** all **10 of 10** §A.1 events, plus `prediction_shared` and the archive reset (`filter_type: 'reset'`, now read from the payload). Each fired once per action, and no unregistered app event fired.
+- **Properties:** each event's property keys match its `track(...)` call site exactly, with value types and enums holding.
+- **Nothing reached production PostHog:** 34 of 34 analytics and contact requests were answered locally, with no remote IP.
+- **No email sent and no `contact_submissions` row written:** the `handle-contact` call was answered by a local stub. The stub was proven engaged before the form was submitted, and the submit used synthetic values.
+- The full table and the "does not settle" list are in [analytics-continuity-4-7.md](analytics-continuity-4-7.md) § "Headless property walk".
+- After the shared `openBrowserSession` change (the opt-in `stubContact`; a locally-answered request that errors is now blocked rather than forwarded), `probe-deep-links.mjs` was re-run live: **GREEN, 115 rows**.
+
+*The record of 2026-10-08, kept for the audit trail:*
 
 **Partial, by owner decision (b, 2026-10-08).** The AC asks for all 10 §A.1 events with the same names, **properties** and firing conditions. What is confirmed live is the names, trigger points and order of 8 events plus both additions. Not confirmed live:
 - **Properties.** The PostHog listing shows none. They rest on the unit tests (`analytics.test.ts`, the page tests) and on the probe's row 12, which decodes `prediction_shared` with the right props on the live site.

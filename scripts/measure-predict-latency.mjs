@@ -928,8 +928,15 @@ function decodeAnalyticsBody(buf) {
  * request)` — when given — rewrites every `rest/v1/series` response at the
  * Response stage (return `undefined` to pass a response through unchanged).
  * PostHog traffic is always answered locally and decoded into `analytics`.
+ * `stubContact: true` (default off) also answers every `functions/v1/handle-contact`
+ * request locally — preflight and POST — so a contact-form submit sends no mail
+ * and writes no `contact_submissions` row; each one lands in `contactCalls`.
+ * `guardedTraffic` lists every Network-level request to an intercepted host
+ * (PostHog, `analyticsHost`, and handle-contact when stubbed) and
+ * `fulfilledNetworkIds` the ones answered locally, so a caller can prove that
+ * nothing slipped past the interception.
  */
-export async function openBrowserSession({ viewport = "1440x900", seriesOverride = null, analyticsHost = null } = {}) {
+export async function openBrowserSession({ viewport = "1440x900", seriesOverride = null, analyticsHost = null, stubContact = false } = {}) {
   const [vw, vh] = viewport.split("x").map(Number);
   const chromePath = findChrome();
   const port = await freePort();
@@ -1033,14 +1040,54 @@ export async function openBrowserSession({ viewport = "1440x900", seriesOverride
 
     const analytics = [];
     const isAnalytics = (url) => /posthog/i.test(url) || (analyticsHost ? url.startsWith(analyticsHost) : false);
+    const isContact = (url) => stubContact && /\/functions\/v1\/handle-contact(\?|$)/.test(url);
     const patterns = [{ urlPattern: "*posthog*", requestStage: "Request" }];
     if (analyticsHost) patterns.push({ urlPattern: `${analyticsHost}*`, requestStage: "Request" });
+    if (stubContact) patterns.push({ urlPattern: "*/functions/v1/handle-contact*", requestStage: "Request" });
     if (seriesOverride) patterns.push({ urlPattern: "*/rest/v1/series*", requestStage: "Response" });
     const seriesCalls = [];
+    const contactCalls = [];
+    const fulfilledNetworkIds = new Set();
+    const guardedTraffic = [];
+    cdp.on("Network.requestWillBeSent", (p) => {
+      if (isAnalytics(p.request.url) || isContact(p.request.url)) {
+        guardedTraffic.push({ requestId: p.requestId, url: p.request.url, method: p.request.method, type: p.type ?? null, remoteIPAddress: null, status: null });
+      }
+    });
+    cdp.on("Network.responseReceived", (p) => {
+      const row = guardedTraffic.find((r) => r.requestId === p.requestId);
+      if (row) {
+        row.remoteIPAddress = p.response.remoteIPAddress ?? null;
+        row.status = p.response.status;
+      }
+    });
     cdp.on("Fetch.requestPaused", async (p) => {
       try {
         const url = p.request.url;
+        if (p.responseStatusCode === undefined && isContact(url)) {
+          // Answered here, never forwarded: the real function sends mail and inserts a row.
+          contactCalls.push({ method: p.request.method, url, body: p.request.postData ?? null, at: Date.now() });
+          if (p.networkId) fulfilledNetworkIds.add(p.networkId);
+          const requested = Object.entries(p.request.headers || {}).find(([k]) => k.toLowerCase() === "access-control-request-headers")?.[1];
+          const cors = [
+            { name: "Access-Control-Allow-Origin", value: "*" },
+            { name: "Access-Control-Allow-Methods", value: "POST, OPTIONS" },
+            { name: "Access-Control-Allow-Headers", value: requested || "authorization, x-client-info, apikey, content-type" },
+            { name: "Access-Control-Expose-Headers", value: "X-Probe-Stub" },
+            { name: "X-Probe-Stub", value: "handle-contact" },
+          ];
+          // Same shapes as `supabase/functions/handle-contact/index.ts`: 'ok' to the preflight, `{ message: 'Success' }` to a POST.
+          const isPreflight = p.request.method === "OPTIONS";
+          await cdp.send("Fetch.fulfillRequest", {
+            requestId: p.requestId,
+            responseCode: 200,
+            responseHeaders: isPreflight ? cors : [...cors, { name: "Content-Type", value: "application/json" }],
+            body: Buffer.from(isPreflight ? "ok" : JSON.stringify({ message: "Success" })).toString("base64"),
+          });
+          return;
+        }
         if (p.responseStatusCode === undefined && isAnalytics(url)) {
+          if (p.networkId) fulfilledNetworkIds.add(p.networkId);
           const entries = p.request.postDataEntries || [];
           const buf = entries.length
             ? Buffer.concat(entries.map((e) => Buffer.from(e.bytes || "", "base64")))
@@ -1119,7 +1166,13 @@ export async function openBrowserSession({ viewport = "1440x900", seriesOverride
         await cdp.send("Fetch.continueRequest", { requestId: p.requestId });
       } catch (err) {
         console.error(`interception error on ${p.request.url}: ${err.message}`);
-        await cdp.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+        // Fail closed: a guarded request (PostHog, a stubbed handle-contact) is
+        // blocked rather than forwarded when answering it locally went wrong.
+        const guarded = p.responseStatusCode === undefined && (isAnalytics(p.request.url) || isContact(p.request.url));
+        await (guarded
+          ? cdp.send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" })
+          : cdp.send("Fetch.continueRequest", { requestId: p.requestId })
+        ).catch(() => {});
       }
     });
     await cdp.send("Fetch.enable", { patterns });
@@ -1172,7 +1225,24 @@ export async function openBrowserSession({ viewport = "1440x900", seriesOverride
       return null;
     };
 
-    return { cdp, evaluate, navigate, close, consoleMessages, predictRequests, predictResponses, analytics, waitForAnalytics, seriesCalls, seriesLoads, waitForSeriesLoad, chromePath };
+    return {
+      cdp,
+      evaluate,
+      navigate,
+      close,
+      consoleMessages,
+      predictRequests,
+      predictResponses,
+      analytics,
+      waitForAnalytics,
+      seriesCalls,
+      seriesLoads,
+      waitForSeriesLoad,
+      chromePath,
+      contactCalls,
+      guardedTraffic,
+      fulfilledNetworkIds,
+    };
   } catch (err) {
     close();
     throw err;

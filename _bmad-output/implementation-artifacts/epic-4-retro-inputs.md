@@ -79,7 +79,7 @@ Already resolved by later stories, so the retro can close them:
 - **Font:** loads from `resource-static.bj.bcebos.com`, a third-party CDN.
 - **Favicon:** requested at the domain root `/favicon.png`, outside `/predictgame7/`.
 
-**Still open for the retro to place:** Search Console status (the sitemap's first read failed; re-check), and Story 4.7's partial row 5 (the analytics property walk, step 7 above).
+**Still open for the retro to place:** Search Console status (the sitemap's first read failed; re-check). *Story 4.7's row 5 was closed 2026-10-09 by `scripts/probe-analytics-walk.mjs` (GREEN, 10 of 10), so the analytics property walk is no longer a leftover in step 7.*
 
 ## 1. Human-readable series URLs (owner idea, 2026-10-08)
 

@@ -35,7 +35,7 @@ No code changes and no deploy.
 
 ## Implementation Notes
 
-- **Record:** `epic-4-verification-results.md`. Six of the 7 AC checks pass on 0.2.11; row 5 (measurement continuity) is partial by owner decision b. It cites the owner-observed evidence (the Facebook debugger at 0.2.9; the PostHog walks in `analytics-continuity-4-7.md`) rather than re-collecting it, and re-ran everything automatable live on 2026-10-08:
+- **Record:** `epic-4-verification-results.md`. All 7 AC checks pass on 0.2.11. Row 5 (measurement continuity) was partial on 2026-10-08 (owner decision b), then closed on 2026-10-09 by the headless property walk the owner requested, `scripts/probe-analytics-walk.mjs`: GREEN, 10 of 10 §A.1 events plus both additions, with property keys matching their call sites. No production PostHog traffic was sent and no real contact submission was made. It cites the owner-observed evidence (the Facebook debugger at 0.2.9; the PostHog walks in `analytics-continuity-4-7.md`) rather than re-collecting it, and re-ran everything automatable live on 2026-10-08:
   - `curl`: the deep link, the JS-off fetches and the sitemap;
   - a Node check of the flagship preview against the live Game 7 score (89–93), plus a random sample of 25 sitemap series URLs (25 × 200);
   - the deep-link probe against the live site.
