@@ -29,10 +29,12 @@ on:
       # widening of D-2 = B, 2026-10-03, after Story 2.6's review found the two
       # reads. The cost is a container run on a venue-edit; the alternative is a
       # red on an unrelated commit.
+      # Story 6.10: section 9 reads aba_game7_venues.csv (00020's ABA swap set).
       - supabase/migrations/**
       - scripts/rehearse-migration-00014.mjs
       - supabase/scripts/pipeline/venueBackfill.ts
       - supabase/scripts/pipeline/data/game7_venues_curated.csv
+      - supabase/scripts/pipeline/data/aba_game7_venues.csv
       - docs/NBASeriesResults.xlsx
   pull_request:
     paths:
@@ -40,6 +42,7 @@ on:
       - scripts/rehearse-migration-00014.mjs
       - supabase/scripts/pipeline/venueBackfill.ts
       - supabase/scripts/pipeline/data/game7_venues_curated.csv
+      - supabase/scripts/pipeline/data/aba_game7_venues.csv
       - docs/NBASeriesResults.xlsx
   # Infra reds are indistinguishable from real ones on a Docker-dependent job,
   # so a re-run has to be possible without inventing a commit to push.

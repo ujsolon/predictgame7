@@ -759,3 +759,9 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-6-9-aba-game-7-venue-spike.md`
   summary: Story 6.10 must read the `aba_game7_venues.csv` `note` column by its documented rule: a note starting with `info:` is a remark on a **settled** row; only other non-blank notes mean unsettled.
   evidence: Review pass 1, blind-hunter (B5). Six of the 18 settled rows carry `info:` remarks (e.g. a team playing some home games in another city, but Game 7 at home). The frozen 6.9 definition reserved `note` for the reasons a row is unsettled, and the CSV header documents the `info:` prefix. 6.10's spec must state the rule so its migration generator does not hold back 6 settled rows.
+
+## Deferred from: code review of spec-6-10-re-key-archive-home-court-first.md (2026-10-09)
+
+- source_spec: `spec-6-10-re-key-archive-home-court-first.md`
+  summary: `src/lib/spoiler-neutral.ts:4-5` and `src/prerender/preload.ts:61-65` justify the alphabetical ordering with "archived rows store the winner as `team_a` in 177/178". That stops being true once `00020` is applied (`team_a` = home-court host).
+  evidence: Review pass 1, blind-hunter (B12) and verification-gap (other finding). 6.10 is data-only by its frozen scope. Story 6.8 retires the spoiler-neutral ordering and must remove or rewrite both comments.

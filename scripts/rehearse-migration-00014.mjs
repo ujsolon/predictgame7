@@ -109,6 +109,24 @@
 // privilege Supabase grants by default is granted here; and a re-apply of the
 // committed file leaving everything unchanged. Every write probe rolls back.
 //
+// Since Story 6.10 section 9 rehearses 00020 (archive re-keyed to home-court
+// first). The fixture is first put into the LIVE pre-00020 shape: the curated
+// CSV writes the 2026 Western Conference Finals winner-first (SAS, OKC) while
+// production stores it OKC-first (game 1's home) with REAL per-game venues
+// (pipeline-born: OKC home in games 1, 2, 5, 7; SAS home in 3, 4, 6), so the
+// harness puts that one fixture series into exactly that shape — slots
+// exchanged, games 1, 2, 5 moved to OKC-home with their scores, Game 7 already
+// OKC-home after 00016 — immediately before 00020 in the ordered replay and in every section-9 seed.
+// Without it the fixture holds 43 NBA/BAA candidates where production holds 42,
+// and 00020's swap_count guard would (correctly) refuse it. Section 9 then
+// measures the swap (42 + 6 = 48 series re-keyed, per-team scores and winners
+// unchanged, Game 1 and Game 7 home = team_a on 178/178, 117 of 160 and ABA
+// 12 of 18, the only game 1-6 rows not team_a-home being the WCF's 3, 4, 6), the
+// re-apply no-op, each pre-guard refusing a tampered pre-state on a full apply,
+// and each post-condition guard refusing a corruption injected between the
+// swap and the guards — every rejected run then measured to have left the
+// database byte-identical.
+//
 // Usage: node scripts/rehearse-migration-00014.mjs [--fixture-report] — no other
 // argument is accepted: a typo (`--fixture-repor`) refuses the run rather than
 // silently starting the full Docker rehearsal.
@@ -160,7 +178,47 @@ const dbName = 'rehearse';
 // section 8 is that coverage. The bump trails the emit by one commit (the
 // 4.5 commit's CI run, 37760362339, failed on exactly this check); 00019 was
 // already applied to production by the owner when the ceiling caught up.
-const COVERED_THROUGH = 19;
+// Story 6.10 raises it to 20 in the same commit that writes
+// 00020_archive_home_court_first.sql, and section 9 is that coverage.
+const COVERED_THROUGH = 20;
+
+// Story 6.10: the one archived series whose LIVE slot order differs from the
+// curated CSV's (and therefore from the fixture's) — the 2026 WCF, stored
+// team_a = OKC (game 1's home, created by the pipeline 2026-05-30) where the
+// CSV and the fixture say SAS first. Re-oriented to the live shape before
+// 00020 runs, in production's real per-game venue shape: slots exchanged, then
+// games 1, 2, 5 exchanged with their scores so OKC hosts them, games 3, 4, 6
+// left SAS-home (the 2-2-1-1-1 format, home court OKC), Game 7 already
+// OKC-home after 00016; scores travel with their teams, winner untouched.
+// Asserts its own reach.
+const LIVE_SHAPE_2026_WCF_SQL = `
+DO $shape$
+DECLARE
+  v_n integer;
+BEGIN
+  UPDATE public.series s
+     SET team_a_id = s.team_b_id, team_b_id = s.team_a_id
+   WHERE s.year = 2026
+     AND s.team_a_id = (SELECT id FROM public.teams WHERE abbreviation = 'SAS')
+     AND s.team_b_id = (SELECT id FROM public.teams WHERE abbreviation = 'OKC');
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'rehearsal live-shape: expected to re-orient exactly one 2026 SAS/OKC fixture series, touched %', v_n;
+  END IF;
+  UPDATE public.series_game_scores g
+     SET home_team_id = g.away_team_id, away_team_id = g.home_team_id,
+         home_score = g.away_score, away_score = g.home_score
+    FROM public.series s
+   WHERE g.series_id = s.id AND g.game_number IN (1, 2, 5) AND s.year = 2026
+     AND s.team_a_id = (SELECT id FROM public.teams WHERE abbreviation = 'OKC')
+     AND s.team_b_id = (SELECT id FROM public.teams WHERE abbreviation = 'SAS');
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 3 THEN
+    RAISE EXCEPTION 'rehearsal live-shape: expected to move games 1, 2, 5 of the 2026 OKC/SAS fixture series to OKC-home, touched % rows', v_n;
+  END IF;
+END
+$shape$;
+`;
 
 // A failed claim is thrown, never process.exit'd: an exit inside the try
 // would skip the container teardown (measured — the first run of this script
@@ -585,6 +643,7 @@ function main() {
   // by the generator — no committed derived file, so it cannot drift — and
   // seeded inside the ordered loop right before a committed 00016.
   const migration016File = files.find((f) => f.startsWith('00016'));
+  const migration020File = files.find((f) => f.startsWith('00020'));
   const curatedRows = venueBackfill.parseVenuesCsv(
     readFileSync(venueBackfill.CURATED_CSV_PATH, 'utf8'),
     'game7_venues_curated.csv',
@@ -636,6 +695,10 @@ function main() {
       if (file === migration016File) {
         mustSucceed('fixture archive seeded inside the ordered replay (immediately before 00016)', psql({ file: fixtureSeedText }));
         console.log('seeded 178-series x 7-row fixture archive from the curated CSV (pre-00016 state)');
+      }
+      if (file === migration020File) {
+        mustSucceed('fixture put into the live pre-00020 shape (2026 WCF stored OKC-first) inside the ordered replay', psql({ file: LIVE_SHAPE_2026_WCF_SQL }));
+        console.log('re-oriented the 2026 WCF fixture series to its live slot order (OKC first) before 00020');
       }
       const res = psql({ file: readFileSync(join(migrationsDir, file), 'utf8') });
       mustSucceed(`${file} did not apply cleanly`, res);
@@ -1855,7 +1918,318 @@ ROLLBACK;
         psqlValue('SELECT count(*) FROM public.series WHERE is_featured') === '0',
     );
 
-    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind, and Story 4.5\'s 00019 adding series.is_featured (boolean NOT NULL DEFAULT false, its seed UPDATE flagging a pilot id) and series_content with its key, both CHECKs refusing and the cascade acting, RLS on with one read policy and an anon INSERT refused by it, and a clean idempotent re-apply.');
+    // 9) Migration 00020 — the archive re-keyed to home-court first (Story 6.10).
+    //    Every seed is the fixture archive + the committed 00016 + the live-shape
+    //    re-orientation of the 2026 WCF (see the header): the state production is
+    //    in before 00020. Every rejected run is measured to have left the
+    //    database byte-identical (full-table fingerprint), never asserted.
+    if (migration020File === undefined || migration016File === undefined) {
+      throw new RehearsalFailure(`9: COVERED_THROUGH = ${COVERED_THROUGH} claims 00020's replay, but no 00020* (or no 00016*) file is on disk`);
+    }
+    const migration020Text = readFileSync(join(migrationsDir, migration020File), 'utf8').replace(/\r\n?/g, '\n');
+    const migration016Text = readFileSync(join(migrationsDir, migration016File), 'utf8');
+    console.log(`\n-- 9) Story 6.10: ${migration020File} — the archive re-keyed to home-court first --`);
+
+    // The ABA swap set derived independently from the committed CSV, and the
+    // migration's literal tuples read off the committed file — they must agree.
+    const [abaHeader, ...abaDataLines] = readFileSync(join(repoRoot, 'supabase', 'scripts', 'pipeline', 'data', 'aba_game7_venues.csv'), 'utf8')
+      .split(/\r?\n/)
+      .filter((line) => line.trim() !== '' && !line.startsWith('#'));
+    if (abaHeader !== 'year,team_a,team_b,game7_home_team,source,cross_check,note') {
+      throw new RehearsalFailure(`9: aba_game7_venues.csv header is "${abaHeader}" — the positional read below would mis-key; resolve the file, never this check`);
+    }
+    const abaVenueRows = abaDataLines.map((line) => line.split(','));
+    for (const c of abaVenueRows) {
+      const note = c[6] ?? '';
+      // Story 6.9's rule: only a settled row (host named, note blank or `info:`) may feed 00020.
+      if (c.length !== 7 || c[3] === '' || ![c[1], c[2]].includes(c[3]) || (note !== '' && !note.startsWith('info:'))) {
+        throw new RehearsalFailure(`9: aba_game7_venues.csv row ${c.slice(0, 3).join(',')} is not a settled row (host "${c[3]}", note "${note}") — 00020 cannot be generated from it`);
+      }
+    }
+    const csvAbaSwaps = abaVenueRows.filter((c) => c[3] !== c[1]).map((c) => `${c[0]},${c[1]},${c[2]}`);
+    const migrationAbaBlock = /INSERT INTO aba_home_court_swap \(year, team_a, team_b\) VALUES\n([\s\S]*?);\n/.exec(migration020Text)?.[1];
+    if (migrationAbaBlock === undefined) {
+      throw new RehearsalFailure(`9: could not locate ${migration020File}'s ABA tuple VALUES list — the text moved, so this would certify a copy`);
+    }
+    const migrationAbaSwaps = [...migrationAbaBlock.matchAll(/\((\d{4}), '([A-Z]{3})', '([A-Z]{3})'\)/g)].map((m) => `${m[1]},${m[2]},${m[3]}`);
+    assert(
+      `9 the migration's ABA tuples are exactly the CSV's swap set (${migrationAbaSwaps.join(' ')})`,
+      migrationAbaSwaps.length === 6 && JSON.stringify(migrationAbaSwaps) === JSON.stringify(csvAbaSwaps),
+      `migration ${migrationAbaSwaps.join(' ')} vs CSV ${csvAbaSwaps.join(' ')}`,
+    );
+
+    const POST_MARKER = '-- ==== 00020 POST-CONDITIONS ====';
+    const markerParts = migration020Text.split(POST_MARKER);
+    if (markerParts.length !== 2) {
+      throw new RehearsalFailure(`9: ${migration020File} must carry the post-condition marker exactly once (found ${markerParts.length - 1})`);
+    }
+    const [m20Head, m20Tail] = markerParts;
+    assert(
+      '9 the committed file carries 3 pre-guards above the post-condition marker and 8 post-condition guards below it — each fired below',
+      (m20Head.match(/RAISE EXCEPTION '00020 guard/g) ?? []).length === 3 && (m20Tail.match(/RAISE EXCEPTION '00020 guard/g) ?? []).length === 8,
+    );
+
+    const s20 = (year, x, y) =>
+      `(SELECT s.id FROM public.series s JOIN public.teams ta ON ta.id = s.team_a_id JOIN public.teams tb ON tb.id = s.team_b_id
+         WHERE s.year = ${year} AND ((ta.abbreviation = '${x}' AND tb.abbreviation = '${y}') OR (ta.abbreviation = '${y}' AND tb.abbreviation = '${x}')))`;
+    const abbrOf = (idExpr) => `(SELECT abbreviation FROM public.teams WHERE id = ${idExpr})`;
+    const teamAOf = (year, x, y) => psqlValue(`SELECT ${abbrOf('s.team_a_id')} FROM public.series s WHERE s.id = ${s20(year, x, y)}`);
+    const gameRow = (year, x, y, n) =>
+      psqlValue(
+        `SELECT ${abbrOf('g.home_team_id')} || ' ' || g.home_score || '-' || g.away_score || ' ' || ${abbrOf('g.away_team_id')} || ' w=' || ${abbrOf('g.winner_team_id')}
+           FROM public.series_game_scores g WHERE g.series_id = ${s20(year, x, y)} AND g.game_number = ${n}`,
+      );
+    const fullFingerprint = () =>
+      psqlValue(
+        `SELECT md5(coalesce((SELECT string_agg(to_jsonb(s)::text, '#' ORDER BY s.id) FROM public.series s), '')) || '|' ||
+                md5(coalesce((SELECT string_agg(to_jsonb(g)::text, '#' ORDER BY g.series_id, g.game_number) FROM public.series_game_scores g), ''))`,
+      );
+    const teamScoreFingerprint = () =>
+      psqlValue(
+        `SELECT md5(string_agg(t, '#' ORDER BY t)) FROM (
+           SELECT series_id || '|' || game_number || '|' || home_team_id || '|' || home_score AS t FROM public.series_game_scores
+           UNION ALL
+           SELECT series_id || '|' || game_number || '|' || away_team_id || '|' || away_score FROM public.series_game_scores) x`,
+      );
+    const winnerFingerprint = () =>
+      psqlValue(
+        `SELECT md5(string_agg(t, '#' ORDER BY t)) FROM (
+           SELECT id || '|0|' || coalesce(winner_team_id::text, '') AS t FROM public.series
+           UNION ALL
+           SELECT series_id || '|' || game_number || '|' || winner_team_id FROM public.series_game_scores) x`,
+      );
+    const seedPre00020 = () =>
+      mustSucceed(
+        '9 fixture re-seeded in the live pre-00020 shape (fixture + committed 00016 + 2026 WCF OKC-first)',
+        psql({ file: `ALTER TABLE public.series DROP COLUMN IF EXISTS league;\n${fixtureSeedText}\n${migration016Text}\n${LIVE_SHAPE_2026_WCF_SQL}` }),
+      );
+    const archivedWhere = (cond) =>
+      Number(psqlValue(`SELECT count(*) FROM public.series s WHERE s.winner_team_id IS NOT NULL AND ${cond}`));
+    const homeIsTeamA = (n) =>
+      archivedWhere(`EXISTS (SELECT 1 FROM public.series_game_scores g WHERE g.series_id = s.id AND g.game_number = ${n} AND g.home_team_id = s.team_a_id)`);
+    const nbaCandidates = () =>
+      archivedWhere(`s.league IN ('NBA','BAA') AND EXISTS (SELECT 1 FROM public.series_game_scores g WHERE g.series_id = s.id AND g.game_number = 7 AND g.home_team_id <> s.team_a_id)`);
+    const abaStoredInTupleOrder = () =>
+      csvAbaSwaps.filter((key) => {
+        const [y, a, b] = key.split(',');
+        return teamAOf(y, a, b) === a;
+      }).length;
+    const census = () =>
+      psqlValue(
+        `SELECT count(*) FILTER (WHERE g.home_score > g.away_score) || ' of ' || count(*) FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id
+          WHERE g.game_number = 7 AND s.league IN ('NBA','BAA') AND s.winner_team_id IS NOT NULL`,
+      );
+
+    // 9a — the pre-state is production's, measured.
+    seedPre00020();
+    const pre = {
+      nba: nbaCandidates(),
+      aba: abaStoredInTupleOrder(),
+      g1: homeIsTeamA(1),
+      g7: homeIsTeamA(7),
+      census: census(),
+      teamScores: teamScoreFingerprint(),
+      winners: winnerFingerprint(),
+      wcf2026: teamAOf(2026, 'OKC', 'SAS'),
+      cle2016g7: gameRow(2016, 'CLE', 'GSW', 7),
+      cle2016g1: gameRow(2016, 'CLE', 'GSW', 1),
+      ind1975g1: gameRow(1975, 'IND', 'DEN', 1),
+      ind1975g7: gameRow(1975, 'IND', 'DEN', 7),
+    };
+    console.log(`9a pre-state: ${pre.nba} NBA/BAA + ${pre.aba} ABA candidates; game 1 home = team_a on ${pre.g1}, Game 7 home = team_a on ${pre.g7}; census ${pre.census}; 2016 G1 ${pre.cle2016g1}, G7 ${pre.cle2016g7}; 1975 G1 ${pre.ind1975g1}, G7 ${pre.ind1975g7}`);
+    assert(
+      '9a the seeded pre-state is production\'s: 42 NBA/BAA + 6 ABA candidates, game 1 home = team_a on 178, Game 7 home = team_a on 136 (178 - 42: the 6 ABA candidates are winner-fiction rows that name team_a), census 117 of 160, 2026 WCF stored OKC-first',
+      pre.nba === 42 && pre.aba === 6 && pre.g1 === 178 && pre.g7 === 136 && pre.census === '117 of 160' && pre.wcf2026 === 'OKC',
+      JSON.stringify(pre),
+    );
+    mustSucceed(
+      '9a snapshot of the stored team_a before the apply',
+      psql({ sql: 'DROP TABLE IF EXISTS rehearsal_pre_00020_slots; CREATE TABLE rehearsal_pre_00020_slots AS SELECT id, team_a_id FROM public.series;' }),
+    );
+
+    const flipped = (row) => {
+      const m = /^(\w+) (\d+)-(\d+) (\w+) (w=\w+)$/.exec(row);
+      return m ? `${m[4]} ${m[3]}-${m[2]} ${m[1]} ${m[5]}` : 'unparsed';
+    };
+    // 9b — the clean apply.
+    const firstApply = psql({ file: migration020Text });
+    mustSucceed(`9b ${migration020File} applies cleanly over the live-shape fixture`, firstApply);
+    assert(
+      '9b the apply announced 42 NBA/BAA + 6 ABA',
+      /re-keying 42 NBA\/BAA \+ 6 ABA archived series/.test(`${firstApply.stdout ?? ''}${firstApply.stderr ?? ''}`),
+    );
+    const rekeyed = Number(psqlValue('SELECT count(*) FROM public.series s JOIN rehearsal_pre_00020_slots p ON p.id = s.id WHERE p.team_a_id <> s.team_a_id'));
+    const rekeyedGames16 = psqlValue(
+      `SELECT count(*) || '|' || count(*) FILTER (WHERE g.home_team_id <> s.team_a_id)
+         FROM public.series s JOIN rehearsal_pre_00020_slots p ON p.id = s.id AND p.team_a_id <> s.team_a_id
+         JOIN public.series_game_scores g ON g.series_id = s.id AND g.game_number BETWEEN 1 AND 6`,
+    );
+    mustSucceed('9b drop the slot snapshot', psql({ sql: 'DROP TABLE rehearsal_pre_00020_slots;' }));
+    assert(`9b exactly 48 series had their slots exchanged (measured ${rekeyed})`, rekeyed === 48);
+    assert(
+      `9b every one of the 288 game 1-6 rows of the 48 re-keyed series names the new team_a as home (read rows|not-team_a-home ${rekeyedGames16})`,
+      rekeyedGames16 === '288|0',
+    );
+    assert(
+      '9b Game 7 home = team_a on 178/178 and game 1 home = team_a on 178/178',
+      homeIsTeamA(7) === 178 && homeIsTeamA(1) === 178,
+      `g7 ${homeIsTeamA(7)}, g1 ${homeIsTeamA(1)}`,
+    );
+    {
+      const games16 = psqlValue(
+        `SELECT count(*) || '|' || coalesce(string_agg(CASE WHEN g.home_team_id <> s.team_a_id
+                  THEN s.year || ' ' || ${abbrOf('s.team_a_id')} || '/' || ${abbrOf('s.team_b_id')} || ' g' || g.game_number END, ',' ORDER BY s.year, g.game_number), '')
+           FROM public.series_game_scores g JOIN public.series s ON s.id = g.series_id
+          WHERE g.game_number BETWEEN 1 AND 6 AND s.winner_team_id IS NOT NULL`,
+      );
+      assert(
+        `9b games 1-6: 1,068 archived rows, and the only ones not team_a-home are the pipeline-born 2026 WCF's real SAS-home games 3, 4, 6 (read ${games16})`,
+        games16 === '1068|2026 OKC/SAS g3,2026 OKC/SAS g4,2026 OKC/SAS g6',
+      );
+    }
+    assert('9b every per-team score is unchanged (the (series, game, team, score) multiset fingerprint is identical)', teamScoreFingerprint() === pre.teamScores);
+    assert('9b every winner is unchanged (series and game rows)', winnerFingerprint() === pre.winners);
+    assert(`9b the NBA/BAA Game 7 census still reads 117 of 160 (read ${census()})`, census() === '117 of 160');
+    assert(
+      '9b NBA swap (2016 CLE/GSW): team_a is now GSW, games 1-6 home GSW with scores swapped, Game 7 row untouched, CLE still the winner',
+      teamAOf(2016, 'CLE', 'GSW') === 'GSW' &&
+        psqlValue(`SELECT ${abbrOf('winner_team_id')} FROM public.series WHERE id = ${s20(2016, 'CLE', 'GSW')}`) === 'CLE' &&
+        gameRow(2016, 'CLE', 'GSW', 7) === pre.cle2016g7 &&
+        gameRow(2016, 'CLE', 'GSW', 1) === flipped(pre.cle2016g1),
+      `G1 ${gameRow(2016, 'CLE', 'GSW', 1)} (was ${pre.cle2016g1}), G7 ${gameRow(2016, 'CLE', 'GSW', 7)} (was ${pre.cle2016g7})`,
+    );
+    assert(
+      '9b ABA swap (1975 IND/DEN): team_a is now DEN, games 1 and 7 home DEN with scores swapped, IND still the winner',
+      teamAOf(1975, 'IND', 'DEN') === 'DEN' &&
+        psqlValue(`SELECT ${abbrOf('winner_team_id')} FROM public.series WHERE id = ${s20(1975, 'IND', 'DEN')}`) === 'IND' &&
+        gameRow(1975, 'IND', 'DEN', 1) === flipped(pre.ind1975g1) &&
+        gameRow(1975, 'IND', 'DEN', 7) === flipped(pre.ind1975g7) &&
+        gameRow(1975, 'IND', 'DEN', 7).startsWith('DEN '),
+      `G1 ${gameRow(1975, 'IND', 'DEN', 1)}, G7 ${gameRow(1975, 'IND', 'DEN', 7)}`,
+    );
+    assert(
+      '9b already home-first rows are untouched: 1998 CHI/IND keeps team_a CHI, 2026 WCF keeps team_a OKC, 1976 DEN/KEN (ABA, host = team_a) keeps team_a DEN',
+      teamAOf(1998, 'CHI', 'IND') === 'CHI' && teamAOf(2026, 'OKC', 'SAS') === 'OKC' && teamAOf(1976, 'DEN', 'KEN') === 'DEN',
+    );
+
+    // 9c — re-apply: a no-op that passes every guard.
+    const fpAfterFirst = fullFingerprint();
+    const reapply = psql({ file: migration020Text });
+    mustSucceed(`9c ${migration020File} re-applies cleanly over itself`, reapply);
+    assert(
+      '9c the re-apply found 0 NBA/BAA + 0 ABA candidates and left both tables byte-identical',
+      /0 NBA\/BAA \+ 0 ABA candidates/.test(`${reapply.stdout ?? ''}${reapply.stderr ?? ''}`) && fullFingerprint() === fpAfterFirst,
+    );
+
+    // 9d — each pre-guard refusing a tampered PRE-state on a full apply.
+    const rejected20 = (label, pattern, tamperSql, fileText) => {
+      seedPre00020();
+      if (tamperSql !== '') mustSucceed(`${label}: tamper SQL applied`, psql({ file: tamperSql }));
+      const before = fullFingerprint();
+      const res = psql({ file: fileText });
+      const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
+      if (res.status === 0) throw new RehearsalFailure(`${label}: 00020 unexpectedly SUCCEEDED — the guard cannot fail:\n${out}`);
+      if (!pattern.test(out)) throw new RehearsalFailure(`${label}: rejected for an unexpected reason:\n${out}`);
+      assert(`${label} — abort observed; both tables byte-identical afterwards`, fullFingerprint() === before);
+    };
+    const swapGameSql = (year, x, y, where) =>
+      `UPDATE public.series_game_scores g
+          SET home_team_id = g.away_team_id, away_team_id = g.home_team_id, home_score = g.away_score, away_score = g.home_score
+        WHERE g.series_id = ${s20(year, x, y)} AND ${where};`;
+    const swapSlotsSql = (year, x, y) => `UPDATE public.series s SET team_a_id = s.team_b_id, team_b_id = s.team_a_id WHERE s.id = ${s20(year, x, y)};`;
+
+    rejected20(
+      '9d guard swap_count: one more NBA/BAA candidate (1998 CHI/IND Game 7 flipped) aborts naming 43 + 6',
+      /00020 guard swap_count: found 43 NBA\/BAA and 6 ABA candidate series/,
+      swapGameSql(1998, 'CHI', 'IND', 'g.game_number = 7'),
+      migration020Text,
+    );
+    rejected20(
+      '9d guard swap_count: an ABA series already re-keyed alone (1975 IND/DEN) aborts naming 42 + 5',
+      /00020 guard swap_count: found 42 NBA\/BAA and 5 ABA candidate series/,
+      `${swapSlotsSql(1975, 'IND', 'DEN')}\n${swapGameSql(1975, 'IND', 'DEN', 'true')}`,
+      migration020Text,
+    );
+    rejected20(
+      '9d guard aba_tuple_match: a tuple matching ZERO series (1975 IND/DEN deleted) aborts naming the tuple',
+      /00020 guard aba_tuple_match: ABA tuple \(1975, IND, DEN\) matches 0 series/,
+      `DELETE FROM public.series WHERE id = ${s20(1975, 'IND', 'DEN')};`,
+      migration020Text,
+    );
+    rejected20(
+      '9d guard aba_tuple_match: a tuple matching TWO series (a 1973 KEN/IND slot twin) aborts naming the tuple',
+      /00020 guard aba_tuple_match: ABA tuple \(1973, IND, KEN\) matches 2 series/,
+      `INSERT INTO public.series (year, round, team_a_id, team_b_id, winner_team_id, league)
+         VALUES (1973, 'Rehearsal Twin', (SELECT id FROM public.teams WHERE abbreviation = 'KEN'), (SELECT id FROM public.teams WHERE abbreviation = 'IND'),
+                 (SELECT id FROM public.teams WHERE abbreviation = 'KEN'), 'ABA');`,
+      migration020Text,
+    );
+    rejected20(
+      '9d guard candidate_shape: an ABA candidate whose Game 7 already names team_b (1975) is refused, not rewritten',
+      /00020 guard candidate_shape: 1 candidate series are not in the expected pre-swap shape \(e\.g\. series 1975 \(IND vs DEN, ABA\): 6 of games 1-6/,
+      swapGameSql(1975, 'IND', 'DEN', 'g.game_number = 7'),
+      migration020Text,
+    );
+    rejected20(
+      '9d guard candidate_shape: an NBA candidate whose game 4 is not team_a-home (2016 CLE/GSW) is refused, not rewritten — games 2-6 are checked, not just game 1',
+      /00020 guard candidate_shape: 1 candidate series are not in the expected pre-swap shape \(e\.g\. series 2016 \(CLE vs GSW, NBA\): 5 of games 1-6/,
+      swapGameSql(2016, 'CLE', 'GSW', 'g.game_number = 4'),
+      migration020Text,
+    );
+
+    // 9e — each post-condition guard refusing a corruption injected between the
+    //      swap and the guards (the committed text, split at its marker).
+    const withCorruption = (sql) => `${m20Head}\n-- rehearsal corruption (section 9e)\n${sql}\n${POST_MARKER}${m20Tail}`;
+    rejected20(
+      '9e guard game1_home_is_team_a: a game 1 left away-home after the swap aborts naming 1 of 178',
+      /00020 guard game1_home_is_team_a: 1 of 178 archived series/,
+      '',
+      withCorruption(swapGameSql(1975, 'IND', 'DEN', 'g.game_number = 1')),
+    );
+    rejected20(
+      '9e guard game7_home_is_team_a: a Game 7 not hosted by team_a aborts naming 1 of 178',
+      /00020 guard game7_home_is_team_a: 1 of 178 archived series/,
+      '',
+      withCorruption(swapGameSql(1998, 'CHI', 'IND', 'g.game_number = 7')),
+    );
+    rejected20(
+      '9e guard swapped_games_1_6_home_is_team_a: a re-keyed series with game 4 left on the old home side aborts naming 1 row',
+      /00020 guard swapped_games_1_6_home_is_team_a: 1 game 1-6 rows of re-keyed series/,
+      '',
+      withCorruption(swapGameSql(2016, 'CLE', 'GSW', 'g.game_number = 4')),
+    );
+    rejected20(
+      '9e guard aba_game7_home_win_census: one ABA host turned into a Game 7 loser lands 11 of 18 and aborts (the NBA/BAA census untouched)',
+      /00020 guard aba_game7_home_win_census: ABA Game 7 home wins = 11 of 18/,
+      '',
+      withCorruption(`UPDATE public.series_game_scores g SET home_score = 100 WHERE g.series_id = ${s20(1976, 'DEN', 'KEN')} AND g.game_number = 7;`),
+    );
+    rejected20(
+      '9e guard team_scores_unchanged: one score moved without its team aborts naming 1 lost / 1 gained',
+      /00020 guard team_scores_unchanged: the per-team score multiset changed \(1 \(series, game, team, score\) entries lost, 1 gained\)/,
+      '',
+      withCorruption(`UPDATE public.series_game_scores g SET away_score = g.away_score + 1 WHERE g.series_id = ${s20(1998, 'CHI', 'IND')} AND g.game_number = 3;`),
+    );
+    rejected20(
+      '9e guard game7_home_win_census: a home-win NBA series relabelled ABA lands 116 of 159 and aborts',
+      /00020 guard game7_home_win_census: NBA\/BAA Game 7 home wins = 116 of 159/,
+      '',
+      withCorruption(`UPDATE public.series SET league = 'ABA' WHERE id = ${s20(1998, 'CHI', 'IND')};`),
+    );
+    rejected20(
+      '9e guard winners_unchanged: a series winner rewritten aborts naming the 2 differing entries',
+      /00020 guard winners_unchanged: 2 winner entries/,
+      '',
+      withCorruption(`UPDATE public.series SET winner_team_id = team_b_id WHERE id = ${s20(1998, 'CHI', 'IND')};`),
+    );
+    rejected20(
+      '9e guard identity_unchanged: a column outside the swap (is_featured) changed aborts naming the 2 differing row images',
+      /00020 guard identity_unchanged: 2 row images/,
+      '',
+      withCorruption(`UPDATE public.series SET is_featured = true WHERE id = ${s20(1998, 'CHI', 'IND')};`),
+    );
+
+    console.log('\nREHEARSAL PASSED: replay order holds, the key enforces, the swap stays a runner-side assertion, 00015\'s RPCs assert, land atomically, and stay service_role-only, Story 2.8\'s ' + (committedMigration ? 'committed 00016 applied inside the ordered replay over the seeded fixture, --check holds on the committed pair, and every guard was observed failing with the post-reject state measured' : 'self-test fixture proves every 00016 guard can fail (SELF-TEST venues — curation still owed by the owner, spec-2-8 D1/D2)') + ', Story 2.5\'s 00017 refresh rewrote all three keys atomically over the synthetic, hand-authored, empty and real-score archives — byte-equal payloads on re-run with updated_at moving, and U11\'s 159/117/59 reproduced from the committed sheet joined to the committed curated CSV, with 00017\'s league guard observed refusing under its own tamper and the tamper leaving nothing behind, and Story 2.13\'s 00018 adding a nullable espn_code over 59 teams rows with the six measured divergences on their franchises, its shape CHECK refusing a display name and its partial unique index refusing a duplicate non-null code, and all four of its post-condition guards observed firing over tampered populations that then proved to have left nothing behind, and Story 4.5\'s 00019 adding series.is_featured (boolean NOT NULL DEFAULT false, its seed UPDATE flagging a pilot id) and series_content with its key, both CHECKs refusing and the cascade acting, RLS on with one read policy and an anon INSERT refused by it, and a clean idempotent re-apply, and Story 6.10\'s 00020 re-keying 42 NBA/BAA + 6 ABA series to home-court first over the live-shape fixture (Game 7 and game 1 home = team_a on 178/178, per-team scores and winners unchanged, 117 of 160 and ABA 12 of 18, the real SAS-home games 3, 4, 6 of the 2026 WCF left alone), its re-apply a byte-identical no-op, and all eleven of its guards observed refusing a tampered state that then proved to have left nothing behind.');
   } finally {
     try {
       const rm = docker(['rm', '-f', container], { allowFail: true });

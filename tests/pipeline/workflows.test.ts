@@ -370,10 +370,12 @@ describe('migration-rehearsal.yml — the replay certification (CAP-5)', () => {
     // The trigger set equals the rehearsal's input set: the two data files are
     // read by `scripts/rehearse-migration-00014.mjs` (`:347`, `:525`, `:573`),
     // so an edit to either can expire the verdict just as a migration can.
+    // Story 6.10 adds aba_game7_venues.csv, read by the rehearsal's section 9.
     const expected = [
       'docs/NBASeriesResults.xlsx',
       'scripts/rehearse-migration-00014.mjs',
       'supabase/migrations/**',
+      'supabase/scripts/pipeline/data/aba_game7_venues.csv',
       'supabase/scripts/pipeline/data/game7_venues_curated.csv',
       'supabase/scripts/pipeline/venueBackfill.ts',
     ];
