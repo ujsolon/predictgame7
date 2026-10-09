@@ -121,7 +121,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 - FR-9: excluded (Traffic Gate)
 - FR-10, FR-11: Epic 4 — archive surfaces grow prerendered `/series/<id>` routes
 - FR-12: Epic 2 — `insights_cache` refresh owned by pipeline (AD-5)
-- FR-13: Epic 4 — flagship-five content pilot (editorial content model + content load on prerendered pages; two-page spoiler-free structure, featured/active only)
+- FR-13: Epic 4 — editorial content model + two-page spoiler-free structure (Story 4.5); Epic 6 — flagship-five content load (Story 6.5)
 - FR-14, FR-15: Epic 5 — copy pass surfaces; FR-15 also touched by Epic 1 (AD-2 contract)
 - FR-16: Epic 3 — baseline preserved through `handle-contact` migration
 - FR-17: Epic 3 — Resend delivery + events + inline UX
@@ -149,7 +149,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 
 ## Epic List
 
-Execution order (owner decision 2026-10-07, `sprint-change-proposal-2026-10-07.md`): Epic 4 runs before Epic 3; numbering is unchanged. Within Epic 4 the order is 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.6 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`).
+Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7.
 
 ### Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 Users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by a regression suite that every later epic builds on. **Story 1 is the toolchain foundation: migrate `rolldown-vite` shim → `vite@^8` + Vitest + CI test gate — done now, off-peak, while no release pressure exists** (owner decision 2026-09-25; satisfies the spine's "migrate at next dependency touch" and retires the Deferred test-compat question). Then: AD-2 contract consolidation (`_shared/contract.ts`, stale unions deleted), FR-8 error-state overhaul (invalid-input vs service-failure), regression tests on the four highest-risk paths, documented failure-case catalog + manual QA matrix. All new/changed UI carries an AA-clean AC (Radix primitives, contrast tokens, keyboard/screen-reader).
@@ -165,11 +165,15 @@ The owner can read every Traffic Gate figure programmatically and never misses a
 
 ### Epic 4: Shareable, Indexable Predictions
 A completed prediction becomes a circulating artifact: copied links unfurl as OG cards and land on a working page; the archive indexes as 182 static per-series pages (172 full-record non-flagship pages + a preview/result pair for each of the 5 flagships; Active-series pairs added inseason). **Story 4.0 — the AD-1 analytics port** (`src/lib/analytics/`: EVENTS registry, track/identify/resetUser/captureError, provider bootstrap; moved from Epic 3 by `sprint-change-proposal-2026-10-07.md`, so every Epic 4 surface is instrumented through the port from its first deploy; carries the measurement-continuity AC — events fire at identical trigger points, verified in PostHog live view before/after deploy, owner decision 2026-09-25) → build-time OG card renderer (`og/<id>.png` per series + fallback, satori + resvg + `sharp` in the `predeploy` chain; meta in the prerendered pages — amended 2026-10-07, spike) → **`404.html` SPA fallback with a live-deploy AC: cold GET on the real `gh-pages` URL loads the app under the `/predictgame7/` basename** (owner decision 2026-09-25; never tested against pushState routing on this deploy) → `/series/<id>` route + AD-7 prerender step in `predeploy` (route list from DB; series facts only) → Share button UI + attribution hook into Story 4.0's port → **flagship-five content pilot (FR-13, owner decision 2026-09-25): optional per-series editorial content (write-up + YouTube-embed video) rendered and prerendered for 5 pinned flagship series (2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs); all other series stay bare; each flagship ships as a **spoiler-free preview + revealed result pair** (AD-7 amendment, `sprint-change-proposal-2026-09-25.md`); doubles as marketing material**. **Calendar-critical: this epic must be DEPLOYED ≥ 6–8 weeks before Apr 2027 so crawlers index before the spike — its position in the list is not its deadline** (owner decision 2026-09-25).
-**FRs covered:** FR-24, FR-31, FR-13 (scoped pilot) (+ FR-10/11 prerender surfaces); NFRs V1, P1 (build-time card cost), A1 (partial), U1 (partial — flagship page layouts).
+**FRs covered:** FR-24, FR-31, FR-13 (scoped pilot: content model; content load moved to Epic 6) (+ FR-10/11 prerender surfaces); NFRs V1, P1 (build-time card cost), A1 (partial), U1 (partial — flagship page layouts).
 
 ### Epic 5: Release-Quality Polish — the Major Release Itself
 The site reads and feels professional everywhere and ships as the pre-playoff major release. Copy pass (FR-18 / issue #4: Home hero, Insights labels, contact copy, empty/error states; zero mojibake; voice anchors from addendum §H; owner sign-off per surface) → WCAG 2.1 AA verification + remediation across all six surfaces (NFR-A1) → whole-site mobile/desktop responsiveness matrix (NFR-U1) → release ceremony: version bump (minor, NFR-D2), CHANGELOG entry, final `npm run build` + Biome gate. Epic goal note (owner decision 2026-09-25): the AA pass is verification + remediation of what Epics 1–4 built AA-clean; structural accessibility failures found here are recorded as findings against the epic that introduced them, not silently absorbed.
 **FRs covered:** FR-14, FR-15 (copy surface), FR-18; NFRs A1 (verification), U1, D2.
+
+### Epic 6: Discoverability & flagship launch
+Every series page is reachable, readable and shareable by a human-friendly URL, Home is designed and fast, and the five flagship series launch with real editorial content, **all live by about Feb 4–18, 2027** (6–8 weeks before the Traffic Gate window). Created 2026-10-09 (`sprint-change-proposal-2026-10-09.md`) from the Epic 4 pre-retro triage. It takes over Stories 4.6 and 4.9. Runs after Epic 4 and before Epics 3 and 5.
+**FRs covered:** FR-13 (scoped pilot: content load), FR-31 and CAP-8 (readable URLs, entry points), FR-14 (Home); NFRs A1/U1 (new surfaces), P1 (Home weight).
 
 ## Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 
@@ -773,6 +777,8 @@ so that measurement integrity during the gate window is established fact, not a 
 
 Covers FR-31 (share links + OG cards, AD-6), CAP-8 (prerendered series pages, AD-7), and the FR-13 flagship-five content pilot (owner decision 2026-09-25; Q-5 resolved as external YouTube embeds; the five pinned in Story 4.6). **Calendar-critical: everything here must be DEPLOYED ≥6–8 weeks before the Apr 2027 playoff window** — OG cards need social-platform cache warm-up and prerendered pages need crawl/index lead time to pay off during the gate window. SM-3 (share-link arrivals) attribution lands here, and so does the AD-1 analytics port (Story 4.0) every Epic 4 event emits through.
 
+*2026-10-09: Stories 4.6 and 4.9 moved to Epic 6 (`sprint-change-proposal-2026-10-09.md`); Epic 4 closes with 4.0–4.5, 4.7, 4.8.*
+
 ### Story 4.0: Analytics isolation layer (AD-1 port)
 
 *Moved from Epic 3 (was Story 3.1) by `sprint-change-proposal-2026-10-07.md`, owner decision 2026-10-07: it runs first because every Epic 4 surface emits through it.*
@@ -880,22 +886,9 @@ so that flagship series can carry full additional content while every other seri
 **And** `docs/CURRENT_DATA_MODEL.md` updated in the same commit as the schema change
 **And** this story also owns the pending-Game-7 **Home highlight's visual treatment** (owner call 2026-09-29, `sprint-change-proposal-2026-09-29.md` §4.9): a **div on Home, not a route** — `CurrentGame7sPage.tsx` is deleted — presenting the certified 3–3 series' context and the drama, with its card resolving to that series' preview page (`/series/<id>`, UX-DR-2) and a deep-link into the Predict flow. Story 2.7 asserts the *data* reach; the rendering, copy, AA floor (NFR-A1) and responsive behavior (NFR-U1) are decided here. It is a highlight of an already-derived pending series — no new data state, and nothing that reads `status`
 
-### Story 4.6: Flagship five content load
+### Story 4.6: Flagship five content load → moved to Epic 6 (Story 6.5)
 
-*Deferred 2026-10-08 (owner decision): scoped after the Epic 4 retro, together with Story 4.9 and the open deferred items, because its Home featured cards overlap 4.9's Home redesign. The retro decides whether it ships as an Epic 4 follow-up or in a later epic. The flagship content must still be live 6–8 weeks before Apr 1, 2027 (about Feb 4–18, 2027).*
-
-As the owner,
-I want write-ups + video embeds authored and loaded for the 5 flagship series — pinned (owner decision 2026-09-25), worked in chronological order: **2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers, 2026 Thunder–Spurs**,
-so that the pilot doubles as marketing material and the SEO test runs on pages actually worth sharing — the 3–3 page is the ad, the result page the payoff; prediction links appear only on the 3–3 view.
-
-**Acceptance Criteria:**
-
-**Given** Story 4.5's content model deployed
-**When** the owner authors both halves (before + resolution) for the 5 pinned flagship series (in the chronological order above) and loads it via the owner-side script
-**Then** all 5 flagship preview/result pairs show their content on the deployed site (preview write-up spoiler-free; result write-up + at least one video embed each), verified live before the ≥6–8-week pre-window cutoff
-**And** the 172 non-flagship series verify unchanged (bare) on a sample basis
-**And** content authoring is owner work tracked in this story; any loading/validation tooling built for it stays owner-local or in `supabase/scripts/`
-**And** flagship series are discoverable as such — Home hotspot/featured cards and archive views link through to the enriched pages (FR-14 deep-link pattern preserved)
+*Moved 2026-10-09 by `sprint-change-proposal-2026-10-09.md`. Its acceptance criteria now live in Story 6.5; its Home featured cards moved to Stories 6.3/6.4. Historical records written before 2026-10-09 cite it as Story 4.6.*
 
 ### Story 4.7: Epic verification — the sharing round-trip in production
 
@@ -933,22 +926,71 @@ so that the full archive (count pinned by Story 2.1's audit) is crawlable withou
 **And** new Active Series pages are generated by subsequent builds during the playoff window (pipeline data → next build → prerender)
 **And** the prerender also writes `dist/sitemap.xml` (every prerendered series and result URL plus the four app routes, absolute under `https://ujsolon.github.io/predictgame7/`) and a `robots.txt` that points to it — the list Story 4.7's crawl spot-check samples (added 2026-10-07: no story owned it)
 
-### Story 4.9: Home pending-Game-7 highlight — design session, mockup and redesign
+### Story 4.9: Home pending-Game-7 highlight — design session, mockup and redesign → moved to Epic 6 (Stories 6.3–6.4)
 
-*Added 2026-10-08 (owner decision after the 0.2.10 deploy). Story 4.5 shipped the Home highlight cards and the EXPERIENCE.md empty state ("No active series right now — the next Game 7 is coming." + "Every Game 7 has a history."). On the live front page the empty state read badly, and the cards had never been seen, because no series has been pending since they shipped. The empty state was withdrawn the same day: Home renders nothing when nothing is pending, as before 4.5. The cards stay live but undesigned. This story owns the redesign.*
+*Moved 2026-10-09 by `sprint-change-proposal-2026-10-09.md`. The design session is Story 6.3 and the build is Story 6.4. Historical records written before 2026-10-09 cite it as Story 4.9.*
 
-As the owner,
-I want the Home pending-Game-7 highlight designed with a proper mockup before it ships again,
-so that the front page shows live Game 7 drama well during the playoffs and stays clean when there is none.
+## Epic 6: Discoverability & flagship launch — every series page reachable, Home designed, flagships live
 
-**Acceptance Criteria:**
+Created 2026-10-09 (`sprint-change-proposal-2026-10-09.md`) from the Epic 4 pre-retro triage (`../implementation-artifacts/epic-4-retro-inputs.md` § 0a; owner decisions are not re-decided here). **Calendar-critical: live by about Feb 4–18, 2027.** Order matters inside the window: URL changes (6.1) land first, so shared links, OG caches and the Search Console index settle on final URLs, and content (6.5) lands last, onto final pages. Content storage stays hybrid (A): text and YouTube ids in `series_content`, images in `public/editorial/`. Contributor authoring is parked; if it is ever wanted, the migration is files-as-CMS (B).
 
-**Given** a UX design session (`bmad-ux`, or `bmad-party-mode` with the UX designer) run before any code
-**When** it closes
-**Then** a mockup under `_bmad-output/planning-artifacts/ux-designs/…/mockups/` shows the Home highlight with **simulated active series**: one pending series, several at once, and the off-season state, at desktop and mobile widths
-**And** the session decides when anything shows with no pending series. Options include nothing at all, a recency window (for example a Game 7 decided in the last N days), or a playoff-window-only line. Any time-based rule must still derive phase per AD-4 and never read `series.status`, and the decision is recorded in DESIGN.md / EXPERIENCE.md, replacing the withdrawn empty-state row for Home
-**And** the implemented highlight matches the approved mockup, AA (NFR-A1), responsive (NFR-U1), with no layout shift on Home loads
-**And** it is verified with a seeded or synthetic pending series in a headless browser, because a live 3–3 may not exist when it ships (`measure-predict-latency.mjs` already builds synthetic series)
+### Story 6.1: Readable series URLs
+As a reader who sees a series link in search or chat, I want `/series/<year>/<slug>` URLs, so that the link says what it is.
+**Given** the prerender pipeline (4.8), **When** the build emits series pages, **Then**:
+- each series' canonical URL is `/series/<year>/<slug>/`. The slug uses the spoiler-neutral team order (`src/lib/spoiler-neutral.ts`) and is unique per year; the exact slug rules are decided in this story's spec;
+- the old `/series/<id>/` (and `/result/`) pages are still emitted, as **canonical stubs** pointing at the slug URL, so every shared or indexed uuid link keeps working and never goes stale on additive `gh-pages` publishes;
+- `/series/` and `/series/<year>/` are static stubs that redirect without JS to `/historical` and `/historical?year=<year>`, and Historical reads `?year=`;
+- `og:url`, canonical, the sitemap and the Share URL builders (4.4) use the slug URL;
+- `og:image:alt` (and `twitter:image:alt`) name the matchup and never the winner;
+- **first task:** pin the missing tests before the refactor: analytics init and barrel purity (4.0 deferrals), the `?custom=` supersession and the Predict preload race (4.4 deferrals), and the `?series=` else-branch (4.1 deferral);
+- AD-6/AD-7 get an amendment note, and the probe and the analytics walk pass live.
+
+### Story 6.2: Series-page entry points
+As a fan in the app, I want a way into every series page, so that the 183 pages are not orphans.
+**Given** the readable URLs (6.1), **When** a reader opens a series in Historical's record overlay or has a series selected on Predict, **Then** a "Series page" link leads to its page (every series, not only flagships). Historical's filter-reset button gets an accessible name and a ≥44×44 target. AA, responsive.
+
+### Story 6.3: Home design session (from Story 4.9)
+As the owner, I want Home designed before any Home code ships again.
+**Given** a `bmad-ux` session (or party mode with the UX designer) **When** it closes, **Then** a mockup under `ux-designs/…/mockups/` shows Home at desktop and mobile with **simulated active series** (one, several, none), the **flagship featured cards** (taken over from 4.6), and the entry points. The session decides and records in DESIGN.md / EXPERIENCE.md:
+- what Home shows when nothing is pending (replacing the withdrawn row);
+- Home's **image budget** (today ~4.9 MB of backgrounds, LCP ~13.3 s);
+- self-hosting the third-party font (`resource-static.bj.bcebos.com`);
+- the favicon path (requested at the domain root);
+- Home and app-shell `<title>`/meta/OG (4.1 and 4.8 deferrals).
+
+The stale OG mockup (`key-og-card.html`, "3 variants") is corrected in the same session.
+
+### Story 6.4: Home build (from Story 4.9)
+As a visitor, I want a Home that loads fast and shows live and flagship Game 7s well.
+**Given** the approved 6.3 mockup, **When** Home is built, **Then**:
+- the pending card and the flagship cards match it;
+- Home's images meet the budget, the font is self-hosted, and the favicon resolves under `/predictgame7/`;
+- Home has its title and meta;
+- there is no layout shift on load;
+- AA and responsive;
+- it is verified headlessly with a synthetic pending series, and Home LCP is re-measured under the same Slow 4G and 4× CPU profile.
+
+### Story 6.5: Flagship five content load (from Story 4.6)
+As the owner, I want the five flagship pairs live with real content, so that the pilot's SEO and share test runs on pages worth sharing.
+**Given** Stories 6.1–6.4 deployed, **When** the owner authors both halves (before and resolution) for 2013 Heat–Spurs, 2016 Cavs–Warriors, 2019 Raptors–76ers, 2025 Thunder–Pacers and 2026 Thunder–Spurs, **Then**:
+- a small owner-side loader (in `supabase/scripts/` or owner-local) writes `series_content` and sets `updated_at` on every write;
+- every editorial image is **openly licensed with a credit line**; the build refuses a missing credit (as it refuses missing alt text) and resizes to WebP via `sharp`;
+- all five pairs show their content live: the preview spoiler-free, the result with at least one video;
+- a sample of non-flagship pages is verified unchanged;
+- it is **live by about Feb 4–18, 2027**.
+
+### Story 6.6: Bundle trim
+As a phone visitor, I want the app to download only what a page needs. **Given** the 2026-10-09 measurement (JS 308 KB, about 2.4 s on Slow 4G, about 0.4 s of it from 4.5's markdown renderer), **When** it is re-measured after 6.4, **Then** the owner decides whether to code-split the series routes or swap to a smaller renderer. A trim keeps the prerender's synchronous SSR intact (AD-7 no-JS content).
+
+### Story 6.7: Epic verification in production
+As the owner, I want Epic 6 proven live before the window. **Given** 6.1–6.6 deployed, **Then** the following are recorded with dates:
+- a cold GET on a slug URL and on an old uuid link (landing via its stub);
+- the OG debugger on a slug URL;
+- JS-disabled fetches of a flagship preview (spoiler-free, with content) and its result;
+- `probe-deep-links.mjs` and `probe-analytics-walk.mjs` GREEN live;
+- a sitemap spot-check, plus the Search Console status and indexed count;
+- Home LCP re-measured;
+- the deploy date against Feb 4–18, 2027, with an escalation if slipping.
 
 ## Epic 5: Release-Quality Polish — the major release itself
 
@@ -981,7 +1023,7 @@ so that the standing AA bar is verified fact at release, not an assumption from 
 **When** the audit runs (automated scanner + manual keyboard/screen-reader passes)
 **Then** findings are triaged: remediated in this story, or — if structural — recorded as a finding against the epic that introduced it with a fix filed
 **And** remediated items are re-verified; audit results recorded in `_bmad-output/implementation-artifacts/`
-**And** flagship content pages (Story 4.6) pass with video embeds included
+**And** flagship content pages (Story 6.5) pass with video embeds included
 
 ### Story 5.3: Whole-site responsiveness matrix (NFR-U1)
 
@@ -1004,7 +1046,7 @@ so that the pre-playoff major release is traceable and the verification gate is 
 
 **Acceptance Criteria:**
 
-**Given** Stories 5.1–5.3 closed and Epics 1–4 verified
+**Given** Stories 5.1–5.3 closed and Epics 1–4 and 6 verified
 **When** the release ships
 **Then** `package.json` minor bump (single source of truth), `docs/CHANGELOG.md` entry in the same commit, README version number stripped (housekeeping, PRD §8.1)
 **And** final `npm run build` + Biome + full Vitest suite green (verification gate)

@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-09-2026 08:42
+last_updated: 10-09-2026 08:49
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -393,17 +393,24 @@ development_status:
   # 00019 (npx supabase db push) and the prerender + probe run GREEN against it; 4.4 + 4.5 cannot deploy before that.
   # 2026-10-08: 00019 applied + verified; prerender + probe GREEN (115); CI migration rehearsal green on f6007a2 (run 37767944147, section 8 ok).
   4-5-series-editorial-content-model-fr-13-pilot: done
-  # 2026-10-08 remaining order (owner, revised the same day): 4.7 -> epic retro -> scoping of 4.6 + 4.9 + open deferred items.
-  # THE RETRO DECIDES each item's home: small scope ships right after as Epic 4 follow-ups, large scope moves to a later epic.
-  # 4.7's Given amended to 4.0-4.5 + 4.8. Deadline: flagship content (4.6) live by ~Feb 4-18, 2027.
+  # 2026-10-09: Stories 4.6 and 4.9 moved to Epic 6 (sprint-change-proposal-2026-10-09.md); Epic 4 closes with 4.0-4.5, 4.7, 4.8.
   # 2026-10-08: drill on 0.2.11 — 6/7 AC ok; measurement continuity partial (owner decision b: properties not read live), handed to the retro.
   # 2026-10-09: row 5 closed by scripts/probe-analytics-walk.mjs (GREEN, 10/10 events + properties, no prod PostHog, contact stubbed).
   4-7-epic-verification-the-sharing-round-trip-in-production: done
   epic-4-retrospective: optional
-  # 2026-10-08: deferred to post-retro scoping (its Home featured cards overlap 4.9's Home redesign).
-  4-6-flagship-five-content-load: backlog
-  # 2026-10-08: added after the 0.2.10 deploy (owner) — the Home empty state was withdrawn the same day; design session + mockup first.
-  4-9-home-pending-game-7-highlight-redesign: backlog
+
+  # 2026-10-09: Epic 6 created by sprint-change-proposal-2026-10-09.md from the Epic 4 pre-retro triage
+  # (epic-4-retro-inputs.md section 0a). Order: Epic 4 -> Epic 6 -> Epic 3 -> Epic 5. Hard date: live by ~Feb 4-18, 2027.
+  # 6.3/6.4 were Story 4.9 (key 4-9-home-pending-game-7-highlight-redesign); 6.5 was Story 4.6 (key 4-6-flagship-five-content-load).
+  epic-6: backlog
+  6-1-readable-series-urls: backlog
+  6-2-series-page-entry-points: backlog
+  6-3-home-design-session: backlog
+  6-4-home-build: backlog
+  6-5-flagship-five-content-load: backlog
+  6-6-bundle-trim: backlog
+  6-7-epic-verification-in-production: backlog
+  epic-6-retrospective: optional
 
   epic-3: backlog
   3-2-reliable-contact-delivery-via-resend-fr-17-issue-2-phase-2: backlog

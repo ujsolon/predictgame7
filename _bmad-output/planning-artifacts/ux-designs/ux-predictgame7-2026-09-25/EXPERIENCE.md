@@ -110,7 +110,7 @@ Behavioral rules. Visual specs in DESIGN.md · Components.
 | Predict service failure | `/predict` | Existing sonner toast for the mutation + retry panel around the result region; form inputs preserved. |
 | Share copy success | Anywhere share exists | sonner toast: "Link copied." — 2s, no action button. Native share sheet needs no toast (the platform confirms). |
 | Clipboard blocked | Anywhere share exists | sonner toast: "Couldn't copy — long-press the address bar to share." The share URL is the page's own address; the share never dead-ends. |
-| Empty Active list | Home / Historical | "No active series right now — the next Game 7 is coming." + link to the archive: "Every Game 7 has a history." |
+| Empty Active list | Home / Historical | "No active series right now — the next Game 7 is coming." + link to the archive: "Every Game 7 has a history." *Home part withdrawn 2026-10-08 (owner): Home shows nothing when nothing is pending, until Story 6.3's design session decides; Historical unchanged.* |
 | Offseason empty Insights | Insights | Same shared pattern; onward link to Historical. |
 
 ## Interaction Primitives
