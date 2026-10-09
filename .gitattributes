@@ -17,3 +17,5 @@
 supabase/migrations/*.sql text eol=lf
 supabase/scripts/pipeline/data/game7_venues_curated.csv text eol=lf
 supabase/scripts/pipeline/data/game7_feed_aliases.csv text eol=lf
+# Story 6.9: the ABA Game 7 venue file is Story 6.10's generator input, pinned for the same reason.
+supabase/scripts/pipeline/data/aba_game7_venues.csv text eol=lf
