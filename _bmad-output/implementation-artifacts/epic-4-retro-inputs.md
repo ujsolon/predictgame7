@@ -58,6 +58,18 @@ Installed-agent room, pre-retro. Each item was tested for three things: does it 
   - Free-form per-page styling was rejected in favour of a future block/component kit.
 - **Standing rule (owner OK).** Agents edit AGENTS.md and the PRD addendum **only between epics** (retro window), in one batched commit with the diff shown to the owner first. The addendum takes pointers only. Mid-epic findings go to `deferred-work.md`. A dangerous-now statement may be fixed only with the owner's explicit OK.
 
+**Orphan sweep after the party (2026-10-09).** Three Epic 4 deferrals were not discussed in the room. They are placed here:
+- **4.1, the `?series=` else-branch test** (retiring the not-found notice on plain `/predict`) joins step 2's test pins (Predict arrival code).
+- **4.1 pass 2, no document title outside the 404**, and **4.8, Home has no `<title>`/meta/OG** both go to step 4 (the 4.9 design session) and step 5 (the Home build) as Home/app-shell meta.
+
+Already resolved by later stories, so the retro can close them:
+- E14 team order (owner decision, 4.3/4.2);
+- B10 preview outcome in the source (4.8);
+- the silent 404 on an unshowable row (4.8 fails the build);
+- the `error-envelope.ts:68` `isMethodSlug` (4.4);
+- HTTP 404 on app routes (4.8 shells and series pages);
+- D3 and the duplicated validation (4.4).
+
 **Measured during the session** (live, phone viewport, Slow 4G + 4× CPU, 3 runs):
 - **Home:** LCP ~13.3 s, full load ~34 s.
 - **Predict:** FCP ~3.7 s.
