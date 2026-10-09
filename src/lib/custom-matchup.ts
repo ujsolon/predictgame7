@@ -7,7 +7,7 @@
  * Both paths read it, and each keeps its own surface:
  *
  * - `validateCustomMatchup` returns a per-field error map keyed by the field
- *   ids `PredictPage.tsx` renders (`team_a`, `team_b`, `game_<n>_score_<a|b>`),
+ *   ids `src/pages/predict/SeriesCard.tsx` renders (`team_a`, `team_b`, `game_<n>_score_<a|b>`),
  *   shown inline at submit, never per keystroke (Decision 1);
  * - `validateScores` returns the first failure of a stored series' scores in
  *   the same wording, prefixed "Game N:" — series rows are not editable, so

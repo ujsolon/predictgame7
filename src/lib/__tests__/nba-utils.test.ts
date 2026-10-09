@@ -56,7 +56,7 @@ describe("getTeamCode — the stored row wins", () => {
   });
 
   it("matches the row without regard to case, as the caller's index does", () => {
-    // Story 2.11 review pass: `PredictPage`'s U15 index is keyed on the
+    // Story 2.11 review pass: the U15 index (`useSeriesCatalog`'s `rowFor`) is keyed on the
     // lower-cased `full_name`, so a lowercase-typed name reaches this helper
     // holding the right row. A raw-equality arm rejected it and the surface fell
     // back to the initialism the row exists to replace.
@@ -171,7 +171,7 @@ describe("getTeamAbbreviation — the name path, unchanged", () => {
   });
 
   it("returns a falsy value for unknown/blank input so the UI falls back to 'TBD'", () => {
-    // PredictPage.tsx renders `getTeamCode(name, …) || 'TBD'`;
+    // `getSeriesLabel` (`src/pages/predict/SeriesCard.tsx`) renders `…Code(name, …) || 'TBD'`;
     // the util itself has no literal 'TBD' branch.
     expect(getTeamAbbreviation("")).toBe("");
     expect(getTeamAbbreviation("   ")).toBe("");

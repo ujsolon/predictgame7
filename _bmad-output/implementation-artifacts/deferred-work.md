@@ -654,6 +654,7 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-4-1-series-deep-links-404-spa-fallback.md`
   summary: The `else` branch in `PredictPage`'s `?series=` effect, which retires the not-found notice when the reader moves to plain `/predict`, has no test.
   evidence: Review pass 1, verification-gap (row V3), filed by that layer as defer. Cosmetic and recoverable through the picker. One router-navigation test (`/predict?series=abc` → `/predict`, then assert `[data-series-not-found]` is gone) would pin it.
+  pinned: **PINNED 2026-10-09 by Story 6.0** — `src/pages/__tests__/predict-arrival-characterization.test.tsx` ("moving from a not-found ?series= link to plain /predict retires the notice"), green on the unrefactored page before the split; the branch now lives in `src/pages/predict/useSeriesArrival.ts` (`arrive`). Verified to fail with the branch's `setSeriesNotFound(false)` removed.
 
 ## Deferred from: code review of spec-4-1-series-deep-links-404-spa-fallback.md, pass 2 (2026-10-07)
 
@@ -715,14 +716,16 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 ## Deferred from: code review of spec-4-4-share-button-attribution.md (2026-10-08)
 
 - source_spec: `spec-4-4-share-button-attribution.md`
-  summary: The `?custom=` arrival's `seriesLoadSeq` supersession (`PredictPage.tsx:142`) has no test with a `?series=` preload still in flight.
+  summary: The `?custom=` arrival's `seriesLoadSeq` supersession (`PredictPage.tsx:142` at filing; since Story 6.0 it is the `seriesLoadSeq.current++` in `arrive`, `src/pages/predict/useSeriesArrival.ts`) has no test with a `?series=` preload still in flight.
   evidence: Review pass 1, verification-gap (row V2), pre-verified: deleting line 142 lets a late `loadSeriesById` response select a series over a broken custom link and clear its notice, with every test green. It needs an in-app move from `/predict?series=<id>` to `/predict?custom=<bad>` within one request's lifetime. The same sequence mechanism is pinned for the other supersession routes (Stories 4.1, 1.3). The test: hold `maybeSingle` pending, navigate, resolve, and assert the notice stands and no series is selected.
+  pinned: **PINNED 2026-10-09 by Story 6.0** — `src/pages/__tests__/predict-arrival-characterization.test.tsx` ("a ?custom= arrival supersedes a ?series= preload still in flight"), green on the unrefactored page before the split; the bump now lives in `src/pages/predict/useSeriesArrival.ts` (`arrive`). Verified to fail with the `seriesLoadSeq.current++` removed.
 - source_spec: `spec-4-4-share-button-attribution.md`
   summary: PRD addendum §A.1, which AGENTS.md treats as the canonical event list, does not mention the second deliberate addition, `prediction_shared`.
   evidence: Review pass 1, blind-hunter (row B2). The ten §A.1 names are preserved as AGENTS.md requires. The addition is recorded in `src/lib/analytics/events.ts`'s header, `epic-4-context.md` and Story 4.7 in `epics.md` (owner decision 2026-10-08, option a). Adding a pointer row to §A.1 is a planning-artifact edit for the owner, best done with Story 4.7's continuity comparison or Story 3.4's metric re-pointing.
 - source_spec: `spec-4-4-share-button-attribution.md`
   summary: `PredictPage` discards a prediction whose Generate click lands after a `?series=`/`?custom=` preload has painted but before its effects have run. The reset effect then retires that attempt.
   evidence: Found during the review-pass-1 fixes, as the cause of `predict-share.test.tsx` failing about 1 run in 4 at any timeout. The fix there is test-side only (flush effects before Generate); the page is unchanged. It is a window of less than a frame that no human click reaches, so it is a test-harness hazard first. A page fix would make the reset effect skip the attempt started by the same render (for example by comparing the selection the attempt captured). The owning story is any later change to the Predict reset logic.
+  pinned: **PINNED AS-IS 2026-10-09 by Story 6.0 — still OPEN as a known defect.** `src/pages/__tests__/predict-arrival-characterization.test.tsx` ("a Generate click between a preload commit and its effects is dropped") reproduces the window deterministically (a sibling probe's layout effect clicks Generate inside the preload's commit) and pins today's outcome: one request, no result painted, spinner released, no success toast, no `prediction_generated`. A fix must change that test's expectation on purpose. The reset effect now lives in `src/pages/predict/usePredictController.ts`. **Owner: none.** No queued Epic 6 story (6.1–6.10) owns the race fix; it stays open as a known defect, pinned by the characterization test, until a story is explicitly given it.
 
 ## Deferred from: code review of spec-4-5-series-editorial-content-model.md (2026-10-08)
 
@@ -738,3 +741,12 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: none
   summary: Historical's filter-reset button (`HistoricalPage.tsx:204`) is icon-only (`FilterX`) with no accessible name, and its hit area is 40×40 px (`h-10 w-10`), below the 44×44 px target floor.
   evidence: Seen in the owner's PostHog walk of 2026-10-08 (`analytics-continuity-4-7.md`): autocapture recorded the click as a bare "clicked button" with no text, because the element has no text content and no `aria-label`. A screen reader announces it as just "button" (WCAG 4.1.2 Name, Role, Value), and the hit area misses NFR-U1's 44×44 px bar. It predates Epic 4 (Story 4.0 only added its `track` call), so it is not a regression. The fix is an `aria-label` (e.g. "Reset filters") plus `h-11 w-11`. Natural owner: Epic 5, Story 5.2's AA pass, or the post-retro scoping.
+
+## Deferred from: code review of spec-6-0-predictpage-refactor.md (2026-10-09)
+
+- source_spec: `spec-6-0-predictpage-refactor.md`
+  summary: `src/pages/HomePage.tsx:82` still cites "`PredictPage.tsx`'s `asSeries`", which Story 6.0 moved to `src/pages/predict/types.ts`.
+  evidence: Review pass 1, edge-case-hunter (E2). It is a comment-only stale pointer. 6.0's frozen intent says never touch `HomePage`, so it rides with Story 6.4 (Home build), which rewrites that file anyway.
+- source_spec: `spec-6-0-predictpage-refactor.md`
+  summary: `docs/CURRENT_DATA_MODEL.md:190` cites "`PredictPage.tsx`'s `SERIES_SELECT`"; the select lives in `src/lib/series-query.ts` (since Story 2.7) and the page is now split.
+  evidence: Review pass 1, blind-hunter (B1, part). Pre-existing: it was stale before this diff. Fix it in the Epic 6 start planning-doc reconciliation (Epic 4 retro action 2).

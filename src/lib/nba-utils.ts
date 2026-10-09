@@ -53,7 +53,7 @@ export const getTeamAbbreviation = (name: string): string => {
  *      hit the index and be rejected here);
  *   2. the `Team A`/`Team B` placeholder literal (U8) — load-bearing, not
  *      decorative: the result card's own fallback chain
- *      (`PredictPage.tsx:1192-1193`, `:1289-1290`) can hand this helper the
+ *      (`resolveResultTeams` in `src/pages/predict/resultTeams.ts`) can hand this helper the
  *      literal `'Team A'`, which the map resolved to `TMA` and a bare initialism
  *      would turn into `TA`;
  *   3. `getTeamAbbreviation(name)`, the name path.
