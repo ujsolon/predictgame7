@@ -149,7 +149,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 
 ## Epic List
 
-Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: **6.0 → 6.9 → 6.10 → 6.8 → 6.1** → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Stories 6.0, 6.8, 6.9 and 6.10 were added by the Epic 4 retro and the owner's follow-up decision on 2026-10-09; they keep their numbers and run in this order, as 4.8 did.
+Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: **6.0 → 6.9 → 6.10 → 6.11 → 6.8 → 6.1** → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Stories 6.0, 6.8, 6.9, 6.10 and 6.11 were added by the Epic 4 retro and the owner's follow-up decisions on 2026-10-09; they keep their numbers and run in this order, as 4.8 did.
 
 ### Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 Users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by a regression suite that every later epic builds on. **Story 1 is the toolchain foundation: migrate `rolldown-vite` shim → `vite@^8` + Vitest + CI test gate — done now, off-peak, while no release pressure exists** (owner decision 2026-09-25; satisfies the spine's "migrate at next dependency touch" and retires the Deferred test-compat question). Then: AD-2 contract consolidation (`_shared/contract.ts`, stale unions deleted), FR-8 error-state overhaul (invalid-input vs service-failure), regression tests on the four highest-risk paths, documented failure-case catalog + manual QA matrix. All new/changed UI carries an AA-clean AC (Radix primitives, contrast tokens, keyboard/screen-reader).
@@ -996,6 +996,41 @@ As the owner, I want `series.team_a_id` to be the home-court (Game 7 home) team 
 - AGENTS.md's archive rule ("winner-slot fiction … `team_a` is the winner in 177 of 178") is rewritten in a between-epics window;
 - the next deploy regenerates the cards and pages;
 - a post-apply anon read shows `team_a` = Game 7 home for all NBA/BAA rows, and for the ABA rows per 6.9.
+
+### Story 6.11: Add the 1968 ABA Finals to the archive
+
+*Added 2026-10-09 (owner decision, after the 6.9 spike found the gap). It runs right after 6.10, so its migration (`00021`) is applied by the owner in the same `npx supabase db push` as `00020`.*
+
+As the owner, I want the 1968 ABA Finals (Pittsburgh Pipers over New Orleans Buccaneers, 4–3) in the archive, so that the Game 7 archive is complete for the ABA's first season.
+
+**Given** the series' scores (owner-supplied 2026-10-09, transcribed from the basketball-reference series page; visitor listed first; to be cross-checked against a second source as in 6.9):
+
+| Game | Date | Visitor | Home | Winner |
+|---|---|---|---|---|
+| 1 | Apr 18 | NOB 112 | PTP 120 | PTP |
+| 2 | Apr 20 | NOB 109 | PTP 100 | NOB |
+| 3 | Apr 24 | PTP 101 | NOB 109 | NOB |
+| 4 | Apr 25 | PTP 106 | NOB 105 | PTP |
+| 5 | Apr 27 | NOB 111 | PTP 108 | NOB |
+| 6 | May 1 | PTP 118 | NOB 112 | PTP |
+| 7 | May 4, in Pittsburgh | NOB 113 | PTP 122 | PTP |
+
+**When** the story ships, **Then**:
+- a new `teams` row exists for the **Pittsburgh Pipers** (`PTP`, distinct from the existing `MNP` Minnesota Pipers, per the one-row-per-franchise-name convention), with a logo under `public/assets/teams/` (supplied by the owner, openly licensed or in line with the existing team logos);
+- migration `00021` (written by the agent, rehearsed, applied by the owner) inserts one `series` row:
+  - `year` 1968, `round` "Finals", `league` 'ABA', `winner_team_id` = PTP;
+  - **`team_a` = PTP**, the home-court team (hosted Games 1, 2, 5 and 7), matching 6.10's convention;
+  - plus seven `series_game_scores` rows with real home/away sides, which are known here for every game, so they are real venues, not winner-slot placeholders;
+- phase derives as archive (AD-4); `is_featured` is false;
+- the next deploy renders its OG card, series page and sitemap entry (179 series);
+- **a coverage check comes first:** read the 1968 ABA playoffs, and name any **other** seven-game ABA series missing from the archive for an owner ruling, rather than adding them silently;
+- every count that pins 178 / 18 ABA is updated or explicitly superseded:
+  - `docs/CURRENT_DATA_MODEL.md`'s census;
+  - the tests;
+  - the probe expectations;
+  - AGENTS.md's archive rule, logged for the next between-epics window rather than edited mid-epic.
+
+  The applied `00016` and its committed input file are not edited; the 1968 series gets its own data record.
 
 ### Story 6.1: Readable series URLs
 As a reader who sees a series link in search or chat, I want `/series/<year>/<slug>` URLs, so that the link says what it is.
