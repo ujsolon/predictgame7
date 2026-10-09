@@ -55,7 +55,7 @@ In-epic execution order: 4.0, 4.1, 4.2, 4.3, 4.8, 4.4, 4.5, 4.6, 4.7. Release 0.
   - `/series/<id>?method=<slug>` client-redirects to `/predict?series=<id>&method=<slug>`. Any other query param is dropped today; Story 4.4 is what makes `utm_source` survive the redirect.
   - `/predict?custom=<url-safe base64>` follows the `SharePayload` schema in `supabase/functions/_shared/contract.ts` (AD-2), which is the single source for both the encoder and the decoder.
   - The build emits `404.html` as the SPA fallback.
-- **OG meta never comes from an Edge Function.** Supabase rewrites `text/html` responses to `text/plain`. The `share-og` function is retired, and **no Edge Function is added in this epic**.
+- **OG meta never comes from an Edge Function.** Supabase rewrites `text/html` responses to `text/plain`. A `share-og` Edge Function was spiked and dropped at the 2026-10-07 re-cut (proposal c) before it ever reached `supabase/functions/`, and **no Edge Function is added in this epic**.
 - **OG cards** are static 1200×630 PNGs rendered at build time in the `predeploy` chain:
   - one `dist/og/<series-id>.png` per phase-deriving series — archive **and** pending, never `status`, dates or `league` — plus `dist/og/fallback.png`;
   - the step uses satori + `@resvg/resvg-js` + `sharp` as devDependencies and must be type-checked and linted by the gate (not an unchecked `.mjs`);

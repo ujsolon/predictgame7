@@ -30,6 +30,8 @@ Depth material that earned a place but doesn't fit the PRD body: technical imple
 | `contact_form_submitted` | Contact conversion (`_started`/`_failed` are FR-17 additions) |
 | `historical_series_expanded` / `historical_filter_applied` | Archive engagement |
 
+*Pointer (2026-10-09, Epic 4 retro): the registry above is preserved verbatim. Epic 4 added two owner-approved emissions beside it: a `filter_type: 'reset'` value on `historical_filter_applied` (Story 4.0, decision D1, 2026-10-07) and a new event, `prediction_shared` `{ surface, kind, channel }` (Story 4.4, owner decision 2026-10-08), the share-tap supply side of SM-3. The live list is `src/lib/analytics/events.ts`, and the evidence is `_bmad-output/implementation-artifacts/analytics-continuity-4-7.md`.*
+
 **Existing assets (FR-25 starting point — do not rebuild):** Analytics basics dashboard (`/dashboard/1649509`); Prediction Funnel: Series → Method → Prediction (`/insights/cu0V4HPZ`); Predictions Generated Over Time; Prediction Method Popularity; Detailed Analysis Conversion Rate; Home Page Engagement. Wizard-generated IDs are disposable pointers behind the NFR-V1 query layer.
 
 **Auth instrumentation:** `identify(supabase_user_id)` on sign-in/sign-up + `posthog.reset()` on sign-out — **no named auth events** (PRD FR-24 corrected accordingly). Supabase user ID acts as a pseudonymous distinct_id (relevant to NFR-S2). The identify/reset lifecycle changes distinct_id mid-session and affects person merging — **SM-1's unique-visitor definition must be pinned in writing before Apr 2027** (FR-25 consequence).
