@@ -750,3 +750,12 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-6-0-predictpage-refactor.md`
   summary: `docs/CURRENT_DATA_MODEL.md:190` cites "`PredictPage.tsx`'s `SERIES_SELECT`"; the select lives in `src/lib/series-query.ts` (since Story 2.7) and the page is now split.
   evidence: Review pass 1, blind-hunter (B1, part). Pre-existing: it was stale before this diff. Fix it in the Epic 6 start planning-doc reconciliation (Epic 4 retro action 2).
+
+## Deferred from: code review of spec-6-9-aba-game-7-venue-spike.md (2026-10-09)
+
+- source_spec: `spec-6-9-aba-game-7-venue-spike.md`
+  summary: **Archive coverage gap (owner decision needed):** the 1968 ABA Finals (Pittsburgh Pipers over New Orleans Buccaneers) went seven games but is not in the archive. The archive has no 1968 ABA series at all (anon read 2026-10-09).
+  evidence: Found by the 6.9 spike (basketball-reference 1968 season page) and confirmed with a live anon REST read filtered to `league=ABA&year=1968`, which returned no rows. Adding it is not a one-row insert: the archive counts 178 / 160 / 18 are pinned as literals by owner decision D5 (Story 2.8) in `supabase/scripts/pipeline/venueBackfill.ts` and `00016`'s guards. It also needs seven `series_game_scores` rows, the census in `docs/CURRENT_DATA_MODEL.md`, a new OG card, page and sitemap entry, and a check for other missing seven-game series. The owner's call: add it (a data story in a later epic) or record it as out of scope.
+- source_spec: `spec-6-9-aba-game-7-venue-spike.md`
+  summary: Story 6.10 must read the `aba_game7_venues.csv` `note` column by its documented rule: a note starting with `info:` is a remark on a **settled** row; only other non-blank notes mean unsettled.
+  evidence: Review pass 1, blind-hunter (B5). Six of the 18 settled rows carry `info:` remarks (e.g. a team playing some home games in another city, but Game 7 at home). The frozen 6.9 definition reserved `note` for the reasons a row is unsettled, and the CSV header documents the `info:` prefix. 6.10's spec must state the rule so its migration generator does not hold back 6 settled rows.

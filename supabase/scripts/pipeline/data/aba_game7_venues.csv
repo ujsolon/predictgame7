@@ -1,0 +1,58 @@
+# aba_game7_venues.csv — Story 6.9 (ABA Game 7 venue spike): the real Game 7 home team
+#   of the 18 archived ABA series that game7_venues_curated.csv leaves blank by scope.
+#   Curated, NOT yet applied: Story 6.10's re-key migration is the consumer. Nothing
+#   reads this file today, and game7_venues_curated.csv (the input of the applied 00016)
+#   is deliberately left untouched. Guarded by tests/pipeline/aba-game7-venues.test.ts.
+#
+# Columns (in this exact order; no field contains a comma, so no quoting is used):
+#   year             — calendar year of the series, as in game7_venues_curated.csv
+#   team_a           — the archive's stored slot one (the SERIES WINNER), copied verbatim
+#                      from the matching ABA row of game7_venues_curated.csv
+#   team_b           — the stored slot two (the series loser), copied verbatim
+#   game7_home_team  — teams.abbreviation of the real Game 7 home team: one of team_a /
+#                      team_b, or blank with a note when unsettled (none are blank)
+#   source           — primary citation (basketball-reference.com), always of this shape:
+#                      <season playoff page URL> (<series section>: Game 7 <date>
+#                      <visitor> <pts> @ <home> <pts>[; box <box score URL>: <date> <arena>
+#                      <city>]). The season page's "Playoff Series" box prints the Game 7
+#                      line. The bracketed box-score part is present on the 9 rows whose
+#                      Game 7 box score was read; on the other 9 the season page is the
+#                      whole primary citation.
+#   cross_check      — independent citation: the Wikipedia "<year> ABA playoffs" article
+#                      (CC BY-SA 4.0), or "1971 ABA Finals" for that series, of the shape
+#                      <URL> (<series section>: Game 7 <date> <arena> <city>). Every row
+#                      carries the Game 7 date: the article gives it on all 18.
+#   note             — blank when settled (two sources agree); otherwise single-source /
+#                      conflict <a> vs <b> / neutral / why unsettled. Non-venue remarks
+#                      are prefixed "info:"
+#
+# Sources and method (owner decisions 2026-10-09: 1a sources, 2a manual lookups), each
+#   page read one at a time with the agent's web tool on 2026-10-09; no script, no
+#   fetcher committed. Pages read (distinct pages / reads):
+#   basketball-reference.com — 18 pages / 18 reads: the 9 season pages ABA_1968..ABA_1976
+#     (1968 for the coverage check only) + the 9 Game 7 box scores cited below.
+#   Wikipedia — 9 pages / 11 reads: the 8 season articles 1969..1976 + "1971 ABA Finals";
+#     the 1969 article was read three times (series list; Miami-Minnesota; Game 7 dates).
+# Settled = both sources name the same Game 7 host: 18 of 18. game7_home_team = stored
+#   team_a on 12; = team_b on 6 (1971 UTS/IND, 1972 IND/UTS, 1972 NYN/VAS, 1973 IND/KEN,
+#   1973 KEN/CAC, 1975 IND/DEN) — the six ABA rows Story 6.10 must swap. ABA Game 7 home
+#   record over these 18: 12-6. Full report: spec-6-9-aba-game-7-venue-spike.md.
+year,team_a,team_b,game7_home_team,source,cross_check,note
+1969,IND,KEN,IND,https://www.basketball-reference.com/playoffs/ABA_1969.html (Eastern Division Semifinals Pacers v Colonels: Game 7 Thu April 17 Kentucky Colonels 111 @ Indiana Pacers 120),https://en.wikipedia.org/wiki/1969_ABA_playoffs (Division Semifinals Indiana v Kentucky: Game 7 April 17 Indiana State Fairgrounds Coliseum Indianapolis),
+1969,MFL,MNP,MFL,https://www.basketball-reference.com/playoffs/ABA_1969.html (Eastern Division Semifinals Floridians v Pipers: Game 7 Sat April 19 Minnesota Pipers 128 @ Miami Floridians 137),https://en.wikipedia.org/wiki/1969_ABA_playoffs (Division Semifinals Miami v Minnesota: Game 7 April 19 Miami Beach Auditorium Miami Beach),info: regional home schedule (Game 2 at West Palm Beach) but Game 7 at Miami's primary arena
+1969,NOB,DCH,NOB,https://www.basketball-reference.com/playoffs/ABA_1969.html (Western Division Semifinals Buccaneers v Chaparrals: Game 7 Thu April 17 Dallas Chaparrals 95 @ New Orleans Buccaneers 101),https://en.wikipedia.org/wiki/1969_ABA_playoffs (Division Semifinals New Orleans v Dallas: Game 7 April 17 Loyola Field House New Orleans),
+1969,OAK,DNR,OAK,https://www.basketball-reference.com/playoffs/ABA_1969.html (Western Division Semifinals Oaks v Rockets: Game 7 Wed April 16 Denver Rockets 102 @ Oakland Oaks 115),https://en.wikipedia.org/wiki/1969_ABA_playoffs (Division Semifinals Oakland v Denver: Game 7 April 16 Oakland-Alameda County Coliseum Arena Oakland),
+1970,DNR,WSC,DNR,https://www.basketball-reference.com/playoffs/ABA_1970.html (Western Division Semifinals Rockets v Capitols: Game 7 Tue April 28 Washington Capitols 119 @ Denver Rockets 143),https://en.wikipedia.org/wiki/1970_ABA_playoffs (Division Semifinals Denver v Washington: Game 7 April 28 Denver Auditorium Arena Denver),info: WSC is the 1969 OAK franchise relocated
+1970,KEN,NYN,KEN,https://www.basketball-reference.com/playoffs/ABA_1970.html (Eastern Division Semifinals Colonels v Nets: Game 7 Wed April 29 New York Nets 101 @ Kentucky Colonels 112),https://en.wikipedia.org/wiki/1970_ABA_playoffs (Division Semifinals Kentucky v New York: Game 7 April 29 Louisville Convention Center Louisville),
+1971,UTS,IND,IND,https://www.basketball-reference.com/playoffs/ABA_1971.html (Western Division Finals Stars v Pacers: Game 7 Wed April 28 Utah Stars 108 @ Indiana Pacers 101; box https://www.basketball-reference.com/boxscores/197104280INA.html: April 28 1971 Indiana State Fair Coliseum Indianapolis),https://en.wikipedia.org/wiki/1971_ABA_playoffs (Division Finals Utah v Indiana: Game 7 April 28 Indiana State Fair Coliseum Indianapolis),
+1971,UTS,KEN,UTS,https://www.basketball-reference.com/playoffs/ABA_1971.html (Finals Stars v Colonels: Game 7 Tue May 18 Kentucky Colonels 121 @ Utah Stars 131; box https://www.basketball-reference.com/boxscores/197105180UTS.html: May 18 1971 Salt Palace Salt Lake City),https://en.wikipedia.org/wiki/1971_ABA_Finals (Game 7 May 18 Salt Palace Salt Lake City),info: venue agrees; Wikipedia gives Kentucky 127 vs basketball-reference 121 - the archive stores 131-121 so no data defect
+1972,IND,DNR,IND,https://www.basketball-reference.com/playoffs/ABA_1972.html (Western Division Semifinals Pacers v Rockets: Game 7 Thu April 13 Denver Rockets 89 @ Indiana Pacers 91),https://en.wikipedia.org/wiki/1972_ABA_playoffs (Division Semifinals Indiana v Denver: Game 7 April 13 Indiana State Fair Coliseum Indianapolis),
+1972,IND,UTS,UTS,https://www.basketball-reference.com/playoffs/ABA_1972.html (Western Division Finals Pacers v Stars: Game 7 Mon May 1 Indiana Pacers 117 @ Utah Stars 113),https://en.wikipedia.org/wiki/1972_ABA_playoffs (Division Finals Utah v Indiana: Game 7 May 1 Salt Palace Salt Lake City),
+1972,NYN,VAS,VAS,https://www.basketball-reference.com/playoffs/ABA_1972.html (Eastern Division Finals Nets v Squires: Game 7 Thu May 4 New York Nets 94 @ Virginia Squires 88),https://en.wikipedia.org/wiki/1972_ABA_playoffs (Division Finals Virginia v New York: Game 7 May 4 Norfolk Scope Norfolk),info: VAS was a regional franchise; Game 7 in Norfolk is a Squires home date not a neutral site
+1973,IND,KEN,KEN,https://www.basketball-reference.com/playoffs/ABA_1973.html (Finals Pacers v Colonels: Game 7 Sat May 12 Indiana Pacers 88 @ Kentucky Colonels 81; box https://www.basketball-reference.com/boxscores/197305120KEN.html: May 12 1973 Freedom Hall Louisville),https://en.wikipedia.org/wiki/1973_ABA_playoffs (ABA Finals Indiana v Kentucky: Game 7 May 12 Freedom Hall Louisville),
+1973,KEN,CAC,CAC,https://www.basketball-reference.com/playoffs/ABA_1973.html (Eastern Division Finals Colonels v Cougars: Game 7 Tue April 24 Kentucky Colonels 107 @ Carolina Cougars 96; box https://www.basketball-reference.com/boxscores/197304240CAR.html: April 24 1973 Charlotte Coliseum Charlotte),https://en.wikipedia.org/wiki/1973_ABA_playoffs (Division Finals Carolina v Kentucky: Game 7 April 24 Charlotte Coliseum Charlotte),info: CAC was a regional franchise (Greensboro/Charlotte/Raleigh); Charlotte is a Cougars home date not a neutral site; basketball-reference box code is CAR
+1974,IND,SAS,IND,https://www.basketball-reference.com/playoffs/ABA_1974.html (Western Division Semifinals Pacers v Spurs: Game 7 Fri April 12 San Antonio Spurs 79 @ Indiana Pacers 86; box https://www.basketball-reference.com/boxscores/197404120INA.html: April 12 1974 Indiana State Fair Coliseum Indianapolis),https://en.wikipedia.org/wiki/1974_ABA_playoffs (Division Semifinals Indiana v San Antonio: Game 7 April 12 Indiana State Fair Coliseum Indianapolis),
+1974,UTS,IND,UTS,https://www.basketball-reference.com/playoffs/ABA_1974.html (Western Division Finals Stars v Pacers: Game 7 Sat April 27 Indiana Pacers 87 @ Utah Stars 109; box https://www.basketball-reference.com/boxscores/197404270UTS.html: April 27 1974 Salt Palace Salt Lake City),https://en.wikipedia.org/wiki/1974_ABA_playoffs (Division Finals Utah v Indiana: Game 7 April 27 Salt Palace Salt Lake City),
+1975,IND,DEN,DEN,https://www.basketball-reference.com/playoffs/ABA_1975.html (Western Division Finals Pacers v Nuggets: Game 7 Sat May 3 Indiana Pacers 104 @ Denver Nuggets 96; box https://www.basketball-reference.com/boxscores/197505030DNA.html: May 3 1975 Denver Auditorium Arena Denver),https://en.wikipedia.org/wiki/1975_ABA_playoffs (Division Finals Denver v Indiana: Game 7 May 3 Denver Auditorium Arena Denver),info: DEN is the DNR franchise renamed Nuggets in 1974
+1976,DEN,KEN,DEN,https://www.basketball-reference.com/playoffs/ABA_1976.html (Semifinals Nuggets v Colonels: Game 7 Wed April 28 Kentucky Colonels 110 @ Denver Nuggets 133; box https://www.basketball-reference.com/boxscores/197604280DNA.html: April 28 1976 McNichols Sports Arena Denver),https://en.wikipedia.org/wiki/1976_ABA_playoffs (Semifinals Denver v Kentucky: Game 7 April 28 McNichols Sports Arena Denver),
+1976,NYN,SAS,NYN,https://www.basketball-reference.com/playoffs/ABA_1976.html (Semifinals Nets v Spurs: Game 7 Sat April 24 San Antonio Spurs 114 @ New York Nets 121; box https://www.basketball-reference.com/boxscores/197604240NYA.html: April 24 1976 Nassau Veterans Memorial Coliseum Uniondale),https://en.wikipedia.org/wiki/1976_ABA_playoffs (Semifinals New York v San Antonio: Game 7 April 24 Nassau Veterans Memorial Coliseum Uniondale),
