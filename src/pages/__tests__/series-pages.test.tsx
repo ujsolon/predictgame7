@@ -171,7 +171,8 @@ describe('/series/:id — non-flagship archive (full record)', () => {
   it('has no result page: /result is the 404 once its one fetch shows it is not featured (Story 4.5)', async () => {
     renderApp(`/series/${NON_FLAGSHIP_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
-    expect(notFoundHeading()).toHaveFocus();
+    // Focus moves in an effect after the commit that shows the heading, so wait for it too.
+    await waitFor(() => expect(notFoundHeading()).toHaveFocus());
     expect(db.from).toHaveBeenCalledTimes(1);
     expect(db.select).toHaveBeenCalledWith(SERIES_PAGE_SELECT);
     expect(text()).not.toContain('win Game 7');
@@ -339,7 +340,7 @@ describe('/series/:id — 404, redirect and retry rows', () => {
   it('an unknown id is the 404 (title and focus)', async () => {
     renderApp('/series/00000000-0000-4000-8000-000000000000');
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
-    expect(notFoundHeading()).toHaveFocus();
+    await waitFor(() => expect(notFoundHeading()).toHaveFocus());
     await waitFor(() => expect(document.title).toBe("This series doesn't exist."));
   });
 
