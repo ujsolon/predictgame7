@@ -33,7 +33,7 @@ generated: 09-25-2026 09:38
 # 10-02-2026 18:05, is later than the clock on every commit that day (the last
 # one, bc21f66, is stamped 11:03), so it had been written forward rather than
 # recorded.
-last_updated: 10-09-2026 08:49
+last_updated: 10-09-2026 09:24
 project: predictgame7
 project_key: NOKEY
 tracking_system: file-system
@@ -369,7 +369,7 @@ development_status:
 
   # 2026-10-07: Story 3.1 moved to Epic 4 as 4.0 and Epic 4 runs before Epic 3
   # (sprint-change-proposal-2026-10-07); blocks listed in execution order, numbering unchanged.
-  epic-4: in-progress
+  epic-4: done
   4-0-analytics-isolation-layer-ad-1-port: done
   4-1-series-deep-links-404-spa-fallback: done
   # 2026-10-07: re-cut to image-only (proposal b), then to a build-time renderer (proposal c); key kept.
@@ -397,12 +397,15 @@ development_status:
   # 2026-10-08: drill on 0.2.11 — 6/7 AC ok; measurement continuity partial (owner decision b: properties not read live), handed to the retro.
   # 2026-10-09: row 5 closed by scripts/probe-analytics-walk.mjs (GREEN, 10/10 events + properties, no prod PostHog, contact stubbed).
   4-7-epic-verification-the-sharing-round-trip-in-production: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # 2026-10-09: Epic 6 created by sprint-change-proposal-2026-10-09.md from the Epic 4 pre-retro triage
   # (epic-4-retro-inputs.md section 0a). Order: Epic 4 -> Epic 6 -> Epic 3 -> Epic 5. Hard date: live by ~Feb 4-18, 2027.
   # 6.3/6.4 were Story 4.9 (key 4-9-home-pending-game-7-highlight-redesign); 6.5 was Story 4.6 (key 4-6-flagship-five-content-load).
+  # 2026-10-09 (Epic 4 retro): Stories 6.0 (PredictPage refactor) and 6.8 (one team order, home team first) added; order 6.0 -> 6.8 -> 6.1 -> ... -> 6.7.
   epic-6: backlog
+  6-0-predictpage-refactor: backlog
+  6-8-one-team-order-home-team-first: backlog
   6-1-readable-series-urls: backlog
   6-2-series-page-entry-points: backlog
   6-3-home-design-session: backlog
@@ -552,7 +555,7 @@ action_items:
       by the league filter; only insight denominators become league-filtered, so re-deriving
       routes from 160 is a bug (AD-7 caveat 2026-10-01). Still Story 4.3's.]"
     owner: "agent - Story 4.3"
-    status: open
+    status: in-progress
     ref: "_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-30.md 4.7(4)"
   - id: "epic-2-retro-item-14-write-the-2027-birth-runbook-a-series-at"
     epic: 2
@@ -563,7 +566,8 @@ action_items:
       automated, births curated, owner call 2026-10-04). Before 2027-04-12. [R1]"
     owner: "owner decides wording; agent drafts"
     status: done
-    closed: "2026-10-06 by Story 2.15 (docs/PLAYOFF_RUNBOOK.md; births are now automatic since Story 2.18, the runbook is the fallback)"
+    closed: "2026-10-06 by Story 2.15 (docs/PLAYOFF_RUNBOOK.md; births are now automatic
+      since Story 2.18, the runbook is the fallback)"
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-15-harden-the-pipeline-write-path-a-a-write"
     epic: 2
@@ -602,7 +606,7 @@ action_items:
     # 2026-10-06: Story 2.16 deleted the venue-backfill.test.ts source-text pins together with
     # the probe they grepped; the probe itself is gone, so its per-match logic has nothing to
     # move. The checker half (checkJs + Biome over scripts/*.mjs) stays open.
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-19-measured-test-bloat-pass-install-a-cover"
     epic: 2
@@ -613,7 +617,7 @@ action_items:
     # 2026-10-06: Story 2.16 ran the scan for nba_com only (recorded in its spec); still open for
     # a committed coverage provider and the rest of the knip report (src/ + venueBackfill.ts
     # exports left with no non-test consumer once the venue probe went).
-    status: open
+    status: in-progress
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
   - id: "epic-2-retro-item-20-annotate-epics-md-417-story-2-12-ac-chec"
     epic: 2
@@ -654,3 +658,70 @@ action_items:
     owner: "owner"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-06.md"
+  - id: "epic-4-retro-item-25-planning-doc-reconciliation-counts-182-1"
+    epic: 4
+    action: "Planning-doc reconciliation: counts 182/172 -> 183/173 (epics.md:167/:920,
+      AD-7, EXPERIENCE.md:40); Story 4.8 AC + spine :182 'npm run build' -> predeploy;
+      AD-6 title and shipped share URL shapes; DESIGN.md share-button widths (accept
+      icon-at-all-widths or change code). Closes story-2-1-audit-...-177. Do at Epic
+      6 start."
+    owner: "agent drafts, owner applies"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-26-story-6-1-carry-ins-league-in-the-og-car"
+    epic: 4
+    action: "Story 6.1 carry-ins: league in the OG card center slot for non-NBA rows
+      (retro A1); probe-deep-links sitemap expectation from is_featured, not the pinned
+      five (A7); add probe-analytics-walk.mjs to the node --check smoke list."
+    owner: "agent (Story 6.1)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-27-write-the-manual-deploy-rule-into-docs-p"
+    epic: 4
+    action: "Write the manual deploy rule into docs/PLAYOFF_RUNBOOK.md: owner deploys
+      after any series_content/is_featured change and after every pipeline birth/completion
+      in the playoff window (retro A2/A3; owner decision 2026-10-09)."
+    owner: "agent (with Story 6.5)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-28-settle-retro-a5-count-decoded-pageview-p"
+    epic: 4
+    action: "Settle retro A5: count decoded $pageview per series-share arrival with
+      probe-analytics-walk.mjs; fix a double count if real. Due before Story 3.4 reads
+      SM-3."
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-29-probe-tooling-consolidation-extract-open"
+    epic: 4
+    action: "Probe tooling consolidation: extract openBrowserSession/createLedger/readEnv/anon-REST/trailing-slash
+      helpers from measure-predict-latency.mjs into one shared module, split probe-deep-links.mjs
+      by surface, bring the .mjs harnesses under checkJs (joins epic-2 item 18)."
+    owner: "agent (later tooling story or Epic 5)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-30-hydration-test-parity-retro-a8-mount-a-m"
+    epic: 4
+    action: "Hydration test parity (retro A8): mount a mocked AnalyticsProvider in
+      src/prerender/__tests__/hydration.test.tsx so it mirrors main.tsx."
+    owner: "agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-31-process-preview-before-freezing-a-ui-ac"
+    epic: 4
+    action: "Process: preview before freezing a UI AC - any story whose AC fixes visible
+      copy/layout gets an owner preview (mockup or headless screenshot) before the
+      spec freezes; Epic 6's 6.3->6.4 split is the first application. Supersedes epic-2
+      item 21."
+    owner: "owner + agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"
+  - id: "epic-4-retro-item-32-process-define-the-two-done-s-spec-statu"
+    epic: 4
+    action: "Process: define the two 'done's - spec status done = implemented and
+      reviewed; sprint row done = verified (live checks where the story has them);
+      record in AGENTS.md at the next between-epics window. Supersedes epic-2 item
+      22."
+    owner: "owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-09.md"

@@ -149,7 +149,7 @@ Stories' AA-clean ACs stand as written; the spines' Accessibility Floor adds beh
 
 ## Epic List
 
-Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7.
+Execution order (owner decisions 2026-10-07 and 2026-10-09): **Epic 4 → Epic 6 → Epic 3 → Epic 5**, numbering unchanged (`sprint-change-proposal-2026-10-07.md`, `sprint-change-proposal-2026-10-09.md`). Within Epic 4 the order was 4.0 → 4.1 → 4.2 → 4.3 → **4.8** → 4.4 → 4.5 → 4.7 (`sprint-change-proposal-2026-10-07-d.md`); Stories 4.6 and 4.9 moved to Epic 6 as 6.5 and 6.3/6.4. Within Epic 6: **6.0 → 6.8 → 6.1** → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7. Stories 6.0 and 6.8 were added by the Epic 4 retro on 2026-10-09; 6.8 keeps its number and runs second, as 4.8 did.
 
 ### Epic 1: A Prediction Flow That Never Breaks — on a Solid Toolchain
 Users can run, compare, and retry predictions without losing state or hitting mystery failures (issue #3 closed), protected by a regression suite that every later epic builds on. **Story 1 is the toolchain foundation: migrate `rolldown-vite` shim → `vite@^8` + Vitest + CI test gate — done now, off-peak, while no release pressure exists** (owner decision 2026-09-25; satisfies the spine's "migrate at next dependency touch" and retires the Deferred test-compat question). Then: AD-2 contract consolidation (`_shared/contract.ts`, stale unions deleted), FR-8 error-state overhaul (invalid-input vs service-failure), regression tests on the four highest-risk paths, documented failure-case catalog + manual QA matrix. All new/changed UI carries an AA-clean AC (Radix primitives, contrast tokens, keyboard/screen-reader).
@@ -934,10 +934,44 @@ so that the full archive (count pinned by Story 2.1's audit) is crawlable withou
 
 Created 2026-10-09 (`sprint-change-proposal-2026-10-09.md`) from the Epic 4 pre-retro triage (`../implementation-artifacts/epic-4-retro-inputs.md` § 0a; owner decisions are not re-decided here). **Calendar-critical: live by about Feb 4–18, 2027.** Order matters inside the window: URL changes (6.1) land first, so shared links, OG caches and the Search Console index settle on final URLs, and content (6.5) lands last, onto final pages. Content storage stays hybrid (A): text and YouTube ids in `series_content`, images in `public/editorial/`. Contributor authoring is parked; if it is ever wanted, the migration is files-as-CMS (B).
 
+### Story 6.0: PredictPage refactor (no behaviour change)
+
+*Added by the Epic 4 retrospective (`../implementation-artifacts/epic-4-retro-2026-10-09.md`, size-growth finding and action 8; owner decision 2026-10-09). It runs first because 6.8, 6.1 and 6.2 all edit Predict.*
+
+As a developer, I want `src/pages/PredictPage.tsx` (1,418 lines, one component, 19 `useState`) split into focused hooks and components, so that Epic 6's changes to Predict land in small, reviewable units.
+
+**Given** the current Predict behaviour, pinned by the Story 1.x, 4.1 and 4.4 test suites,
+**When** the page is split, for example into the request path / `runPrediction`, the deep-link and share-arrival preload (`?series=`, `?method=`, `?custom=`), the series and method pickers, and the result and detailed views,
+**Then**:
+- every existing Predict test passes unchanged, apart from import paths;
+- the wire bodies are byte-identical (the Story 1.4 / 4.4 body tests);
+- the analytics events fire at the same points (`probe-analytics-walk.mjs` GREEN live after release);
+- the deferred preload race and the `?custom=` supersession tests (4.4 deferrals) are pinned first;
+- no user-visible change.
+
+### Story 6.8: One team order on every surface: home team first
+
+*Added by the Epic 4 retrospective (open question 1; owner decision 2026-10-09, option C). It supersedes the 2026-10-07 owner decision E14 (alphabetical, spoiler-neutral order on winner-free surfaces). It runs right after 6.0 and before 6.1, because 6.1's readable URLs put the team order into the slug.*
+
+As a fan, I want every "X vs Y" on the site in the same order, home team first, so that one series never appears in two orders.
+
+**Given** the surfaces that order a team pair today:
+- **alphabetical (spoiler-neutral):** the series preview (headline, title, game rows), the OG cards, every series page's `og:title`, the Home pending cards, and the stripped preview preload (`src/lib/spoiler-neutral.ts`, `spoilerNeutralView`);
+- **stored `team_a` order:** the series result and full-record pages, the Historical table and record overlay, Predict's picker labels, game rows, result view and share title;
+- **hand-written winner-first:** Home's banner hotspot captions (also sent as the `caption` property of `banner_hotspot_clicked`);
+
+**When** the story ships, **Then**:
+- every one of those surfaces puts the **home team** first, through one shared helper;
+- "home team" is the **real Game 7 home team** (`series_game_scores` game 7 `home_team_id`), which is a real venue only for `league IN ('NBA','BAA')` (migration `00016`, AGENTS.md), and for live pending series it is the pipeline's real home side. **The fallback for the 18 ABA archive series (no real venue) is an open question for this story's planning.** The stored `team_a` must not be presented as "home": in the archive it is a winner-slot placeholder.
+- the owner accepts that home-first correlates with the outcome (Game 7 home teams won 117 of 160 NBA/BAA Game 7s). The preview's spoiler discipline otherwise stands: no Game 7 score, winner or result text on preview surfaces, and the B10 page-source rule holds.
+- the request payload to `predict-game-7` is unchanged (display only).
+- the hotspot caption change is recorded as a `caption` value change for analytics continuity.
+- the spoiler-neutral helper and its tests are retired or repurposed, with the E14 deferred-work entry annotated as superseded.
+
 ### Story 6.1: Readable series URLs
 As a reader who sees a series link in search or chat, I want `/series/<year>/<slug>` URLs, so that the link says what it is.
 **Given** the prerender pipeline (4.8), **When** the build emits series pages, **Then**:
-- each series' canonical URL is `/series/<year>/<slug>/`. The slug uses the spoiler-neutral team order (`src/lib/spoiler-neutral.ts`) and is unique per year; the exact slug rules are decided in this story's spec;
+- each series' canonical URL is `/series/<year>/<slug>/`. The slug uses Story 6.8's team order (home team first, which runs before this story) and is unique per year; the exact slug rules are decided in this story's spec;
 - the old `/series/<id>/` (and `/result/`) pages are still emitted, as **canonical stubs** pointing at the slug URL, so every shared or indexed uuid link keeps working and never goes stale on additive `gh-pages` publishes;
 - `/series/` and `/series/<year>/` are static stubs that redirect without JS to `/historical` and `/historical?year=<year>`, and Historical reads `?year=`;
 - `og:url`, canonical, the sitemap and the Share URL builders (4.4) use the slug URL;
@@ -978,6 +1012,7 @@ As the owner, I want the five flagship pairs live with real content, so that the
 - all five pairs show their content live: the preview spoiler-free, the result with at least one video;
 - a sample of non-flagship pages is verified unchanged;
 - it is **live by about Feb 4–18, 2027**.
+- **Deploy rule (owner decision 2026-10-09, Epic 4 retro):** any change to `series_content` or `is_featured`, and in the playoff window every pipeline birth or completion, is followed by an owner `npm run deploy`. Pages, cards and the sitemap only reflect data as of the last deploy. The rule is written into `docs/PLAYOFF_RUNBOOK.md`. Automating it (a CI deploy needs only the public anon key) is deferred unless a deploy is missed.
 
 ### Story 6.6: Bundle trim
 As a phone visitor, I want the app to download only what a page needs. **Given** the 2026-10-09 measurement (JS 308 KB, about 2.4 s on Slow 4G, about 0.4 s of it from 4.5's markdown renderer), **When** it is re-measured after 6.4, **Then** the owner decides whether to code-split the series routes or swap to a smaller renderer. A trim keeps the prerender's synchronous SSR intact (AD-7 no-JS content).
