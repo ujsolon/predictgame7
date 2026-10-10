@@ -110,6 +110,17 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
     expect(within(sheet).queryByText('TBD')).toBeNull();
   });
 
+  it('names the matchup in stored order, team_a first, even where the alphabet disagrees (Story 6.8)', async () => {
+    // The fixture stores the Lakers as team_a; alphabetically "Golden State" precedes "Los Angeles".
+    render(<HistoricalPage />);
+    const row = await screen.findByText('1998');
+    fireEvent.click(row.closest('tr') as HTMLTableRowElement);
+
+    const sheet = screen.getByText('1998 Finals').closest('.rounded-xl') as HTMLElement;
+    const matchup = within(sheet).getByText(/ vs /);
+    expect(matchup.textContent).toBe('Los Angeles Lakers vs Golden State Warriors');
+  });
+
   it('falls back when the winner_team join misses instead of rendering "undefined"', async () => {
     const rowWithoutWinnerJoin: Series = { ...archivedRow, winner_team: undefined };
     db.list = { data: [rowWithoutWinnerJoin], error: null };
@@ -677,7 +688,12 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 // printed came from the `TEAM_ABBREVIATIONS` map or `getTeamAbbreviation`, and on
 // these 20 identities it differed from the stored `teams.abbreviation` — 39 of the
 // 178 series, 47 team cells, years 1948→1997, every one a `00007` historical
-// identity. `initialism` is what the surviving name path still derives from the
+// identity. That CSV is `00016`'s frozen input, so the census below stays pinned
+// to it; `00021` (the 1968 ABA Finals, Story 6.11) adds one divergent identity on
+// top — `Pittsburgh Pipers`, initialism `PP`, stored `PTP`, against `NOB`, whose
+// initialism matches — making 40 of 179 series, 48 cells and 21 identities, the
+// figure `HistoricalPage.tsx` cites (the census case re-derives it from the
+// migration). `initialism` is what the surviving name path still derives from the
 // name, so the third column is what this surface used to print; the pairs are
 // pinned against it rather than against the deleted map, because a pin that only
 // restates the implementation would stay green if the name path itself changed.
@@ -867,6 +883,19 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
     expect(Object.fromEntries(franchises)).toEqual(
       Object.fromEntries(DIVERGENT_FRANCHISES.map((entry) => [entry.name, entry.stored]))
     );
+
+    // `00021` (Story 6.11) on top of the frozen CSV: the 1968 ABA Finals, PTP vs NOB.
+    // Its PTP row is read from the migration (an `INSERT … SELECT`), NOB from `00007`.
+    const m00021 = readRepo('supabase/migrations/00021_add_1968_aba_finals.sql');
+    const ptpRow = /INSERT INTO public\.teams[^;]*?SELECT\s+\d+,\s*'((?:[^']|'')+)',\s*'([A-Z]{2,4})'/i.exec(m00021);
+    expect(ptpRow?.slice(1, 3)).toEqual(['Pittsburgh Pipers', 'PTP']);
+    expect(getTeamAbbreviation('Pittsburgh Pipers')).toBe('PP');
+    const nob = historicalByCode.get('NOB');
+    expect(nob?.name).toBe('New Orleans Buccaneers');
+    expect(getTeamAbbreviation(nob?.name ?? '')).toBe('NOB');
+    expect(franchises.has('Pittsburgh Pipers')).toBe(false);
+    // One more series, one more cell, one more identity: 40 / 48 / 21 over 179.
+    expect([divergentSeries + 1, divergentCells + 1, franchises.size + 1, series.length + 1]).toEqual([40, 48, 21, 179]);
   });
 
   it('finds a series by the stored abbreviation on either FK, case-insensitively', async () => {

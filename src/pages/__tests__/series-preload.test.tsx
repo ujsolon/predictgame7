@@ -134,7 +134,7 @@ describe('a pending preview refreshes in the background (owner decision 2026-10-
     reveal: false,
     series: stripOutcome(pendingNonFlagship),
   };
-  const PENDING_HEADLINE = 'Cavaliers and Celtics stand three games apiece';
+  const PENDING_HEADLINE = 'Celtics and Cavaliers stand three games apiece';
 
   it('renders the preload at once, then the full record once the live row comes back archived', async () => {
     db.single = { data: { ...nonFlagship2018, id: PENDING_NON_FLAGSHIP_ID }, error: null };

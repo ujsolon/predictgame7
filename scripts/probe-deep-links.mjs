@@ -189,16 +189,6 @@ function parsePreloadOf(html) {
   }
 }
 
-/** `src/lib/spoiler-neutral.ts`'s rule, restated for this plain-JS probe: true when `b` should precede `a`. */
-function swapsForNeutralOrder(a, b) {
-  const word = (t) => (t.nickname && t.nickname.trim()) || t.full_name;
-  const byWord = word(a).localeCompare(word(b), "en", { sensitivity: "base" });
-  if (byWord !== 0) return byWord > 0;
-  const byName = a.full_name.localeCompare(b.full_name, "en", { sensitivity: "base" });
-  if (byName !== 0) return byName > 0;
-  return String(a.id) > String(b.id);
-}
-
 /** Whether `html` is the prerendered file for `path` (GitHub Pages 301s `/x` to `/x/`, and fetch follows). */
 function isPrerenderedFor(html, path) {
   const clean = path.split("?")[0].replace(/\/+$/, "");
@@ -377,13 +367,14 @@ async function restSeries(filter, select) {
 }
 
 /**
- * Story 4.3: the five pilot flagships with their expected teams, order-agnostic.
- * Since Story 4.5 the app decides flagship-ness from `series.is_featured`; this
+ * Story 4.3: the five pilot flagships with their expected teams, listed
+ * home-first (Story 6.8): `[team_a, team_b]` as `00020` stores them, the Game 7
+ * host first, and compared in that order. Since Story 4.5 the app decides flagship-ness from `series.is_featured`; this
  * list is the probe's independent expectation of which rows carry it (row 5).
  */
 const FLAGSHIPS = [
   ["dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a", 2013, ["MIA", "SAS"]],
-  [FLAGSHIP_2016, 2016, ["CLE", "GSW"]],
+  [FLAGSHIP_2016, 2016, ["GSW", "CLE"]],
   ["29638c4e-261a-4d09-81aa-5740f76175f5", 2019, ["TOR", "PHI"]],
   ["626257bc-1678-4c88-84a6-37e0a6cdb49c", 2025, ["OKC", "IND"]],
   ["6ecb170c-e781-47f8-b7ee-881ba719d6d5", 2026, ["OKC", "SAS"]],
@@ -459,7 +450,10 @@ async function main() {
 
   // Rows 8–10 (Story 4.8): what a crawler or unfurler sees, with no JavaScript.
   const flagshipIds = FLAGSHIPS.map(([id]) => id);
-  const allRows = await restRows("order=year.asc,id.asc", "id,winner_team_id,league,series_game_scores(game_number,home_score,away_score)").catch((e) => ({ error: e.message }));
+  const allRows = await restRows(
+    "order=year.asc,id.asc",
+    "id,winner_team_id,league,team_a_id,team_b_id,team_a:team_a_id(abbreviation,full_name),team_b:team_b_id(abbreviation,full_name),series_game_scores(game_number,home_team_id,away_team_id,home_score,away_score)"
+  ).catch((e) => ({ error: e.message }));
   const liveRows = Array.isArray(allRows) ? allRows : [];
   L.check("every series is readable over anon REST", liveRows.length > 0, allRows.error ?? `${liveRows.length} rows`);
   const recordRow = liveRows.find((r) => r.winner_team_id != null && !flagshipIds.includes(r.id));
@@ -522,15 +516,35 @@ async function main() {
       ...['game_number":7', 'winner_team":{', "win Game 7", "4–3"].filter((t) => preview.html.includes(t)),
       ...bare.map((s) => `bare ${s}`),
     ];
+    // Story 6.8: the JS-disabled page names the teams home-first — the live `team_a` is the
+    // expected first code, and both the og:title and the <title> open with its full name.
+    const expectedCodes = FLAGSHIPS.find(([fid]) => fid === id)?.[2] ?? [];
+    const ogTitle = metaContent(preview.html, "og:title") ?? "";
+    const docTitle = /<title[^>]*>([^<]*)<\/title>/.exec(preview.html)?.[1] ?? "";
+    const firstName = row?.team_a?.full_name ?? "";
+    L.check(
+      `flagship ${id} preview: og:title and <title> open with team_a (${expectedCodes[0]}) — home-first order`,
+      !!firstName &&
+        row.team_a?.abbreviation === expectedCodes[0] &&
+        row.team_b?.abbreviation === expectedCodes[1] &&
+        ogTitle.startsWith(`${firstName} vs `) &&
+        docTitle.startsWith(`${firstName} vs `),
+      `team_a ${row?.team_a?.abbreviation} · og:title "${ogTitle}" · <title> "${docTitle}"`
+    );
     L.check(`flagship ${id} preview file carries no Game 7 (${h}–${a}) and no outcome`, preview.status === 200 && leaks.length === 0, leaks.join(", ") || `HTTP ${preview.status}`);
-    // The preload itself: no series-level winner, games 1–6 exactly, teams in
-    // spoiler-neutral order with every game row homed on the neutral-first team.
+    // The preload itself: no series-level winner, games 1–6 exactly, and nothing
+    // reordered (Story 6.8): stored `team_a`/`team_b` (home-first) and every game
+    // 1–6 row's real home/away sides and scores, exactly as the live row has them.
     const pre = parsePreloadOf(preview.html);
     const pv = pre?.series;
     const games = (pv?.series_game_scores || []).map((g) => g.game_number).sort((x, y) => x - y);
-    const homes = new Set((pv?.series_game_scores || []).map((g) => g.home_team_id));
+    const sameGame = (g) => {
+      const live = scores.find((s) => s.game_number === g.game_number);
+      return !!live && g.home_team_id === live.home_team_id && g.away_team_id === live.away_team_id && g.home_score === live.home_score && g.away_score === live.away_score;
+    };
+    const moved = (pv?.series_game_scores || []).filter((g) => !sameGame(g)).map((g) => g.game_number);
     L.check(
-      `flagship ${id} preview preload: winner null, games exactly 1–6, neutral-first team_a homes every game`,
+      `flagship ${id} preview preload: winner null, games exactly 1–6, stored team order and unchanged games 1–6 home/away`,
       !!pv &&
         pre.variant === "preview" &&
         pre.reveal === true &&
@@ -539,11 +553,12 @@ async function main() {
         games.join() === "1,2,3,4,5,6" &&
         !!pv.team_a &&
         !!pv.team_b &&
-        !swapsForNeutralOrder(pv.team_a, pv.team_b) &&
-        pv.team_a_id === pv.team_a.id &&
-        homes.size === 1 &&
-        homes.has(pv.team_a.id),
-      pv ? `team_a ${pv.team_a?.nickname} · games ${games.join()} · winner ${pv.winner_team_id}` : "no preload"
+        pv.team_a_id === row.team_a_id &&
+        pv.team_b_id === row.team_b_id &&
+        pv.team_a.id === row.team_a_id &&
+        pv.team_b.id === row.team_b_id &&
+        moved.length === 0,
+      pv ? `team_a ${pv.team_a?.abbreviation} (live ${row.team_a?.abbreviation}) · games ${games.join()} · changed ${moved.join() || "none"} · winner ${pv.winner_team_id}` : "no preload"
     );
     L.check(`flagship ${id} result file carries the Game 7 pair`, result.status === 200 && pairs.some((p) => flat(result.html).includes(p)), `HTTP ${result.status}`);
   }
@@ -681,8 +696,8 @@ async function main() {
       const games = row ? new Set((row.series_game_scores || []).map((g) => g.game_number)) : new Set();
       const archived = !!row && row.winner_team_id != null && games.size === 7 && [1, 2, 3, 4, 5, 6, 7].every((g) => games.has(g));
       L.check(
-        `flagship ${year} ${codes.join("–")} (${id}) exists, is archived, is_featured, and names the expected teams`,
-        !!row && row.year === year && archived && row.is_featured === true && [...got].sort().join() === [...codes].sort().join(),
+        `flagship ${year} ${codes.join("–")} (${id}) exists, is archived, is_featured, and names the expected teams home-first`,
+        !!row && row.year === year && archived && row.is_featured === true && got.join() === codes.join(),
         flagRows.error ??
           (row ? `${row.year} ${got.join("–")} winner=${row.winner_team_id} games=${games.size} is_featured=${row.is_featured}` : "no row")
       );

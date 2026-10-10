@@ -14,8 +14,9 @@
  * any invalid editorial content (`parseSeriesContent`, every item listed by
  * series id), or a read with no featured row at all is an error, never a page quietly left out. Pure — no I/O.
  */
+import { matchupLabel } from '@/lib/matchup';
 import { parseSeriesContent } from '@/lib/series-content';
-import { resultHref, spoilerNeutralView, toSeriesView, yearRound } from '@/pages/series/series-view';
+import { resultHref, toSeriesView, yearRound } from '@/pages/series/series-view';
 import type { Series } from '@/types/types';
 import { type SeriesPreload, stripOutcome } from './preload';
 
@@ -26,7 +27,7 @@ export interface PlannedPage {
   /** Output path relative to `dist/`. */
   file: string;
   preload: SeriesPreload;
-  /** EXPERIENCE.md's Historic `og:title`, in spoiler-neutral order. */
+  /** EXPERIENCE.md's Historic `og:title`, in stored (home-first) order. */
   ogTitle: string;
 }
 
@@ -37,12 +38,11 @@ export interface SeriesPlan {
   featured: number;
 }
 
-/** "{A} vs {B} — Game 7, {Year} {Round}" — spoiler-neutral order, `yearRound` league wording, never an outcome. */
+/** "{A} vs {B} — Game 7, {Year} {Round}" — stored order (`team_a`, the home team, first; Story 6.8), `yearRound` league wording, never an outcome. */
 export function historicOgTitle(series: Series): string | null {
   const view = toSeriesView(series);
   if (!view) return null;
-  const neutral = spoilerNeutralView(view);
-  return `${neutral.teamA.full_name} vs ${neutral.teamB.full_name} — Game 7, ${yearRound(neutral)}`;
+  return `${matchupLabel(view.teamA.full_name, view.teamB.full_name)} — Game 7, ${yearRound(view)}`;
 }
 
 export function seriesRoute(id: string): string {

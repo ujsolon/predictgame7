@@ -3,7 +3,7 @@
  * 2026-10-02; wording settled by U12, 2026-10-03).
  *
  * One static line at the foot of the page naming the population the three
- * cached cards count, so the reader who meets 178 on the archive and 160 on
+ * cached cards count, so the reader who meets 179 on the archive and 160 on
  * the insights can reconcile the two. Lives in a module rather than inline in
  * JSX for the same reason `series-phase.ts` and `method-display.ts` do: a
  * pure function is testable without the page, and the page keeps doing no

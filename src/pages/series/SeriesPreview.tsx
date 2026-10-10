@@ -3,6 +3,7 @@ import PageMeta from '@/components/common/PageMeta';
 import SeriesNotFound from '@/components/common/SeriesNotFound';
 import ShareButton from '@/components/common/ShareButton';
 import SeriesContentSection, { useSeriesContent } from '@/components/series/SeriesContentSection';
+import { matchupLabel } from '@/lib/matchup';
 import { METHOD_LABELS } from '@/lib/method-display';
 import { seriesPageSharePath } from '@/lib/share';
 import type { MethodSlug } from '@/types/prediction';
@@ -18,7 +19,6 @@ import {
   resultHref,
   seriesEyebrow,
   teamWord,
-  spoilerNeutralView,
   toSeriesView,
 } from './series-view';
 
@@ -36,9 +36,8 @@ const METHOD_SLUGS = Object.keys(METHOD_LABELS) as MethodSlug[];
  * headline); a prerendered preview's row carries no resolution part at all.
  */
 export default function SeriesPreview({ series, reveal }: { series: Series; reveal?: boolean }) {
-  // Winner-free surface: never the stored order, which names the winner first (owner decision 2026-10-07).
-  const stored = toSeriesView(series);
-  const view = stored && spoilerNeutralView(stored);
+  // Stored order, `team_a` (the home team) first, as on every surface (Story 6.8).
+  const view = toSeriesView(series);
   const { before } = useSeriesContent(series);
   if (!view) return <SeriesNotFound headingLevel="h1" />;
 
@@ -93,7 +92,7 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
           Model this matchup yourself
         </h2>
         <p className="mt-2 max-w-[65ch] text-on-muted">
-          Run {teamWord(view.teamA)} vs {teamWord(view.teamB)} through the prediction model and make your own call on Game 7.
+          Run {matchupLabel(teamWord(view.teamA), teamWord(view.teamB))} through the prediction model and make your own call on Game 7.
         </p>
         <Link to={predictHref(view.id)} className={CTA_LINK}>
           Open Predict <span aria-hidden="true">→</span>

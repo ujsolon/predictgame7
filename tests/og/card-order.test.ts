@@ -1,7 +1,8 @@
-// Spoiler-neutral card order (owner decision 2026-10-07, Story 4.3 review row
-// E14). Archived rows store the eventual winner as `team_a` in 177/178 series,
-// so the card's left side must follow `neutralPair`, never team_a. This file
-// mocks only `renderCard` to read what the build step hands it; the real
+// One team order on every surface (Story 6.8, owner decision 2026-10-09,
+// option C): since `00020` stored order is home-first, so the card's left side
+// is `team_a` (the Game 7 host) and its right side `team_b` — never re-sorted.
+// The retired E14 rule put the alphabetically-first nickname on the left. This
+// file mocks only `renderCard` to read what the build step hands it; the real
 // renderer is covered in `card.test.ts`.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,14 +29,14 @@ import { runOgCards } from '../../scripts/og/render.ts';
 const PUBLIC_DIR = resolve(__dirname, '../../public');
 const scores = (games: number[]) => games.map((game_number) => ({ game_number }) as SeriesGameScore);
 
-describe('runOgCards — spoiler-neutral side order', () => {
+describe('runOgCards — stored (home-first) side order', () => {
   const dirs: string[] = [];
   afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
     seen.inputs.length = 0;
   });
 
-  it('puts the alphabetically-first nickname on the left, whatever team_a is', async () => {
+  it('puts team_a on the left and team_b on the right, even where the alphabet would swap them', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'og-order-'));
     dirs.push(dir);
     const code = await runOgCards({
@@ -44,11 +45,13 @@ describe('runOgCards — spoiler-neutral side order', () => {
       publicDir: PUBLIC_DIR,
       fetchSeries: async () => [
         {
-          // Stored winner-first: Warriors as team_a, as the archive does for its winner.
+          // The 2016 Finals as `00020` stores it: Warriors (the Game 7 host) as team_a,
+          // the Cavaliers as winner — the home team is not the winner. Alphabetically the
+          // Cavaliers come first, so the retired rule would have swapped them.
           id: 'gsw-first',
-          year: 2015,
+          year: 2016,
           round: 'Finals',
-          winner_team_id: 2,
+          winner_team_id: 1,
           team_a: { id: 2, full_name: 'Golden State Warriors', nickname: 'Warriors', abbreviation: 'GSW', logo_url: 'assets/teams/warriors.png' },
           team_b: { id: 1, full_name: 'Cleveland Cavaliers', nickname: 'Cavaliers', abbreviation: 'CLE', logo_url: 'assets/teams/cavaliers.png' },
           series_game_scores: scores([1, 2, 3, 4, 5, 6, 7]),
@@ -62,6 +65,6 @@ describe('runOgCards — spoiler-neutral side order', () => {
       teamA: { abbreviation: string };
       teamB: { abbreviation: string };
     };
-    expect([series.teamA.abbreviation, series.teamB.abbreviation]).toEqual(['CLE', 'GSW']);
+    expect([series.teamA.abbreviation, series.teamB.abbreviation]).toEqual(['GSW', 'CLE']);
   }, 30_000);
 });

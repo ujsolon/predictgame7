@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import SeriesNotFound, { MATCHUP_NOT_FOUND_HEADLINE, MATCHUP_NOT_FOUND_LINE } from '@/components/common/SeriesNotFound';
 import { EVENTS, track } from '@/lib/analytics';
 import { GAME_NUMBERS, scoreKey } from '@/lib/custom-matchup';
+import { matchupLabel } from '@/lib/matchup';
 import { getTeamCode } from '@/lib/nba-utils';
 import { deriveSeriesPhase, seriesSourceForPhase } from '@/lib/series-phase';
 import { getTeamLogo, getTypedTeamCode, resolveTeamLogoUrl } from '@/lib/team-logos';
@@ -55,12 +56,12 @@ export default function SeriesCard({
       // Blank input still falls through to the caller's `|| 'TBD'` unchanged.
       const teamA = getTypedTeamCode(customInput.team_a, rowFor(customInput.team_a)) || 'TBD';
       const teamB = getTypedTeamCode(customInput.team_b, rowFor(customInput.team_b)) || 'TBD';
-      return `${teamA} vs ${teamB}`;
+      return matchupLabel(teamA, teamB);
     }
     if (selectedSeries.data) {
       const teamAName = selectedSeries.data.team_a?.full_name || 'Team A';
       const teamBName = selectedSeries.data.team_b?.full_name || 'Team B';
-      return `${getTeamCode(teamAName, selectedSeries.data.team_a)} vs ${getTeamCode(teamBName, selectedSeries.data.team_b)}`;
+      return matchupLabel(getTeamCode(teamAName, selectedSeries.data.team_a), getTeamCode(teamBName, selectedSeries.data.team_b));
     }
     return 'Not selected';
   };

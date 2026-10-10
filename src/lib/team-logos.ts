@@ -50,6 +50,8 @@ const TEAM_LOGO_ENTRIES: TeamLogoEntry[] = [
   { path: 'assets/teams/76ers.png', aliases: ['Philadelphia 76ers', '76ers', 'Sixers', 'PHI'] },
   { path: 'assets/teams/Philadelphia_warriors.webp', aliases: ['Philadelphia Warriors', 'PHW'] },
   { path: 'assets/teams/suns.png', aliases: ['Phoenix Suns', 'Suns', 'PHX'] },
+  // `00021` (Story 6.11). No bare 'Pipers' alias: it stays with MNP (owner decision 2026-10-10, 1a).
+  { path: 'assets/teams/Pittsburgh_Pipers.gif', aliases: ['Pittsburgh Pipers', 'PTP'] },
   { path: 'assets/teams/trail-blazers.png', aliases: ['Portland Trail Blazers', 'Trail Blazers', 'Blazers', 'POR'] },
   { path: 'assets/teams/Rochester_Royals.png', aliases: ['Rochester Royals', 'ROR'] },
   { path: 'assets/teams/kings.png', aliases: ['Sacramento Kings', 'Kings', 'SAC'] },
@@ -82,11 +84,12 @@ const TEAM_LOGO_ALIAS_MAP = new Map(
 // Story 2.11 (owner decision U16, 2026-10-05): a typed custom name prints the
 // code of the team whose logo it shows. Every entry's **last** alias is that
 // team's stored `teams.abbreviation` (`TMA`/`TMB` for the placeholders) —
-// pinned against the `00005` + `00007` seeds in `team-logos.test.ts` — so the
+// pinned against every `teams` insert in `supabase/migrations/*.sql` by
+// `team-logos.test.ts` (Story 6.8) — so the
 // code comes from the same alias, through the same normalization, that picked
 // the logo, and the two cannot disagree. A nickname several franchises shared
 // (`Bullets`, `Royals`, `Kings`, `Warriors`, `Hawks`, `Lakers`, `Rockets`,
-// `Nets`, `Hornets`, `Pistons`) resolves to the one team this table lists it
+// `Nets`, `Hornets`, `Pistons`, `Pipers`) resolves to the one team this table lists it
 // under — the choice the logo already made.
 const TEAM_CODE_ALIAS_MAP = new Map(
   TEAM_LOGO_ENTRIES.flatMap((entry) =>

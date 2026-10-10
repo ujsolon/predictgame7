@@ -10,6 +10,7 @@ import { Loader2, ChevronDown, Check, Search, FilterX } from 'lucide-react';
 import { toast } from 'sonner';
 import { getRoundImportance, getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
+import { matchupLabel } from '@/lib/matchup';
 import { EVENTS, track } from '@/lib/analytics';
 
 interface SeriesWithNestedTeams extends Series {
@@ -21,7 +22,7 @@ interface SeriesWithNestedTeams extends Series {
 
 // Story 2.9 (D1), re-cut by Story 2.10 (D1'), then by the owner's review of the
 // same day: the chip is the *exception* path, so the guard stands in front of the
-// element rather than inside the component. An `NBA` row — 159 of 178, and every
+// element rather than inside the component. An `NBA` row — 159 of 179, and every
 // future one — never constructs `LeagueChip` at all: no render pass, no node.
 // `showsLeagueChip` is the single copy of the rule; the component is pure
 // presentation of a stored value. Verbatim, no year-derived value, no `BAA`
@@ -81,14 +82,14 @@ export default function HistoricalPage() {
   };
 
   // Story 2.10 (D3') — read this before touching either number. This list is the
-  // whole archive: 178 series, because the 18 `ABA` rows are archived here and
+  // whole archive: 179 series (since `00021`), because the 19 `ABA` rows are archived here and
   // stay openable (AD-7), and there is deliberately no league control to scope
   // them out. Every insight denominator on the predict side is 160, because
   // Story 2.5's population rule is `league IN ('NBA','BAA')` — the marker for a
   // real Game-7 venue (migration `00016`), not a UI preference. So the counter
-  // below announces 178 while the insights read 160, and the owner accepted that
+  // below announces 179 while the insights read 160, and the owner accepted that
   // on 2026-10-02: reconciling it in the UI would mean a filter nobody reaches
-  // for, which is what 2.9's deleted `Select` was. The chip on the 19 rows plus
+  // for, which is what 2.9's deleted `Select` was. The chip on the 20 rows (1 BAA + 19 ABA) plus
   // the gloss in a chipped record are the whole archive-side reconciliation; the
   // insights side is Story 2.5's owner-decision U4 footer (2026-10-02, planned).
   // Decoys with the same words that must NOT move: `epics.md:382`,
@@ -225,9 +226,14 @@ export default function HistoricalPage() {
                   const isTeamAWinner = series.winner_team_id === series.team_a_id;
                   // Story 2.11: the cell prints the **stored** `teams.abbreviation`
                   // of the FK row, not a name-derived initialism. Measured
-                  // 2026-10-04 against the committed archive CSV, the two differ on
-                  // 39 of the 178 series (47 team cells, 20 franchises, years
-                  // 1948→1997 — every one a `00007` historical identity), so this is
+                  // 2026-10-04 against the committed archive CSV (`00016`'s frozen
+                  // input), the two differ on 39 of the then 178 series (47 team
+                  // cells, 20 franchises, years 1948→1997 — every one a `00007`
+                  // historical identity); `00021`'s 1968 ABA Finals adds one more,
+                  // `Pittsburgh Pipers` (initialism `PP`, stored `PTP`; `New Orleans
+                  // Buccaneers` matches its stored `NOB`), making 40 of 179 series,
+                  // 48 cells and 21 identities, years unchanged — both halves pinned
+                  // in `historical-page-archive.test.tsx`'s census case. So this is
                   // the visible half of "one team code everywhere": `Seattle
                   // SuperSonics` shows the stored `SEA` where the initialism path
                   // showed `SS`. FR-11's era-appropriate-identity rule governs it,
@@ -364,7 +370,7 @@ export default function HistoricalPage() {
                     <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
                     {showsLeagueChip(selectedSeries.league) && <LeagueChip league={selectedSeries.league} />}
                   </div>
-                  <CardDescription>{selectedSeries.team_a?.full_name} vs {selectedSeries.team_b?.full_name}</CardDescription>
+                  <CardDescription>{matchupLabel(selectedSeries.team_a?.full_name ?? 'Team A', selectedSeries.team_b?.full_name ?? 'Team B')}</CardDescription>
                 </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedSeries(null)} className="h-8 w-8 p-0 rounded-full">

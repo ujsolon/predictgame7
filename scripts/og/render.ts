@@ -19,9 +19,9 @@ import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'no
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
+import { homeFirstPair } from '../../src/lib/matchup.ts';
 import { deriveSeriesPhase, type SeriesPhaseInput } from '../../src/lib/series-phase.ts';
 import { SERIES_SELECT } from '../../src/lib/series-query.ts';
-import { neutralPair } from '../../src/lib/spoiler-neutral.ts';
 import { normaliseLogo, renderCard } from './card.ts';
 
 /** Repo root, derived from this file's location; pinned by `tests/og/card.test.ts`. */
@@ -157,23 +157,20 @@ export async function runOgCards(deps: OgRunDeps): Promise<number> {
           logoFor(row.id, 'team_a', row.team_a),
           logoFor(row.id, 'team_b', row.team_b),
         ]);
-        // Spoiler-neutral order (owner decision 2026-10-07): stored order puts
-        // the eventual winner first in 177/178 archived rows, and the card is
-        // winner-free — so the left/right sides follow `neutralPair`, never
-        // team_a/team_b.
-        const side = (team: TeamRow | null | undefined, logoPng: Buffer) => ({
-          id: team?.id ?? '',
-          full_name: team?.full_name ?? team?.abbreviation ?? '',
-          nickname: team?.nickname ?? null,
-          card: { abbreviation: team?.abbreviation ?? '', logoPng },
+        // One team order on every surface (Story 6.8): stored order is
+        // home-first since `00020`, so the card's left side is `team_a` (the
+        // home-court team) and its right side `team_b` — the order the page title,
+        // `og:title` and headline print.
+        const [left, right] = homeFirstPair({
+          team_a: { abbreviation: row.team_a?.abbreviation ?? '', logoPng: logoA },
+          team_b: { abbreviation: row.team_b?.abbreviation ?? '', logoPng: logoB },
         });
-        const [left, right] = neutralPair(side(row.team_a, logoA), side(row.team_b, logoB));
         const png = await renderCard({
           kind: 'series',
           year: row.year,
           round: row.round,
-          teamA: left.card,
-          teamB: right.card,
+          teamA: left,
+          teamB: right,
         });
         write(`${row.id}.png`, png);
         seriesCards += 1;

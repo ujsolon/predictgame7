@@ -27,6 +27,7 @@ import {
   FLAGSHIP_2016_GAME7,
   FLAGSHIP_2016_ID,
   flagship2016,
+  flagship2016HomeFirst,
   NON_FLAGSHIP_ID,
   nonFlagship2018,
   PENDING_ID,
@@ -37,7 +38,7 @@ import {
 import type { Series } from '@/types/types';
 import { type DistIo, OUTPUT_PATHS, runPrerender } from '../build';
 import { absoluteUrl, escapeHtml, ogTags, robotsTxt, SITE_URL, shellDocument, sitemapXml } from '../document';
-import { prerenderSite, renderRoute } from '../entry-server';
+import { prerenderSite } from '../entry-server';
 import { planSeriesPages } from '../plan';
 import { PRELOAD_ELEMENT_ID, parsePreload, type SeriesPreload, serialisePreload, shouldHydrate, stripOutcome } from '../preload';
 import type { PrerenderOutput } from '../types';
@@ -108,8 +109,8 @@ describe('the route set (I/O matrix)', () => {
     const html = file(`series/${NON_FLAGSHIP_ID}/index.html`) ?? '';
     expect(html).toContain('Cavaliers win Game 7');
     expect(html).toMatch(/<title data-rh="true">Boston Celtics vs Cleveland Cavaliers, 2018 Eastern Conference Finals: Cavaliers win Game 7 · PredictGame7<\/title>/);
-    // Historic row, spoiler-neutral order (Cavaliers before Celtics), never the outcome.
-    expect(meta(html, 'og:title')).toBe('Cleveland Cavaliers vs Boston Celtics — Game 7, 2018 Eastern Conference Finals');
+    // Historic row, stored order (`team_a` Celtics first, Story 6.8), never the outcome.
+    expect(meta(html, 'og:title')).toBe('Boston Celtics vs Cleveland Cavaliers — Game 7, 2018 Eastern Conference Finals');
     expect(meta(html, 'og:description')).toBe('Every Game 7 has a history. Decode the biggest game in basketball on PredictGame7.');
     expect(meta(html, 'og:url')).toBe(`${SITE_URL}series/${NON_FLAGSHIP_ID}/`);
     expect(meta(html, 'og:image')).toBe(`${SITE_URL}og/${NON_FLAGSHIP_ID}.png`);
@@ -125,7 +126,7 @@ describe('the route set (I/O matrix)', () => {
     const { file } = site();
     const html = file(`series/${aba1970.id}/index.html`) ?? '';
     expect(html).toContain('GAME 7 · 1970 ABA WESTERN DIVISION SEMIFINALS');
-    expect(meta(html, 'og:title')).toBe('Washington Caps vs Denver Rockets — Game 7, 1970 ABA Western Division Semifinals');
+    expect(meta(html, 'og:title')).toBe('Denver Rockets vs Washington Caps — Game 7, 1970 ABA Western Division Semifinals');
   });
 
   it('flagship: a spoiler-free preview with the reveal link, and a result page that carries the outcome (B10)', () => {
@@ -367,50 +368,70 @@ describe('editorial content (Story 4.5)', () => {
   });
 });
 
-describe('the preview preload is spoiler-neutral (E14)', () => {
-  /** Stripped without reordering: what the preload carried before the neutral-order fix. */
-  const naiveStrip = (row: Series): Series => ({
+describe('the preview preload keeps stored order and real venues (Story 6.8)', () => {
+  /** The outcome strip alone: what `stripOutcome` must equal for a row without editorial content. */
+  const stripOnly = (row: Series): Series => ({
     ...row,
     winner_team_id: null,
     winner_team: null,
     series_game_scores: (row.series_game_scores ?? []).filter((g) => g.game_number !== 7),
   });
 
-  it('team_a is the neutral-first team and every game row is homed on it, per-game winners unchanged', () => {
+  it('only strips: stored team_a/team_b and every game 1–6 row exactly as stored', () => {
+    for (const row of [flagship2016, flagship2016HomeFirst, pending2026, pendingNonFlagship]) {
+      expect(stripOutcome(row)).toEqual(stripOnly(row));
+    }
     const { file } = site();
-    // 2016 Finals: Cavaliers first (no swap); 2026 WCF pending: stored Thunder–Spurs, neutral Spurs first (swap).
-    for (const [id, first, row] of [
-      [FLAGSHIP_2016_ID, 'Cavaliers', flagship2016],
-      [PENDING_ID, 'Spurs', pending2026],
-    ] as const) {
-      const pv = preloadOf(file(`series/${id}/index.html`) ?? '');
-      const firstId = pv.series.team_a?.id;
-      expect(pv.series.team_a?.nickname).toBe(first);
-      expect(pv.series.team_a_id).toBe(firstId);
-      expect(pv.series.team_b_id).toBe(pv.series.team_b?.id);
-      const games = pv.series.series_game_scores ?? [];
-      expect(games.length).toBe(6);
-      for (const game of games) {
-        expect(game.home_team_id).toBe(firstId);
-        const stored = row.series_game_scores?.find((g) => g.game_number === game.game_number);
-        expect(game.winner_team_id).toBe(stored?.winner_team_id);
-        // Each team keeps its own score.
-        const scoreOf = (g: typeof game, team: number) => (g.home_team_id === team ? g.home_score : g.away_score);
-        expect(scoreOf(game, row.team_a_id)).toBe(stored && scoreOf(stored, row.team_a_id));
-        expect(scoreOf(game, row.team_b_id)).toBe(stored && scoreOf(stored, row.team_b_id));
-      }
+    for (const row of [flagship2016, pending2026]) {
+      const pv = preloadOf(file(`series/${row.id}/index.html`) ?? '');
+      expect(pv.series).toEqual(stripOnly(row));
+      expect([pv.series.team_a_id, pv.series.team_b_id]).toEqual([row.team_a_id, row.team_b_id]);
     }
   });
 
-  it('the rendered preview is unchanged by the reordering', () => {
-    for (const row of [flagship2016, pending2026]) {
-      const route = `/series/${row.id}`;
-      const reveal = row === flagship2016;
-      const neutral = renderRoute(route, { path: route, variant: 'preview', reveal, series: stripOutcome(row) });
-      const naive = renderRoute(route, { path: route, variant: 'preview', reveal, series: naiveStrip(row) });
-      expect(neutral.html).toBe(naive.html);
-      expect(neutral.helmetHead).toBe(naive.helmetHead);
-    }
+  it('the 2026 WCF keeps OKC as team_a and its real SAS-home games 3, 4 and 6; no Game 7, no winner', () => {
+    // The 2026 WCF as an archived row (illustrative Game 7 and winner; only their absence is asserted).
+    const okc = pending2026.team_a_id;
+    const sas = pending2026.team_b_id;
+    const archived: Series = {
+      ...pending2026,
+      winner_team_id: okc,
+      winner_team: pending2026.team_a,
+      series_game_scores: [
+        ...(pending2026.series_game_scores ?? []),
+        {
+          id: 'wcf-g7',
+          series_id: pending2026.id,
+          game_number: 7,
+          home_team_id: okc,
+          away_team_id: sas,
+          home_score: 111,
+          away_score: 100,
+          winner_team_id: okc,
+          created_at: '2026-09-22T00:00:00+00:00',
+        },
+      ],
+    };
+    const stripped = stripOutcome(archived);
+    expect(stripped.team_a_id).toBe(okc);
+    expect(stripped.team_a?.abbreviation).toBe('OKC');
+    expect(stripped.winner_team_id).toBeNull();
+    expect(stripped.winner_team).toBeNull();
+    const homes = Object.fromEntries((stripped.series_game_scores ?? []).map((g) => [g.game_number, g.home_team_id]));
+    expect(homes).toEqual({ 1: okc, 2: okc, 3: sas, 4: sas, 5: okc, 6: sas });
+  });
+
+  it('the re-keyed 2016 Finals: Warriors first in the title, og:title and headline (Story 6.8 I/O matrix)', () => {
+    const { out, file } = site([flagship2016HomeFirst]);
+    expect(out.errors).toEqual([]);
+    const preview = file(`series/${flagship2016HomeFirst.id}/index.html`) ?? '';
+    expect(preview).toMatch(/<title data-rh="true">Golden State Warriors vs Cleveland Cavaliers — Game 7, 2016 Finals · PredictGame7<\/title>/);
+    expect(meta(preview, 'og:title')).toBe('Golden State Warriors vs Cleveland Cavaliers — Game 7, 2016 Finals');
+    expect(preview).toContain('Warriors and Cavaliers stand three games apiece');
+    const pv = preloadOf(preview);
+    expect(pv.series.team_a?.abbreviation).toBe('GSW');
+    expect(pv.series.series_game_scores?.map((g) => g.game_number).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(preview).not.toContain('game_number":7');
   });
 });
 
@@ -519,7 +540,7 @@ describe('escaping', () => {
     expect(out.errors).toEqual([]);
     const html = file(`series/${NON_FLAGSHIP_ID}/index.html`) ?? '';
     expect(html).not.toContain('"<Celtics>"');
-    expect(meta(html, 'og:title')).toBe('Cleveland Cavaliers vs Boston &quot;&lt;Celtics&gt;&quot; — Game 7, 2018 Eastern Conference Finals');
+    expect(meta(html, 'og:title')).toBe('Boston &quot;&lt;Celtics&gt;&quot; vs Cleveland Cavaliers — Game 7, 2018 Eastern Conference Finals');
   });
 
   it('a malformed preload is ignored, never thrown', () => {

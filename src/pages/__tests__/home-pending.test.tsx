@@ -119,8 +119,12 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     expect(db.filters).toEqual([['winner_team_id', null]]);
   });
 
-  it('renders one card per pending series: eyebrow, spoiler-neutral headline, "Game 7 stands." and both links (matrix: Home, pending exists)', async () => {
-    db.result = { data: [seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6])], error: null };
+  it('renders one card per pending series: eyebrow, stored-order headline, "Game 7 stands." and both links (matrix: Home, pending exists)', async () => {
+    // Story 6.8: stored order, `team_a` (the Game 1 host of a pending series) first. Miami is
+    // stored first here because the alphabet would put Boston first, so the retired E14 order fails.
+    const row = seriesWith(PENDING_ID, [1, 2, 3, 4, 5, 6]);
+    const miamiFirst = { ...row, team_a_id: MIA.id, team_b_id: BOS.id, team_a: MIA, team_b: BOS } as Series;
+    db.result = { data: [miamiFirst], error: null };
     const { container } = renderBlock();
     await waitFor(() => expect(container.querySelector('[data-pending-series-id]')).not.toBeNull());
     const cards = container.querySelectorAll('[data-pending-series-id]');
@@ -128,7 +132,7 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     const card = cards[0] as HTMLElement;
     expect(card.getAttribute('data-pending-series-id')).toBe(PENDING_ID);
     expect(card.querySelector('p')?.textContent).toBe('GAME 7 · 2027 EASTERN CONFERENCE FIRST ROUND');
-    expect(card.querySelector('h2')?.textContent).toBe('Boston Celtics and Miami Heat stand three games apiece');
+    expect(card.querySelector('h2')?.textContent).toBe('Miami Heat and Boston Celtics stand three games apiece');
     expect(card.textContent).toContain('Game 7 stands.');
 
     const series = card.querySelector('a[data-pending-series-link="series"]') as HTMLAnchorElement;
@@ -139,7 +143,7 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     expect(predict.textContent).toBe('Model Game 7 →');
     // ≥44px targets.
     for (const link of [series, predict]) expect(link.className).toMatch(/\bmin-h-11\b/);
-    // Spoiler-neutral: no score, no outcome wording.
+    // Spoiler discipline: no score, no outcome wording.
     expect(card.textContent).not.toMatch(/\d+–\d+|win|won|over/);
   });
 
@@ -272,6 +276,17 @@ describe('Home analytics through the port (Story 4.0)', () => {
     fireEvent.click(hotspot);
     expect(db.capture.mock.calls).toEqual([
       ['banner_hotspot_clicked', { caption: 'Raptors vs 76ers, 2019', series_id: '29638c4e-261a-4d09-81aa-5740f76175f5' }],
+    ]);
+    expect(db.captureException).not.toHaveBeenCalled();
+  });
+
+  it('sends the 2016 hotspot caption home-first, Game 7 host named first (Story 6.8 value change)', async () => {
+    const { container } = renderHome();
+    await settled();
+    const hotspot = container.querySelector('a[href="/predict?series=06715a85-ec33-46a4-8383-d058055eefe6"]') as HTMLAnchorElement;
+    fireEvent.click(hotspot);
+    expect(db.capture.mock.calls).toEqual([
+      ['banner_hotspot_clicked', { caption: 'Warriors vs Cavs, 2016', series_id: '06715a85-ec33-46a4-8383-d058055eefe6' }],
     ]);
     expect(db.captureException).not.toHaveBeenCalled();
   });

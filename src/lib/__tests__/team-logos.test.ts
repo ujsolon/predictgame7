@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -82,51 +83,82 @@ describe('isRecognizedTeam', () => {
   // change it iterated `Object.values(TEAM_ABBREVIATIONS)`, the hardcoded
   // name→code map the story deleted — and an empty object would have kept the
   // case green while checking nothing at all (its AC 5 names that failure). The
-  // seed migrations are the other source, which is exactly the agreement this
-  // guard exists to protect: re-keying onto `TEAM_LOGO_ENTRIES` instead would be
+  // migrations are the other source, which is exactly the agreement this guard
+  // exists to protect: re-keying onto `TEAM_LOGO_ENTRIES` instead would be
   // circular, because the extractor two lines above reads its list out of that
   // same file, so a loop over it would assert a file agrees with itself.
-  // `parseTeamsSeed` is the shared reader (deferred-work.md:343): the venue
-  // probe and `00016`'s generator call the same function this test asserts, so
-  // one regex serves all three and drift between copies cannot go unnoticed.
-  const teamsSeedText =
-    readFileSync(
-      fileURLToPath(new URL('../../../supabase/migrations/00005_release_1_data_model.sql', import.meta.url)),
-      'utf8'
-    ) +
-    readFileSync(
-      fileURLToPath(new URL('../../../supabase/migrations/00007_backfill_missing_historical_series.sql', import.meta.url)),
-      'utf8'
-    );
-  const seededAbbreviations = [...parseTeamsSeed(teamsSeedText, '00005 + 00007 teams seed').keys()];
+  //
+  // Story 6.8 widened it from the `00005` + `00007` seeds to **every**
+  // `INSERT INTO [public.]teams` statement across `supabase/migrations/*.sql`,
+  // so a team a later migration adds (`00021`'s Pittsburgh Pipers, written as
+  // `INSERT … SELECT 61, 'Pittsburgh Pipers', 'PTP', …`) cannot go unseen. Its
+  // count is its own: the shared `parseTeamsSeed` (`venueBackfill.ts`) keeps its
+  // 59-row pin over the two seeds, which `00016`'s generator still relies on,
+  // and is cross-checked below as a subset of this wider read.
+  const MIGRATION_TEAM_COUNT = 60;
+  const migrationsDir = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
+  const migrationText = (name: string) => readFileSync(join(migrationsDir, name), 'utf8');
+  const migrationFiles = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  // One statement per match: from `INSERT INTO teams` / `public.teams` to its `;`.
+  // A row is `(id, 'full_name', 'CODE'` in a VALUES list or `SELECT id, 'full_name', 'CODE'`.
+  const insertedTeams = migrationFiles.flatMap((name) =>
+    [...migrationText(name).matchAll(/INSERT\s+INTO\s+(?:public\.)?teams\b[^;]*;/gi)].flatMap((statement) =>
+      [...statement[0].matchAll(/(?:\(|\bSELECT)\s*(\d+),\s*'((?:[^']|'')+)',\s*'([A-Z]{2,4})'/g)].map((match) => ({
+        id: Number(match[1]),
+        name: match[2].replace(/''/g, "'"),
+        code: match[3],
+        file: name,
+      }))
+    )
+  );
+  const insertedAbbreviations = insertedTeams.map((team) => team.code);
 
-  it('resolves every seeded teams.abbreviation to a logo alias (seed → alias coverage)', () => {
+  it('reads every teams insert across the migrations, 00021 included', () => {
+    expect(insertedTeams).toHaveLength(MIGRATION_TEAM_COUNT);
+    expect(new Set(insertedAbbreviations).size).toBe(MIGRATION_TEAM_COUNT);
+    expect(new Set(insertedTeams.map((team) => team.id)).size).toBe(MIGRATION_TEAM_COUNT);
+    expect(insertedTeams.find((team) => team.code === 'PTP')).toMatchObject({
+      id: 61,
+      name: 'Pittsburgh Pipers',
+      file: '00021_add_1968_aba_finals.sql',
+    });
+    // The shared 59-row reader still agrees with this one over the two seeds.
+    const seed = parseTeamsSeed(
+      migrationText('00005_release_1_data_model.sql') + migrationText('00007_backfill_missing_historical_series.sql'),
+      '00005 + 00007 teams seed'
+    );
+    expect(seed.size).toBe(EXPECTED_TEAM_COUNT);
+    for (const [code, id] of seed) {
+      expect(insertedTeams.find((team) => team.code === code)?.id).toBe(id);
+    }
+  });
+
+  it('resolves every inserted teams.abbreviation to a logo alias (migrations → alias coverage)', () => {
     // Non-vacuity first: a reader that parsed nothing, and an extractor that
     // matched nothing, would both make the loop below pass by checking nothing.
-    expect(seededAbbreviations).toHaveLength(EXPECTED_TEAM_COUNT);
-    expect(aliasEntries.length).toBeGreaterThan(seededAbbreviations.length);
+    expect(insertedAbbreviations).toHaveLength(MIGRATION_TEAM_COUNT);
+    expect(aliasEntries.length).toBeGreaterThan(insertedAbbreviations.length);
 
-    // Every abbreviation the `teams` table seeds must also be a resolvable logo
-    // alias — 30 current franchises (`00005`) plus 29 historical identities
-    // (`00007`). A new era code with no alias entry is the drift this catches.
-    for (const abbreviation of seededAbbreviations) {
+    // Every abbreviation a migration inserts into `teams` must also be a
+    // resolvable logo alias — 30 current franchises (`00005`), 29 historical
+    // identities (`00007`) and PTP (`00021`). A new era code with no alias
+    // entry is the drift this catches.
+    for (const abbreviation of insertedAbbreviations) {
       expect(aliasEntries).toContain(abbreviation);
     }
   });
 
   // Owner decision U16 (2026-10-05): the custom form prints the code of the
   // team whose logo the typed text shows, read from each entry's last alias.
-  // That is only safe if the table pairs every seeded name with **its own**
+  // That is only safe if the table pairs every inserted name with **its own**
   // stored code, and if no normalized alias sits under two entries (the Map
   // would keep the last silently, and the logo and code could then name
-  // different teams). Both are pinned against the seeds, not against this file.
-  const seededTeams = [...teamsSeedText.matchAll(/\(\s*\d+,\s*'((?:[^']|'')+)',\s*'([A-Z]{2,4})'/g)].map(
-    (match) => ({ name: match[1].replace(/''/g, "'"), code: match[2] })
-  );
-
-  it('pairs every seeded full_name with its own stored code (U16)', () => {
-    expect(seededTeams).toHaveLength(EXPECTED_TEAM_COUNT);
-    for (const team of seededTeams) {
+  // different teams). Both are pinned against the migrations, not against this file.
+  it('pairs every inserted full_name with its own stored code (U16)', () => {
+    expect(insertedTeams).toHaveLength(MIGRATION_TEAM_COUNT);
+    for (const team of insertedTeams) {
       expect(getAliasTeamCode(team.name)).toBe(team.code);
       expect(getAliasTeamCode(team.code)).toBe(team.code);
     }
@@ -134,6 +166,16 @@ describe('isRecognizedTeam', () => {
     expect(getAliasTeamCode('Team B')).toBe('TMB');
     expect(getAliasTeamCode('Nowhere FC')).toBeUndefined();
     expect(getAliasTeamCode('')).toBeUndefined();
+  });
+
+  it('keeps a bare "Pipers" with Minnesota; "Pittsburgh Pipers" and "PTP" resolve to Pittsburgh (owner decision 2026-10-10, 1a)', () => {
+    expect(getAliasTeamCode('Pipers')).toBe('MNP');
+    expect(getTeamLogo('Pipers')).toBe(`${BASE_URL}assets/teams/minnesota_pipers_1969.webp`);
+    for (const typed of ['Pittsburgh Pipers', 'PTP', 'pittsburgh pipers', 'ptp']) {
+      expect(getAliasTeamCode(typed)).toBe('PTP');
+      expect(getTeamLogo(typed)).toBe(`${BASE_URL}assets/teams/Pittsburgh_Pipers.gif`);
+    }
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('files no normalized alias under two entries (U16)', () => {

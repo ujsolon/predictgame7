@@ -15,7 +15,6 @@
  */
 import { createContext, useContext } from 'react';
 import { withoutResolution } from '@/lib/series-content';
-import { shouldSwapForNeutralOrder } from '@/lib/spoiler-neutral';
 import type { Series } from '@/types/types';
 
 export type PreloadVariant = 'preview' | 'record' | 'result';
@@ -57,38 +56,18 @@ export function usePreload(pathname: string): SeriesPreload | null {
  * part, which the preview renders. Everything else (games 1–6, both teams) is
  * what the preview shows.
  *
- * Spoiler-neutral order too (owner decision E14, `src/lib/spoiler-neutral.ts`):
- * stored order puts the eventual winner in `team_a` in 177/178 archived rows,
- * and every archived game row's home side is the `team_a` slot, so the page
- * source would name the winner first. The stripped row's `team_a`/`team_b`
- * (and ids) are put in neutral order, and each remaining game row is rewritten
- * so its home side is the neutral first team. Per-game winners are unchanged.
+ * Nothing is reordered (Story 6.8): the stripped row keeps stored
+ * `team_a`/`team_b` — home-first since `00020` — and every remaining game row
+ * keeps its stored home/away sides and scores. The retired E14 rewrite homed
+ * every game on an alphabetically-first team, which would now flip real
+ * venues (the 2026 Western Conference Finals' games 3, 4 and 6, and the 1968
+ * ABA Finals).
  */
 export function stripOutcome(series: Series): Series {
   const games = (series.series_game_scores ?? []).filter((game) => game.game_number !== 7);
   const stripped: Series = { ...series, winner_team_id: null, winner_team: null, series_game_scores: games };
   if (series.series_content) stripped.series_content = withoutResolution(series.series_content);
-  const { team_a: teamA, team_b: teamB } = series;
-  if (!teamA || !teamB) return stripped;
-  const [first, second] = shouldSwapForNeutralOrder(teamA, teamB) ? [teamB, teamA] : [teamA, teamB];
-  return {
-    ...stripped,
-    team_a_id: first.id,
-    team_b_id: second.id,
-    team_a: first,
-    team_b: second,
-    series_game_scores: games.map((game) =>
-      game.away_team_id === first.id && game.home_team_id !== first.id
-        ? {
-            ...game,
-            home_team_id: game.away_team_id,
-            away_team_id: game.home_team_id,
-            home_score: game.away_score,
-            away_score: game.home_score,
-          }
-        : game
-    ),
-  };
+  return stripped;
 }
 
 export interface HydrateInput {

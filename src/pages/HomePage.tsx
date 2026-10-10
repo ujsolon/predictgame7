@@ -8,7 +8,8 @@ import { supabase } from '@/db/supabase';
 import { isSeriesPending } from '@/lib/series-phase';
 import { SERIES_SELECT } from '@/lib/series-query';
 import type { Series } from '@/types/types';
-import { predictHref, previewHeadline, type SeriesView, seriesEyebrow, spoilerNeutralView, toSeriesView } from '@/pages/series/series-view';
+import { matchupLabel } from '@/lib/matchup';
+import { predictHref, previewHeadline, type SeriesView, seriesEyebrow, toSeriesView } from '@/pages/series/series-view';
 import { captureError, EVENTS, track } from '@/lib/analytics';
 import {
   Trophy,
@@ -46,9 +47,10 @@ const HOME_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visibl
  * payload: every surviving row still has to pass the derivation, so a
  * winner-less row with the wrong game set is dropped, not promoted.
  *
- * - One card per pending series: the eyebrow, the spoiler-neutral "{A} and {B}
- *   stand three games apiece" + "Game 7 stands.", a primary link to the series
- *   page and a secondary deep link into Predict.
+ * - One card per pending series: the eyebrow, "{A} and {B} stand three games
+ *   apiece" in stored order (`team_a`, the home team, first — Story 6.8) +
+ *   "Game 7 stands.", a primary link to the series page and a secondary deep
+ *   link into Predict.
  * - No pending series, a read in flight, or a failed read → nothing at all
  *   (owner decision 2026-10-08: the empty state is withdrawn until Story 4.9's
  *   redesign). A failed read still logs to the console, so it stays
@@ -87,7 +89,7 @@ export function PendingGameSevens() {
           if (!isSeriesPending(row)) continue;
           const view = toSeriesView(row);
           if (view) {
-            views.push(spoilerNeutralView(view));
+            views.push(view);
           } else if (!reported.has(row.id)) {
             // Reported, never silent — as the series routes report a row they cannot show.
             reported.add(row.id);
@@ -296,11 +298,14 @@ export default function HomePage() {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
 
+          {/* Captions are home-first, Game 7 host named first (Story 6.8). The 2016
+              caption was 'Cavs vs Warriors, 2016' until Story 6.8 — a value change on
+              `banner_hotspot_clicked`'s `caption`, recorded for analytics continuity. */}
           {[
-            { caption: 'Cavs vs Warriors, 2016', seriesId: '06715a85-ec33-46a4-8383-d058055eefe6', x: '20%', y: '58%', tooltipX: 'left', tooltipY: 'above' },
-            { caption: 'Raptors vs 76ers, 2019', seriesId: '29638c4e-261a-4d09-81aa-5740f76175f5', x: '43%', y: '27%', tooltipX: 'center', tooltipY: 'below' },
-            { caption: 'Thunder vs Pacers, 2025', seriesId: '626257bc-1678-4c88-84a6-37e0a6cdb49c', x: '57%', y: '90%', tooltipX: 'center', tooltipY: 'above' },
-            { caption: 'Heat vs Spurs, 2013', seriesId: 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a', x: '79%', y: '30%', tooltipX: 'right', tooltipY: 'below' },
+            { caption: `${matchupLabel('Warriors', 'Cavs')}, 2016`, seriesId: '06715a85-ec33-46a4-8383-d058055eefe6', x: '20%', y: '58%', tooltipX: 'left', tooltipY: 'above' },
+            { caption: `${matchupLabel('Raptors', '76ers')}, 2019`, seriesId: '29638c4e-261a-4d09-81aa-5740f76175f5', x: '43%', y: '27%', tooltipX: 'center', tooltipY: 'below' },
+            { caption: `${matchupLabel('Thunder', 'Pacers')}, 2025`, seriesId: '626257bc-1678-4c88-84a6-37e0a6cdb49c', x: '57%', y: '90%', tooltipX: 'center', tooltipY: 'above' },
+            { caption: `${matchupLabel('Heat', 'Spurs')}, 2013`, seriesId: 'dd4e81bc-0e10-4ad2-b2eb-8b1fbd8c5e0a', x: '79%', y: '30%', tooltipX: 'right', tooltipY: 'below' },
           ].map((hotspot, index) => (
             <Link
               key={index}

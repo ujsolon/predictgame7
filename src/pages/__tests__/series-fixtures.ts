@@ -1,8 +1,10 @@
 // Real-shaped `SERIES_SELECT` rows for the Story 4.3 series-page suites.
-// Archived rows follow the stored convention: outside Game 7 of an NBA/BAA
-// series, `home_team_id` is a winner-slot fiction (AGENTS.md, migration
-// `00016`) — which is exactly why the pages map scores by team id and never
-// print a venue.
+// Most archived rows here predate the `00020` re-key and keep the old stored
+// convention (a games 1–6 `home_team_id` naming the `team_a` slot, not a
+// venue) — which is exactly why the pages map scores by team id and never
+// print a venue. The pages show every row in stored order, `team_a` first
+// (Story 6.8), so these rows exercise that order whatever it is;
+// `flagship2016HomeFirst` is the 2016 Finals as `00020` actually stores it.
 import type { Series, SeriesContentRow, SeriesGameScore, Team } from '@/types/types';
 
 function team(id: number, full_name: string, nickname: string, abbreviation: string, city: string): Team {
@@ -86,6 +88,34 @@ export const flagship2016 = series(
 );
 /** The Game 7 score a preview must never carry. */
 export const FLAGSHIP_2016_GAME7 = { cle: 93, gsw: 89 };
+
+/**
+ * The 2016 Finals as production stores it since `00020` (Story 6.10): the
+ * Warriors — the Game 7 host — as `team_a`, every game's home side `team_a`
+ * (games 1–6 by convention, Game 7 a real venue). Same scores per team as
+ * `flagship2016`, on its own id. Alphabetically the Cavaliers come first, so
+ * this row tells stored order from the retired E14 order (Story 6.8).
+ */
+export const FLAGSHIP_2016_HOME_FIRST_ID = '4f3e2d1c-0b9a-4c8d-9e7f-6a5b4c3d2e1f';
+export const flagship2016HomeFirst = series(
+  FLAGSHIP_2016_HOME_FIRST_ID,
+  2016,
+  'Finals',
+  'NBA',
+  WARRIORS,
+  CAVALIERS,
+  CAVALIERS,
+  [
+    [WARRIORS, 104, CAVALIERS, 89],
+    [WARRIORS, 110, CAVALIERS, 77],
+    [WARRIORS, 90, CAVALIERS, 120],
+    [WARRIORS, 108, CAVALIERS, 97],
+    [WARRIORS, 97, CAVALIERS, 112],
+    [WARRIORS, 101, CAVALIERS, 115],
+    [WARRIORS, 89, CAVALIERS, 93],
+  ],
+  true
+);
 
 /**
  * Non-flagship archive: 2018 Eastern Conference Finals, Cavaliers over
@@ -232,6 +262,7 @@ export const invalidContent: Series = {
 
 export const FIXTURES: Record<string, Series> = {
   [FLAGSHIP_2016_ID]: flagship2016,
+  [FLAGSHIP_2016_HOME_FIRST_ID]: flagship2016HomeFirst,
   [CONTENT_FLAGSHIP_ID]: contentFlagship,
   [CONTENT_RECORD_ID]: contentRecord,
   [INVALID_CONTENT_ID]: invalidContent,

@@ -7,14 +7,19 @@
  * - phase comes from `deriveSeriesPhase` (AD-4) — never `status`, dates or
  *   `league`;
  * - a game's scores are mapped to teams by team id, never by home/away
- *   position, and no venue is carried at all: an archived row's home side is
- *   a real venue only for Game 7 of an NBA/BAA series (migration `00016`);
+ *   position, and no venue is carried at all: since `00020` an archived row's
+ *   games 1–6 home side is a convention (`team_a`) for the 177
+ *   spreadsheet-sourced series, real only for Game 7 and for pipeline-born or
+ *   `00021` rows (`docs/CURRENT_DATA_MODEL.md`);
+ * - the two teams are shown in stored order, `team_a` first, which is
+ *   home-first (Story 6.8, `src/lib/matchup.ts`) — on every surface, preview
+ *   included;
  * - a row that cannot be shown truthfully (no phase, missing team embeds, a
  *   score row naming neither team, a winner that is neither team) yields
  *   `null`, which the routes render as the 404.
  */
+import { matchupLabel } from '@/lib/matchup';
 import { deriveSeriesPhase, type SeriesPhase } from '@/lib/series-phase';
-import { shouldSwapForNeutralOrder } from '@/lib/spoiler-neutral';
 import type { Series, Team } from '@/types/types';
 
 export interface GameView {
@@ -93,28 +98,6 @@ export function toSeriesView(series: Series): SeriesView | null {
   };
 }
 
-/**
- * The same view with the two teams in spoiler-neutral order (owner decision
- * 2026-10-07, `src/lib/spoiler-neutral.ts`): stored order puts the eventual
- * winner first in 177/178 archived rows, so a winner-free surface must not
- * use it. Scores and per-game winners swap with the teams; `winner`/`loser`
- * are untouched (the preview never renders them).
- */
-export function spoilerNeutralView(view: SeriesView): SeriesView {
-  if (!shouldSwapForNeutralOrder(view.teamA, view.teamB)) return view;
-  return {
-    ...view,
-    teamA: view.teamB,
-    teamB: view.teamA,
-    games: view.games.map((g) => ({
-      number: g.number,
-      scoreA: g.scoreB,
-      scoreB: g.scoreA,
-      winner: g.winner === 'a' ? 'b' : g.winner === 'b' ? 'a' : null,
-    })),
-  };
-}
-
 /** "{Year} {Round}", with the stored league before the round when it is not NBA (as 2.10's chip). */
 export function yearRound(view: SeriesView): string {
   return `${view.year} ${view.league !== 'NBA' ? `${view.league} ` : ''}${view.round}`;
@@ -127,7 +110,7 @@ export function seriesEyebrow(view: SeriesView): string {
 
 /** Winner-free (preview). */
 export function previewTitle(view: SeriesView): string {
-  return `${view.teamA.full_name} vs ${view.teamB.full_name} — Game 7, ${yearRound(view)} · PredictGame7`;
+  return `${matchupLabel(view.teamA.full_name, view.teamB.full_name)} — Game 7, ${yearRound(view)} · PredictGame7`;
 }
 
 export function previewHeadline(view: SeriesView): string {
@@ -140,7 +123,7 @@ export function previewDescription(view: SeriesView): string {
 
 /** Outcome-bearing (result and full record). Archive views only. */
 export function outcomeTitle(view: SeriesView, winner: Team): string {
-  return `${view.teamA.full_name} vs ${view.teamB.full_name}, ${yearRound(view)}: ${teamWord(winner)} win Game 7 · PredictGame7`;
+  return `${matchupLabel(view.teamA.full_name, view.teamB.full_name)}, ${yearRound(view)}: ${teamWord(winner)} win Game 7 · PredictGame7`;
 }
 
 export function outcomeHeadline(winner: Team): string {

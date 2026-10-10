@@ -22,6 +22,7 @@ import {
   RESOLUTION_HEADLINE,
   RESOLUTION_VIDEO_ID,
   FLAGSHIP_2016_GAME7,
+  FLAGSHIP_2016_HOME_FIRST_ID,
   FLAGSHIP_2016_ID,
   NON_FLAGSHIP_ID,
   PENDING_ID,
@@ -182,6 +183,22 @@ describe('/series/:id — non-flagship archive (full record)', () => {
 });
 
 describe('/series/:id — flagship preview (spoiler-free)', () => {
+  it('shows the 2016 Finals as 00020 stores it Warriors first — title, headline, game rows and CTA (Story 6.8)', async () => {
+    renderApp(`/series/${FLAGSHIP_2016_HOME_FIRST_ID}`);
+    await headline('Warriors and Cavaliers stand three games apiece');
+    expect(gameRows()).toEqual([
+      'Game 1 Warriors 104–89 Cavaliers',
+      'Game 2 Warriors 110–77 Cavaliers',
+      'Game 3 Warriors 90–120 Cavaliers',
+      'Game 4 Warriors 108–97 Cavaliers',
+      'Game 5 Warriors 97–112 Cavaliers',
+      'Game 6 Warriors 101–115 Cavaliers',
+    ]);
+    expect(text()).toContain('Run Warriors vs Cavaliers through the prediction model');
+    expect(text()).not.toContain('win Game 7');
+    await waitFor(() => expect(document.title).toBe('Golden State Warriors vs Cleveland Cavaliers — Game 7, 2016 Finals · PredictGame7'));
+  });
+
   it('renders games 1–6, the method links, the CTA and the reveal — and no Game 7 outcome in the DOM', async () => {
     renderApp(`/series/${FLAGSHIP_2016_ID}`);
     await headline('Cavaliers and Warriors stand three games apiece');
@@ -280,38 +297,37 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
 describe('/series/:id — pending series', () => {
   it('renders the preview with no reveal; its /result is the 404', async () => {
     renderApp(`/series/${PENDING_ID}`);
-    await headline('Spurs and Thunder stand three games apiece');
-    // Neutral order must reach the game rows, not just the headline and title:
-    // the fixture stores Thunder (`team_a`, the eventual winner) first, so a
-    // strip rendered from the stored view reads "Thunder 122–116 Spurs" and
-    // re-leaks the `team_a`-is-winner pattern per row (owner decision E14).
+    await headline('Thunder and Spurs stand three games apiece');
+    // Stored order reaches the game rows, not just the headline and title
+    // (Story 6.8): `team_a` (the Thunder) first in every row. The retired E14
+    // order would have read "Spurs 116–122 Thunder".
     expect(gameRows()).toEqual([
-      'Game 1 Spurs 116–122 Thunder',
-      'Game 2 Spurs 108–101 Thunder',
-      'Game 3 Spurs 114–106 Thunder',
-      'Game 4 Spurs 99–105 Thunder',
-      'Game 5 Spurs 102–117 Thunder',
-      'Game 6 Spurs 118–110 Thunder',
+      'Game 1 Thunder 122–116 Spurs',
+      'Game 2 Thunder 101–108 Spurs',
+      'Game 3 Thunder 106–114 Spurs',
+      'Game 4 Thunder 105–99 Spurs',
+      'Game 5 Thunder 117–102 Spurs',
+      'Game 6 Thunder 110–118 Spurs',
     ]);
     expect(text()).not.toContain('See how the series ended');
     expect(text()).not.toContain('Spoilers');
     expect(anchors().filter((a) => a.getAttribute('href')?.includes('method='))).toHaveLength(4);
     await waitFor(() =>
-      expect(document.title).toBe('San Antonio Spurs vs Oklahoma City Thunder — Game 7, 2026 Western Conference Finals · PredictGame7')
+      expect(document.title).toBe('Oklahoma City Thunder vs San Antonio Spurs — Game 7, 2026 Western Conference Finals · PredictGame7')
     );
   });
 
   it('a pending non-flagship series renders the preview with no reveal', async () => {
     renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}`);
-    await headline('Cavaliers and Celtics stand three games apiece');
-    // Stored order is Celtics first (`team_a`); neutral order swaps it.
+    await headline('Celtics and Cavaliers stand three games apiece');
+    // Stored order is Celtics first (`team_a`); nothing re-sorts it.
     expect(gameRows()).toEqual([
-      'Game 1 Cavaliers 101–110 Celtics',
-      'Game 2 Cavaliers 104–98 Celtics',
-      'Game 3 Cavaliers 112–107 Celtics',
-      'Game 4 Cavaliers 95–103 Celtics',
-      'Game 5 Cavaliers 109–118 Celtics',
-      'Game 6 Cavaliers 106–99 Celtics',
+      'Game 1 Celtics 110–101 Cavaliers',
+      'Game 2 Celtics 98–104 Cavaliers',
+      'Game 3 Celtics 107–112 Cavaliers',
+      'Game 4 Celtics 103–95 Cavaliers',
+      'Game 5 Celtics 118–109 Cavaliers',
+      'Game 6 Celtics 99–106 Cavaliers',
     ]);
     expect(text()).not.toContain('See how the series ended');
     expect(db.from).toHaveBeenCalledTimes(1);

@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Link } from 'react-router-dom';
 import ErrorRetryPanel from '@/components/common/ErrorRetryPanel';
+import { matchupLabel } from '@/lib/matchup';
 import { getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import type { Series } from '@/types/types';
@@ -66,7 +67,7 @@ export default function SeriesPicker({
             )}
           </div>
           <span className="text-xs font-bold truncate">
-            {getTeamCode(teamAName, game.team_a)} vs {getTeamCode(teamBName, game.team_b)}
+            {matchupLabel(getTeamCode(teamAName, game.team_a), getTeamCode(teamBName, game.team_b))}
           </span>
         </div>
         <span className="text-[9px] uppercase tracking-tighter opacity-60 font-medium truncate w-full text-center">

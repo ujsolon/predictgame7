@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import ShareButton from '@/components/common/ShareButton';
 import { EVENTS, track } from '@/lib/analytics';
+import { matchupLabel } from '@/lib/matchup';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import { customPredictionSharePath, seriesPredictionSharePath } from '@/lib/share';
 import { sharePayloadFromForm } from '@/lib/share-payload';
@@ -48,7 +49,7 @@ export default function DetailedResult({
     : sharedPayload
       ? customPredictionSharePath(sharedPayload)
       : null;
-  const shareTitle = `${teamAName} vs ${teamBName} — Game 7 on PredictGame7`;
+  const shareTitle = `${matchupLabel(teamAName, teamBName)} — Game 7 on PredictGame7`;
   return (
     <div className="space-y-8">
       <Card>
