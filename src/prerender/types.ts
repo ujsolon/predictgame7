@@ -19,6 +19,8 @@ export interface PrerenderSummary {
   preview: number;
   result: number;
   shells: number;
+  /** Story 6.1: uuid, `/series/` and `/series/<year>/` redirect stubs (never in the sitemap). */
+  stubs: number;
   sitemapUrls: number;
 }
 

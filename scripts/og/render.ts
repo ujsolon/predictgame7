@@ -46,6 +46,8 @@ export interface OgSeriesRow extends SeriesPhaseInput {
   id: string;
   year: number;
   round: string;
+  /** `series.league` (migration `00016`): shown before the round on a non-NBA card (Story 6.1). */
+  league: string;
   team_a?: TeamRow | null;
   team_b?: TeamRow | null;
 }
@@ -169,6 +171,7 @@ export async function runOgCards(deps: OgRunDeps): Promise<number> {
           kind: 'series',
           year: row.year,
           round: row.round,
+          league: row.league,
           teamA: left,
           teamB: right,
         });

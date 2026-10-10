@@ -20,7 +20,7 @@ import type { Series } from '@/types/types';
 export type PreloadVariant = 'preview' | 'record' | 'result';
 
 export interface SeriesPreload {
-  /** The router path the page was rendered at (basename stripped), e.g. `/series/<id>` or `/series/<id>/result`. */
+  /** The router path the page was rendered at (basename stripped), e.g. `/series/<year>/<slug>` or `/series/<year>/<slug>/result`. */
   path: string;
   variant: PreloadVariant;
   /** Preview only: whether the reveal link renders (an archived flagship). */

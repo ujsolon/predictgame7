@@ -14,8 +14,8 @@ import { outcomeDescription, outcomeHeadline, outcomeTitle, predictHref, seriesE
 interface SeriesFullRecordProps {
   series: Series;
   /**
-   * `record`: a non-flagship archive series' single page at `/series/<id>`.
-   * `result`: a flagship's `/series/<id>/result` — same content, and its
+   * `record`: a non-flagship archive series' single page at `/series/<year>/<slug>`.
+   * `result`: a flagship's `/series/<year>/<slug>/result` — same content, and its
    * `<h1>` takes focus on client navigation (the reveal is one tap).
    */
   variant: 'record' | 'result';
@@ -59,7 +59,7 @@ export default function SeriesFullRecord({ series, variant }: SeriesFullRecordPr
         action={
           <ShareButton
             appearance="icon"
-            path={seriesPageSharePath(view.id, isResult ? 'result' : 'page')}
+            path={seriesPageSharePath(series, isResult ? 'result' : 'page')}
             title={outcomeTitle(view, view.winner)}
             surface="series"
             kind="series"

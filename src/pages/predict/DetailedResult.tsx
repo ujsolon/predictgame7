@@ -45,7 +45,7 @@ export default function DetailedResult({
   const sharedPayload =
     selectedSeries?.source === 'custom' ? sharePayloadFromForm(customInput, prediction.method_used) : null;
   const sharePath = selectedSeries?.data
-    ? seriesPredictionSharePath(selectedSeries.data.id, prediction.method_used)
+    ? seriesPredictionSharePath(selectedSeries.data, prediction.method_used)
     : sharedPayload
       ? customPredictionSharePath(sharedPayload)
       : null;

@@ -58,6 +58,8 @@ export interface OgMeta {
   route: string;
   /** `dist/`-relative card path. */
   image: string;
+  /** `og:image:alt` and `twitter:image:alt` (Story 6.1); omitted when absent. */
+  imageAlt?: string;
 }
 
 /** OG + Twitter tags and the canonical link, every value escaped. */
@@ -70,10 +72,85 @@ export function ogTags(meta: OgMeta): string {
     tag('property', 'og:description', meta.description),
     tag('property', 'og:url', url),
     tag('property', 'og:image', absoluteAsset(meta.image)),
+    ...(meta.imageAlt ? [tag('property', 'og:image:alt', meta.imageAlt)] : []),
     tag('property', 'og:type', 'website'),
     tag('name', 'twitter:card', 'summary_large_image'),
+    ...(meta.imageAlt ? [tag('name', 'twitter:image:alt', meta.imageAlt)] : []),
     `<link rel="canonical" href="${escapeHtml(url)}" />`,
   ].join('\n    ');
+}
+
+/** The app base path (`/predictgame7/`), from `SITE_URL`. */
+export const SITE_BASE = new URL(SITE_URL).pathname;
+
+/** A router path (`/series/2016/x`, `/historical?year=1968`) → its base-relative directory URL (`/predictgame7/series/2016/x/`). */
+export function sitePath(target: string): string {
+  const [path, query] = target.split('?', 2);
+  const trimmed = path.replace(/^\/+|\/+$/g, '');
+  return `${SITE_BASE}${trimmed === '' ? '' : `${trimmed}/`}${query ? `?${query}` : ''}`;
+}
+
+export interface StubInput {
+  /** The router path it forwards to (a query only on a `noindex` stub). */
+  target: string;
+  kind: 'canonical' | 'noindex';
+  /**
+   * A `canonical` stub's unfurl: the slug page's OG/Twitter meta (title,
+   * description, card, image alt). Its `route` is ignored — `og:url` and the
+   * canonical are always the target's.
+   */
+  og?: OgMeta;
+}
+
+/**
+ * A redirect stub (Story 6.1, owner decision 2a). Thin on purpose — no app
+ * bundle, no template: GitHub Pages cannot answer a server redirect, so this
+ * page is the redirect.
+ * - `canonical` (an old uuid page): `rel=canonical` and `og:url` name the slug
+ *   URL, so crawlers and unfurlers move to it; a tiny inline script replaces
+ *   the location with the slug URL carrying the query and hash (a
+ *   `?method=…&utm_source=share` link still reaches Predict, through the slug
+ *   page); without JS a 0-second meta refresh reaches the slug page. The
+ *   refresh sits in `<noscript>` so it cannot race the script and drop the
+ *   query.
+ * - `noindex` (`/series/`, `/series/<year>/`): `noindex` and a 0-second meta
+ *   refresh to Historical (`?year=<year>` for a year).
+ * Both carry a plain link. Forwarding URLs are base-relative, so a local
+ * `vite preview` stays local; canonical and `og:url` are absolute.
+ */
+export function stubDocument({ target, kind, og }: StubInput): string {
+  const local = sitePath(target);
+  const href = escapeHtml(local);
+  const head =
+    kind === 'canonical'
+      ? [
+          ...(og
+            ? [ogTags({ ...og, route: target })]
+            : [
+                `<link rel="canonical" href="${escapeHtml(absoluteUrl(target))}" />`,
+                `<meta property="og:url" content="${escapeHtml(absoluteUrl(target))}" />`,
+              ]),
+          `<script>location.replace(${JSON.stringify(local).replace(/</g, '\\u003c')} + location.search + location.hash);</script>`,
+          `<noscript><meta http-equiv="refresh" content="0; url=${href}" /></noscript>`,
+        ]
+      : ['<meta name="robots" content="noindex" />', `<meta http-equiv="refresh" content="0; url=${href}" />`];
+  const title = kind === 'canonical' ? 'This series page has moved' : 'Redirecting to the Historical archive';
+  const linkText = kind === 'canonical' ? 'Continue to the series page' : 'Continue to the Historical archive';
+  return [
+    '<!doctype html>',
+    '<html lang="en">',
+    '  <head>',
+    '    <meta charset="UTF-8" />',
+    '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+    `    <title>${title} · PredictGame7</title>`,
+    ...head.map((line) => `    ${line}`),
+    '  </head>',
+    '  <body>',
+    `    <p><a href="${href}">${linkText}</a></p>`,
+    '  </body>',
+    '</html>',
+    '',
+  ].join('\n');
 }
 
 function injectHead(template: string, head: string): string {

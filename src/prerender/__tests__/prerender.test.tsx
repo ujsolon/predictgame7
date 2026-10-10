@@ -15,7 +15,6 @@ import {
   BEFORE_VIDEO_ID,
   BROKEN_ID,
   broken,
-  CONTENT_FLAGSHIP_ID,
   CONTENT_RECORD_ID,
   contentFlagship,
   contentRecord,
@@ -30,14 +29,13 @@ import {
   flagship2016HomeFirst,
   NON_FLAGSHIP_ID,
   nonFlagship2018,
-  PENDING_ID,
-  PENDING_NON_FLAGSHIP_ID,
   pending2026,
   pendingNonFlagship,
 } from '@/pages/__tests__/series-fixtures';
+import { seriesPath } from '@/lib/series-slug';
 import type { Series } from '@/types/types';
 import { type DistIo, OUTPUT_PATHS, runPrerender } from '../build';
-import { absoluteUrl, escapeHtml, ogTags, robotsTxt, SITE_URL, shellDocument, sitemapXml } from '../document';
+import { absoluteUrl, escapeHtml, ogTags, robotsTxt, SITE_URL, shellDocument, sitemapXml, stubDocument } from '../document';
 import { prerenderSite } from '../entry-server';
 import { planSeriesPages } from '../plan';
 import { PRELOAD_ELEMENT_ID, parsePreload, type SeriesPreload, serialisePreload, shouldHydrate, stripOutcome } from '../preload';
@@ -70,6 +68,21 @@ function site(rows: readonly Series[] = ROWS) {
   return { out, file };
 }
 
+/** A row's prerendered page file under its slug path (Story 6.1). */
+function pageFile(row: Series, variant: 'page' | 'result' = 'page'): string {
+  const path = seriesPath(row, variant);
+  if (!path) throw new Error(`no slug for ${row.id}`);
+  return `${path.slice(1)}/index.html`;
+}
+
+/** A row's legacy uuid file — a redirect stub since Story 6.1. */
+function uuidFile(row: Series, variant: 'page' | 'result' = 'page'): string {
+  return `series/${row.id}/${variant === 'result' ? 'result/' : ''}index.html`;
+}
+
+/** Only the app pages (they carry a preload); stubs do not. */
+const isPage = (content: string) => content.includes(PRELOAD_ELEMENT_ID);
+
 function preloadOf(html: string): SeriesPreload {
   const m = new RegExp(`<script type="application/json" id="${PRELOAD_ELEMENT_ID}">([^<]*)</script>`).exec(html);
   const preload = parsePreload(m?.[1]);
@@ -87,52 +100,69 @@ describe('the route set (I/O matrix)', () => {
     expect(typeof document).toBe('undefined');
   });
 
-  it('emits one page per row plus a result page per archived featured series, and nothing else under series/', () => {
+  it('emits one page per row plus a result page per archived featured series, at slug paths (Story 6.1)', () => {
     const { out } = site();
     expect(out.errors).toEqual([]);
-    const seriesFiles = out.files.map((f) => f.path).filter((p) => p.startsWith('series/')).sort();
-    expect(seriesFiles).toEqual(
+    const pages = out.files.filter((f) => f.path.startsWith('series/') && isPage(f.content)).map((f) => f.path).sort();
+    expect(pages).toEqual(
       [
-        `series/${FLAGSHIP_2016_ID}/index.html`,
-        `series/${FLAGSHIP_2016_ID}/result/index.html`,
-        `series/${NON_FLAGSHIP_ID}/index.html`,
-        `series/${aba1970.id}/index.html`,
-        `series/${PENDING_ID}/index.html`,
-        `series/${PENDING_NON_FLAGSHIP_ID}/index.html`,
+        'series/2016/cavaliers-warriors/index.html',
+        'series/2016/cavaliers-warriors/result/index.html',
+        'series/2018/celtics-cavaliers/index.html',
+        'series/1970/rockets-caps/index.html',
+        'series/2026/thunder-spurs/index.html',
+        'series/2027/celtics-cavaliers/index.html',
       ].sort()
     );
-    expect(out.summary).toMatchObject({ rows: 5, featured: 2, record: 2, preview: 3, result: 1, shells: 4 });
+    expect(out.summary).toMatchObject({ rows: 5, featured: 2, record: 2, preview: 3, result: 1, shells: 4, stubs: 12 });
+  });
+
+  it('every other file under series/ is a redirect stub: each uuid page (and flagship uuid result), series/ and one per year', () => {
+    const { out } = site();
+    const stubs = out.files.filter((f) => f.path.startsWith('series/') && !isPage(f.content)).map((f) => f.path).sort();
+    expect(stubs).toEqual(
+      [
+        ...ROWS.map((row) => uuidFile(row)),
+        uuidFile(flagship2016, 'result'),
+        'series/index.html',
+        ...[1970, 2016, 2018, 2026, 2027].map((year) => `series/${year}/index.html`),
+      ].sort()
+    );
   });
 
   it('non-flagship archive: the full record, its outcome title, Historic OG tags and the full-row preload', () => {
     const { file } = site();
-    const html = file(`series/${NON_FLAGSHIP_ID}/index.html`) ?? '';
+    const html = file(pageFile(nonFlagship2018)) ?? '';
     expect(html).toContain('Cavaliers win Game 7');
     expect(html).toMatch(/<title data-rh="true">Boston Celtics vs Cleveland Cavaliers, 2018 Eastern Conference Finals: Cavaliers win Game 7 · PredictGame7<\/title>/);
     // Historic row, stored order (`team_a` Celtics first, Story 6.8), never the outcome.
     expect(meta(html, 'og:title')).toBe('Boston Celtics vs Cleveland Cavaliers — Game 7, 2018 Eastern Conference Finals');
     expect(meta(html, 'og:description')).toBe('Every Game 7 has a history. Decode the biggest game in basketball on PredictGame7.');
-    expect(meta(html, 'og:url')).toBe(`${SITE_URL}series/${NON_FLAGSHIP_ID}/`);
+    expect(meta(html, 'og:url')).toBe(`${SITE_URL}series/2018/celtics-cavaliers/`);
     expect(meta(html, 'og:image')).toBe(`${SITE_URL}og/${NON_FLAGSHIP_ID}.png`);
     expect(meta(html, 'og:type')).toBe('website');
     expect(meta(html, 'twitter:card')).toBe('summary_large_image');
-    expect(html).toContain(`<link rel="canonical" href="${SITE_URL}series/${NON_FLAGSHIP_ID}/" />`);
+    // Story 6.1: the image alt names the matchup in stored order, never the winner.
+    expect(meta(html, 'og:image:alt')).toBe('Game 7 card: Boston Celtics vs Cleveland Cavaliers, 2018 Eastern Conference Finals');
+    expect(meta(html, 'twitter:image:alt')).toBe(meta(html, 'og:image:alt'));
+    expect(html).toContain(`<link rel="canonical" href="${SITE_URL}series/2018/celtics-cavaliers/" />`);
     const preload = preloadOf(html);
-    expect(preload).toMatchObject({ path: `/series/${NON_FLAGSHIP_ID}`, variant: 'record', reveal: false });
+    expect(preload).toMatchObject({ path: '/series/2018/celtics-cavaliers', variant: 'record', reveal: false });
     expect(preload.series).toEqual(nonFlagship2018);
   });
 
   it('ABA archive: the league in the eyebrow and in the OG title', () => {
     const { file } = site();
-    const html = file(`series/${aba1970.id}/index.html`) ?? '';
+    const html = file(pageFile(aba1970)) ?? '';
     expect(html).toContain('GAME 7 · 1970 ABA WESTERN DIVISION SEMIFINALS');
     expect(meta(html, 'og:title')).toBe('Denver Rockets vs Washington Caps — Game 7, 1970 ABA Western Division Semifinals');
+    expect(meta(html, 'og:image:alt')).toBe('Game 7 card: Denver Rockets vs Washington Caps, 1970 ABA Western Division Semifinals');
   });
 
   it('flagship: a spoiler-free preview with the reveal link, and a result page that carries the outcome (B10)', () => {
     const { file } = site();
-    const preview = file(`series/${FLAGSHIP_2016_ID}/index.html`) ?? '';
-    const result = file(`series/${FLAGSHIP_2016_ID}/result/index.html`) ?? '';
+    const preview = file(pageFile(flagship2016)) ?? '';
+    const result = file(pageFile(flagship2016, 'result')) ?? '';
     const { cle, gsw } = FLAGSHIP_2016_GAME7;
 
     // The whole file — head, rendered root and preload — carries no outcome.
@@ -151,10 +181,12 @@ describe('the route set (I/O matrix)', () => {
     expect(preview).not.toContain('Final series');
 
     expect(preview).toContain('Cavaliers and Warriors stand three games apiece');
-    expect(preview).toContain(`href="/predictgame7/series/${FLAGSHIP_2016_ID}/result"`);
+    expect(preview).toContain('href="/predictgame7/series/2016/cavaliers-warriors/result"');
+    expect(meta(preview, 'og:image:alt')).toBe('Game 7 card: Cleveland Cavaliers vs Golden State Warriors, 2016 Finals');
+    expect(meta(preview, 'og:url')).toBe(`${SITE_URL}series/2016/cavaliers-warriors/`);
     expect(preview).toMatch(/<title data-rh="true">Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7<\/title>/);
     const pv = preloadOf(preview);
-    expect(pv).toMatchObject({ path: `/series/${FLAGSHIP_2016_ID}`, variant: 'preview', reveal: true });
+    expect(pv).toMatchObject({ path: '/series/2016/cavaliers-warriors', variant: 'preview', reveal: true });
     expect(pv.series).toEqual(stripOutcome(flagship2016));
     // The series-level winner is null; only games 1–6 (which the preview shows) keep their per-game winners.
     expect(pv.series.winner_team_id).toBeNull();
@@ -168,20 +200,22 @@ describe('the route set (I/O matrix)', () => {
     expect(result).toContain('Cavaliers win Game 7');
     expect(result).toContain('4–3');
     expect(result).toContain('tabindex="-1"');
-    expect(preloadOf(result)).toMatchObject({ path: `/series/${FLAGSHIP_2016_ID}/result`, variant: 'result', reveal: false });
-    // One winner-free OG string serves both variants.
+    expect(preloadOf(result)).toMatchObject({ path: '/series/2016/cavaliers-warriors/result', variant: 'result', reveal: false });
+    // One winner-free OG string (and image alt) serves both variants.
     expect(meta(result, 'og:title')).toBe(meta(preview, 'og:title'));
-    expect(meta(result, 'og:url')).toBe(`${SITE_URL}series/${FLAGSHIP_2016_ID}/result/`);
+    expect(meta(result, 'og:image:alt')).toBe(meta(preview, 'og:image:alt'));
+    expect(meta(result, 'og:url')).toBe(`${SITE_URL}series/2016/cavaliers-warriors/result/`);
   });
 
   it('pending: the preview only — no reveal link, no result page', () => {
     const { file } = site();
-    for (const id of [PENDING_ID, PENDING_NON_FLAGSHIP_ID]) {
-      const html = file(`series/${id}/index.html`) ?? '';
+    for (const row of [pending2026, pendingNonFlagship]) {
+      const html = file(pageFile(row)) ?? '';
       expect(html).toContain('stand three games apiece');
       expect(html).not.toContain('See how the series ended');
       expect(preloadOf(html)).toMatchObject({ variant: 'preview', reveal: false });
-      expect(file(`series/${id}/result/index.html`)).toBeUndefined();
+      expect(file(pageFile(row, 'result'))).toBeUndefined();
+      expect(file(uuidFile(row, 'result'))).toBeUndefined();
     }
   });
 
@@ -199,22 +233,23 @@ describe('the route set (I/O matrix)', () => {
   it("flagship-ness is the row's is_featured: the same archived row gets the pair only when featured", () => {
     // The featured pending row keeps the build's featured floor satisfied.
     const unfeatured = site([{ ...flagship2016, is_featured: false }, pending2026]);
-    expect(unfeatured.out.files.filter((f) => f.path.startsWith(`series/${FLAGSHIP_2016_ID}`)).map((f) => f.path)).toEqual([
-      `series/${FLAGSHIP_2016_ID}/index.html`,
+    expect(unfeatured.out.files.filter((f) => f.path.startsWith('series/2016/cavaliers-warriors')).map((f) => f.path)).toEqual([
+      pageFile(flagship2016),
     ]);
-    expect(unfeatured.file(`series/${FLAGSHIP_2016_ID}/index.html`)).toContain('Cavaliers win Game 7');
+    expect(unfeatured.file(pageFile(flagship2016))).toContain('Cavaliers win Game 7');
+    expect(unfeatured.file(uuidFile(flagship2016, 'result'))).toBeUndefined();
 
     const featuredRecord = site([{ ...nonFlagship2018, is_featured: true }]);
     expect(featuredRecord.out.summary).toMatchObject({ featured: 1, record: 0, preview: 1, result: 1 });
-    expect(featuredRecord.file(`series/${NON_FLAGSHIP_ID}/result/index.html`)).toContain('Cavaliers win Game 7');
+    expect(featuredRecord.file(pageFile(nonFlagship2018, 'result'))).toContain('Cavaliers win Game 7');
   });
 
   it('a featured pending row gets the preview only (matrix: is_featured pending series)', () => {
     const { out, file } = site([pending2026]);
     expect(out.errors).toEqual([]);
     expect(out.summary).toMatchObject({ featured: 1, preview: 1, result: 0 });
-    expect(preloadOf(file(`series/${PENDING_ID}/index.html`) ?? '')).toMatchObject({ variant: 'preview', reveal: false });
-    expect(file(`series/${PENDING_ID}/result/index.html`)).toBeUndefined();
+    expect(preloadOf(file(pageFile(pending2026)) ?? '')).toMatchObject({ variant: 'preview', reveal: false });
+    expect(file(pageFile(pending2026, 'result'))).toBeUndefined();
   });
 
   it('a row without a boolean is_featured (a read from before migration 00019) fails the build, naming it', () => {
@@ -241,7 +276,7 @@ describe('editorial content (Story 4.5)', () => {
   it('bare series: the prerendered root is identical with no content rows and with an empty embed', () => {
     const bare = site(ROWS);
     const empty = site(ROWS.map((row) => ({ ...row, series_content: [] })));
-    const pages = bare.out.files.filter((f) => f.path.startsWith('series/'));
+    const pages = bare.out.files.filter((f) => f.path.startsWith('series/') && isPage(f.content));
     expect(pages).toHaveLength(6);
     for (const page of pages) {
       expect(rootOf(empty.file(page.path) ?? '')).toBe(rootOf(page.content));
@@ -253,7 +288,7 @@ describe('editorial content (Story 4.5)', () => {
   it('flagship preview: the before part only — and the file carries no resolution text or video id anywhere', () => {
     const { out, file } = site([contentFlagship]);
     expect(out.errors).toEqual([]);
-    const preview = file(`series/${CONTENT_FLAGSHIP_ID}/index.html`) ?? '';
+    const preview = file(pageFile(contentFlagship)) ?? '';
     const root = rootOf(preview);
     expect(root).toContain(BEFORE_HEADLINE);
     expect(root).toContain(BEFORE_BODY_TEXT);
@@ -283,7 +318,7 @@ describe('editorial content (Story 4.5)', () => {
 
   it('flagship result: the resolution headline, write-up and video; the before part absent from the page', () => {
     const { file } = site([contentFlagship]);
-    const root = rootOf(file(`series/${CONTENT_FLAGSHIP_ID}/result/index.html`) ?? '');
+    const root = rootOf(file(pageFile(contentFlagship, 'result')) ?? '');
     expect(/<h1[^>]*>([^<]*)<\/h1>/.exec(root)?.[1]).toBe(RESOLUTION_HEADLINE);
     expect(root).toContain(RESOLUTION_BODY_TEXT);
     expect(root).toContain(`/vi/${RESOLUTION_VIDEO_ID}/`);
@@ -296,7 +331,7 @@ describe('editorial content (Story 4.5)', () => {
 
   it('non-flagship record: before then resolution, the resolution headline on the hero', () => {
     const { file } = site([contentRecord, pending2026]);
-    const root = rootOf(file(`series/${CONTENT_RECORD_ID}/index.html`) ?? '');
+    const root = rootOf(file(pageFile(contentRecord)) ?? '');
     expect(/<h1[^>]*>([^<]*)<\/h1>/.exec(root)?.[1]).toBe(RESOLUTION_HEADLINE);
     expect(root.indexOf(BEFORE_BODY_TEXT)).toBeGreaterThan(root.indexOf('The full record'));
     expect(root.indexOf(BEFORE_BODY_TEXT)).toBeLessThan(root.indexOf(RESOLUTION_BODY_TEXT));
@@ -304,7 +339,8 @@ describe('editorial content (Story 4.5)', () => {
   });
 
   it('every editorial image a page references is a required asset', () => {
-    const { out } = site([contentFlagship, ...ROWS]);
+    // The content copy replaces the 2016 flagship it shares a year and slug with.
+    const { out } = site([contentFlagship, ...ROWS.filter((row) => row !== flagship2016)]);
     expect(out.errors).toEqual([]);
     expect(out.assets).toEqual(['editorial/before-huddle.jpg']);
     expect(site(ROWS).out.assets).toEqual([]);
@@ -312,7 +348,7 @@ describe('editorial content (Story 4.5)', () => {
 
   it('the document title and OG meta stay data-built when a headline overrides the hero', () => {
     const { file } = site([contentFlagship]);
-    const preview = file(`series/${CONTENT_FLAGSHIP_ID}/index.html`) ?? '';
+    const preview = file(pageFile(contentFlagship)) ?? '';
     expect(preview).toMatch(/<title data-rh="true">Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7<\/title>/);
     expect(meta(preview, 'og:title')).toBe('Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals');
   });
@@ -357,7 +393,7 @@ describe('editorial content (Story 4.5)', () => {
     } as Series;
     const { out, file } = site([hostile, pending2026]);
     expect(out.errors).toEqual([]);
-    const html = file(`series/${CONTENT_RECORD_ID}/index.html`) ?? '';
+    const html = file(pageFile(contentRecord)) ?? '';
     const root = rootOf(html);
     expect(root).not.toContain('<script');
     expect(root).not.toMatch(/<img[^>]*onerror/);
@@ -383,7 +419,7 @@ describe('the preview preload keeps stored order and real venues (Story 6.8)', (
     }
     const { file } = site();
     for (const row of [flagship2016, pending2026]) {
-      const pv = preloadOf(file(`series/${row.id}/index.html`) ?? '');
+      const pv = preloadOf(file(pageFile(row)) ?? '');
       expect(pv.series).toEqual(stripOnly(row));
       expect([pv.series.team_a_id, pv.series.team_b_id]).toEqual([row.team_a_id, row.team_b_id]);
     }
@@ -424,7 +460,8 @@ describe('the preview preload keeps stored order and real venues (Story 6.8)', (
   it('the re-keyed 2016 Finals: Warriors first in the title, og:title and headline (Story 6.8 I/O matrix)', () => {
     const { out, file } = site([flagship2016HomeFirst]);
     expect(out.errors).toEqual([]);
-    const preview = file(`series/${flagship2016HomeFirst.id}/index.html`) ?? '';
+    const preview = file(pageFile(flagship2016HomeFirst)) ?? '';
+    expect(pageFile(flagship2016HomeFirst)).toBe('series/2016/warriors-cavaliers/index.html');
     expect(preview).toMatch(/<title data-rh="true">Golden State Warriors vs Cleveland Cavaliers — Game 7, 2016 Finals · PredictGame7<\/title>/);
     expect(meta(preview, 'og:title')).toBe('Golden State Warriors vs Cleveland Cavaliers — Game 7, 2016 Finals');
     expect(preview).toContain('Warriors and Cavaliers stand three games apiece');
@@ -485,13 +522,16 @@ describe('shells, sitemap and robots', () => {
     expect(out.files.map((f) => f.path)).not.toContain('404.html');
   });
 
-  it('sitemap.xml lists home, the four app routes and every emitted series and result URL', () => {
+  it('sitemap.xml lists home, the four app routes and every emitted series and result URL — slug URLs only, never a stub', () => {
     const { out, file } = site();
     const xml = file('sitemap.xml') ?? '';
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')).toBe(true);
     expect(xml.trimEnd().endsWith('</urlset>')).toBe(true);
     const locs = [...xml.matchAll(/<url><loc>([^<]+)<\/loc><\/url>/g)].map((m) => m[1]);
-    const pages = out.files.filter((f) => f.path.startsWith('series/')).map((f) => `${SITE_URL}${f.path.replace(/index\.html$/, '')}`);
+    const pages = out.files
+      .filter((f) => f.path.startsWith('series/') && isPage(f.content))
+      .map((f) => `${SITE_URL}${f.path.replace(/index\.html$/, '')}`);
+    for (const loc of locs) expect(loc).not.toMatch(/series\/[0-9a-f]{8}-|series\/(\d{4}\/)?$/);
     expect(locs).toEqual([
       SITE_URL,
       `${SITE_URL}predict/`,
@@ -538,7 +578,7 @@ describe('escaping', () => {
     } as Series;
     const { out, file } = site([flagship2016, odd]);
     expect(out.errors).toEqual([]);
-    const html = file(`series/${NON_FLAGSHIP_ID}/index.html`) ?? '';
+    const html = file(pageFile(nonFlagship2018)) ?? '';
     expect(html).not.toContain('"<Celtics>"');
     expect(meta(html, 'og:title')).toBe('Boston &quot;&lt;Celtics&gt;&quot; vs Cleveland Cavaliers — Game 7, 2018 Eastern Conference Finals');
   });
@@ -595,12 +635,15 @@ describe('runPrerender (fail loud, outputs removed)', () => {
     const r = await run(io);
     expect(r.code).toBe(0);
     expect(files.has('series/old/index.html')).toBe(false);
-    expect(files.get(`series/${NON_FLAGSHIP_ID}/index.html`)).toContain('Cavaliers win Game 7');
+    expect(files.get(pageFile(nonFlagship2018))).toContain('Cavaliers win Game 7');
+    expect(files.get(uuidFile(nonFlagship2018))).toContain('rel="canonical"');
     expect(files.get('predict/index.html')).toContain('og/fallback.png');
     expect(files.get('index.html')).toBe(TEMPLATE);
     expect(files.get('404.html')).toBe(TEMPLATE);
     expect(files.get('og/fallback.png')).toBe('png');
-    expect(r.lines).toContain('6 series pages (2 record + 3 preview + 1 result) from 5 series read (2 featured), 4 shells, sitemap 11 URLs');
+    expect(r.lines).toContain(
+      '6 series pages (2 record + 3 preview + 1 result) from 5 series read (2 featured), 4 shells, 12 redirect stubs, sitemap 11 URLs'
+    );
   });
 
   it('missing env: exit non-zero and nothing deleted', async () => {
@@ -619,7 +662,7 @@ describe('runPrerender (fail loud, outputs removed)', () => {
   });
 
   it('a missing editorial image: exit non-zero listing the file, outputs removed; present, the run passes', async () => {
-    const rows = [...ROWS, contentFlagship];
+    const rows = [...ROWS.filter((row) => row !== flagship2016), contentFlagship];
     const cards = rows.map((r) => `og/${r.id}.png`);
     const missing = memoryDist({ cards });
     const r = await run(missing.io, rows);
@@ -676,5 +719,118 @@ describe('runPrerender (fail loud, outputs removed)', () => {
 describe('shellDocument', () => {
   it('refuses a template without an empty root', () => {
     expect(() => shellDocument('<html><head></head><body></body></html>', '/predict')).toThrow(/empty/);
+  });
+});
+
+// Story 6.1 · readable series URLs through the prerender.
+describe('readable series URLs (Story 6.1)', () => {
+  it('a duplicate year/slug fails the build, naming both ids, and nothing is emitted', () => {
+    const twin = { ...nonFlagship2018, id: CONTENT_RECORD_ID };
+    const { out } = site([...ROWS, twin]);
+    expect(out.files).toEqual([]);
+    const errors = out.errors.join('\n');
+    expect(errors).toContain('duplicate series slug');
+    expect(errors).toContain(`/series/2018/celtics-cavaliers (${NON_FLAGSHIP_ID}, ${CONTENT_RECORD_ID})`);
+  });
+
+  it('a uuid page stub: canonical and og:url on the slug URL, a query-carrying script, a no-JS meta refresh and a plain link', () => {
+    const { file } = site();
+    const stub = file(uuidFile(flagship2016)) ?? '';
+    const slugUrl = `${SITE_URL}series/2016/cavaliers-warriors/`;
+    expect(stub).toContain(`<link rel="canonical" href="${slugUrl}" />`);
+    expect(meta(stub, 'og:url')).toBe(slugUrl);
+    expect(stub).toContain(
+      '<script>location.replace("/predictgame7/series/2016/cavaliers-warriors/" + location.search + location.hash);</script>'
+    );
+    expect(stub).toContain('<noscript><meta http-equiv="refresh" content="0; url=/predictgame7/series/2016/cavaliers-warriors/" /></noscript>');
+    expect(stub).toContain('<a href="/predictgame7/series/2016/cavaliers-warriors/">');
+    // Thin: no app bundle, no preload, no outcome, and never noindex (its canonical carries the signal).
+    expect(stub).not.toContain('/assets/');
+    expect(stub).not.toContain(PRELOAD_ELEMENT_ID);
+    expect(stub).not.toContain('win Game 7');
+    expect(stub).not.toContain('noindex');
+  });
+
+  it('a uuid stub unfurls exactly as its slug page: the same OG/Twitter meta, with og:url and canonical on the slug URL', () => {
+    const { file } = site();
+    for (const [stubPath, pagePath] of [
+      [uuidFile(flagship2016), pageFile(flagship2016)],
+      [uuidFile(flagship2016, 'result'), pageFile(flagship2016, 'result')],
+      [uuidFile(nonFlagship2018), pageFile(nonFlagship2018)],
+    ]) {
+      const stub = file(stubPath) ?? '';
+      const page = file(pagePath) ?? '';
+      for (const key of [
+        'og:title',
+        'og:description',
+        'og:url',
+        'og:image',
+        'og:image:alt',
+        'og:type',
+        'twitter:card',
+        'twitter:image:alt',
+      ]) {
+        expect(meta(stub, key), `${stubPath} ${key}`).toBeDefined();
+        expect(meta(stub, key), `${stubPath} ${key}`).toBe(meta(page, key));
+      }
+      const canonical = /<link rel="canonical" href="([^"]*)" \/>/;
+      expect(canonical.exec(stub)?.[1]).toBe(canonical.exec(page)?.[1]);
+      expect(stub.match(/rel="canonical"/g)).toHaveLength(1);
+      expect(stub.match(/property="og:url"/g)).toHaveLength(1);
+    }
+    expect(meta(file(uuidFile(flagship2016)) ?? '', 'og:image')).toBe(`${SITE_URL}og/${FLAGSHIP_2016_ID}.png`);
+    // The winner-free og:title: a stub never leaks the outcome either.
+    expect(file(uuidFile(flagship2016))).not.toContain('win Game 7');
+  });
+
+  it('a row whose teams slug to nothing fails the build, naming its id, and nothing is written', () => {
+    // No nickname and an em dash for a name: nothing ASCII to slug.
+    const blank = { full_name: '—', nickname: null };
+    const unslugged = {
+      ...nonFlagship2018,
+      team_a: { ...nonFlagship2018.team_a!, ...blank },
+    } as Series;
+    const { out } = site([flagship2016, unslugged]);
+    expect(out.files).toEqual([]);
+    const errors = out.errors.join('\n');
+    expect(errors).toContain('have no slug');
+    expect(errors).toContain(NON_FLAGSHIP_ID);
+  });
+
+  it('a flagship uuid result stub forwards to the slug result path', () => {
+    const { file } = site();
+    const stub = file(uuidFile(flagship2016, 'result')) ?? '';
+    expect(stub).toContain(`<link rel="canonical" href="${SITE_URL}series/2016/cavaliers-warriors/result/" />`);
+    expect(stub).toContain('location.replace("/predictgame7/series/2016/cavaliers-warriors/result/"');
+  });
+
+  it('series/ and series/<year>/ are noindex redirect stubs to Historical', () => {
+    const { file } = site();
+    const index = file('series/index.html') ?? '';
+    expect(index).toContain('<meta name="robots" content="noindex" />');
+    expect(index).toContain('<meta http-equiv="refresh" content="0; url=/predictgame7/historical/" />');
+    expect(index).toContain('<a href="/predictgame7/historical/">');
+    const year = file('series/1970/index.html') ?? '';
+    expect(year).toContain('<meta name="robots" content="noindex" />');
+    expect(year).toContain('<meta http-equiv="refresh" content="0; url=/predictgame7/historical/?year=1970" />');
+    expect(year).toContain('<a href="/predictgame7/historical/?year=1970">');
+    expect(year).not.toContain('<script');
+    // Only years with a series get one.
+    expect(file('series/1971/index.html')).toBeUndefined();
+  });
+
+  it('stubDocument escapes what it embeds', () => {
+    const html = stubDocument({ target: '/series/2016/a"b<c', kind: 'canonical' });
+    expect(html).not.toContain('a"b<c');
+    expect(html).toContain('a&quot;b&lt;c');
+    expect(html).toContain('"/predictgame7/series/2016/a\\"b\\u003cc/"');
+  });
+
+  it('ogTags writes the image alt for both platforms only when given', () => {
+    const base = { title: 't', description: 'd', route: '/series/x', image: 'og/x.png' };
+    expect(ogTags(base)).not.toContain('image:alt');
+    const tags = ogTags({ ...base, imageAlt: 'Game 7 card: A & B' });
+    expect(tags).toContain('<meta property="og:image:alt" content="Game 7 card: A &amp; B" />');
+    expect(tags).toContain('<meta name="twitter:image:alt" content="Game 7 card: A &amp; B" />');
   });
 });

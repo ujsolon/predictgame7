@@ -26,7 +26,7 @@ const METHOD_SLUGS = Object.keys(METHOD_LABELS) as MethodSlug[];
 
 /**
  * The spoiler-free series preview (Story 4.3) — a flagship archive series at
- * `/series/<id>`, or a pending series. Pure over its `Series` prop and
+ * `/series/<year>/<slug>`, or a pending series. Pure over its `Series` prop and
  * SSR-safe, so Story 4.8 can prerender it from preloaded rows.
  *
  * Spoiler discipline is structural: nothing about Game 7 — its row, scores,
@@ -57,7 +57,7 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
         action={
           <ShareButton
             appearance="icon"
-            path={seriesPageSharePath(view.id, 'page')}
+            path={seriesPageSharePath(series, 'page')}
             title={previewTitle(view)}
             surface="series"
             kind="series"
@@ -100,7 +100,7 @@ export default function SeriesPreview({ series, reveal }: { series: Series; reve
 
         {hasReveal && (
           <div className="mt-10">
-            <Link to={resultHref(view.id)} className={TEXT_LINK}>
+            <Link to={resultHref(view)} className={TEXT_LINK}>
               See how the series ended <span aria-hidden="true">→</span>
             </Link>
             <p className="mt-1 text-sm text-on-muted">Spoilers for Game 7 ahead.</p>

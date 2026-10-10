@@ -11,6 +11,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getTeamAbbreviation } from '@/lib/nba-utils';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import HistoricalPage from '@/pages/HistoricalPage';
 import type { Series, Team } from '@/types/types';
 import { parseTeamsSeed } from '../../../supabase/scripts/pipeline/venueBackfill.ts';
@@ -69,6 +70,23 @@ const archivedRow: Series = {
   })),
 };
 
+// `HistoricalPage` reads `?year=` (Story 6.1), so it renders inside a router.
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location-probe">{`${location.pathname}${location.search}`}</span>;
+}
+
+function renderPage(entry = '/historical') {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/historical" element={<HistoricalPage />} />
+      </Routes>
+      <LocationProbe />
+    </MemoryRouter>
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   db.projection = '';
@@ -89,7 +107,7 @@ beforeEach(() => {
 
 describe('HistoricalPage archive read (Story 2.2)', () => {
   it('selects the archive by the derived winner, not by a stored status', async () => {
-    render(<HistoricalPage />);
+    renderPage();
     expect(await screen.findByText('1998')).toBeInTheDocument();
 
     expect(db.filter).toEqual(['winner_team_id', 'is', null]);
@@ -97,7 +115,7 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
   });
 
   it('opens a row with its winner and no stored-status readout', async () => {
-    render(<HistoricalPage />);
+    renderPage();
     const row = await screen.findByText('1998');
     fireEvent.click(row.closest('tr') as HTMLTableRowElement);
 
@@ -112,7 +130,7 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
 
   it('names the matchup in stored order, team_a first, even where the alphabet disagrees (Story 6.8)', async () => {
     // The fixture stores the Lakers as team_a; alphabetically "Golden State" precedes "Los Angeles".
-    render(<HistoricalPage />);
+    renderPage();
     const row = await screen.findByText('1998');
     fireEvent.click(row.closest('tr') as HTMLTableRowElement);
 
@@ -125,7 +143,7 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
     const rowWithoutWinnerJoin: Series = { ...archivedRow, winner_team: undefined };
     db.list = { data: [rowWithoutWinnerJoin], error: null };
 
-    render(<HistoricalPage />);
+    renderPage();
     const row = await screen.findByText('1998');
     fireEvent.click(row.closest('tr') as HTMLTableRowElement);
 
@@ -271,7 +289,7 @@ function resetButton(): HTMLButtonElement | undefined {
 describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D1\')', () => {
   it('renders no chip on the NBA row, in the list or in its record', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     expect(chipCount(rowByYear(1998))).toBe(0);
@@ -289,7 +307,7 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
 
   it('shows the stored league verbatim where a chip does render, and never maps BAA to NBA', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     expect(within(rowByYear(1948)).getByText('BAA').textContent).toBe('BAA');
@@ -300,7 +318,7 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
 
   it('repeats the stored league in the expanded series record', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     const sheet = await openRecord(1948, '1948 BAA Finals');
@@ -311,14 +329,14 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
     // Whatever the CHECK domain holds, a row the chip logic does not know must
     // still show what it says instead of rendering as an unexplained NBA row.
     db.list = { data: [{ ...archivedRow, league: 'NBL' }], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1998');
 
     expect(within(rowByYear(1998)).getByText('NBL').textContent).toBe('NBL');
   });
 
   it('reads `league` on the archive projection, not only on the predict one', async () => {
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1998');
 
     // The chip reads `series.league`, and this page receives it through the
@@ -338,7 +356,7 @@ describe('HistoricalPage conditional league chip (Story 2.9 D1, re-cut by 2.10 D
 describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9 D3)', () => {
   it('lists every league by default, chips and all, with the count announced', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     // The 18 ABA rows stay in the archive and in the SEO set (AD-7); the chip is
@@ -352,7 +370,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 
   it('offers the year `Select` as the only dropdown in the filter row', async () => {
     db.list = { data: [archivedRow, baaRow, { ...abaRow, id: 's-aba-72', year: 1972 }], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     expect(document.querySelectorAll('[role="combobox"]')).toHaveLength(1);
@@ -374,7 +392,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 
   it('never emits a league filter event, since nothing filters by league', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await chooseYear('1976');
@@ -406,7 +424,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 
   it('intersects year with team search, and an empty intersection reuses the existing empty state', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await chooseYear('1976');
@@ -423,7 +441,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 
   it('clears both filters with the reset button and hides it again', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await chooseYear('1976');
@@ -445,7 +463,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     // second emission per press, a `year: 'all'` side effect of the reset, or a
     // new event name all fail here.
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await chooseYear('1976');
@@ -469,7 +487,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
     // external review's verification-gap layer (2026-10-04) as the diff's one
     // unpinned leg; mutation-proven there — this case reddens without the disjunct.
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     fireEvent.change(screen.getByPlaceholderText('Search by team name or code...'), { target: { value: 'Nets' } });
@@ -496,7 +514,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
       ],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     // Not `findByText('1998')` — fifteen rows carry that year, and a text query
     // that matches more than one element throws.
     await waitFor(() => expect(renderedRows()).toBe(10));
@@ -521,7 +539,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
       ],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(10));
 
     fireEvent.click(screen.getByText('Load More History'));
@@ -536,7 +554,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
 describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised by the owner the same day)', () => {
   it('keeps the sentence off the surface until a chipped record is open', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     // Neither carrier that existed earlier survives: not 2.9's always-visible
@@ -551,7 +569,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 
   it('glosses the record of a BAA row, verbatim, inside that sheet', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     const sheet = await openRecord(1948, '1948 BAA Finals');
@@ -573,7 +591,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 
   it('glosses an ABA record on the same rule, beside its chip', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     const sheet = await openRecord(1976, '1976 ABA Finals');
@@ -583,7 +601,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 
   it('does not gloss an unchipped record', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await openRecord(1998, '1998 Finals');
@@ -594,7 +612,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 
   it('explains without scoping: opening a chipped record changes no row and no count', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await openRecord(1948, '1948 BAA Finals');
@@ -606,7 +624,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
 
   it('puts every piece of text it adds on the AA-safe token', async () => {
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
     await openRecord(1948, '1948 BAA Finals');
 
@@ -626,7 +644,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await openRecord(1948, '1948 BAA Finals');
@@ -646,7 +664,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
     db.list = { data: [archivedRow, baaRow, abaRow], error: null };
     const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const scroll = vi.spyOn(window, 'scroll').mockImplementation(() => {});
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1948');
 
     await chooseYear('1976');
@@ -665,7 +683,7 @@ describe('HistoricalPage gloss inside a chipped record (Story 2.10 D2\', revised
   });
 
   it('keeps the live region out of the list section\'s first-child slot', async () => {
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1998');
 
     // `space-y-8` gives every non-first child a 32px top margin, so a first-child
@@ -774,7 +792,7 @@ function search(value: string) {
 describe('HistoricalPage stored team codes and code search (Story 2.11)', () => {
   it('prints the stored abbreviation on all 20 divergent franchise rows, not the initialism', async () => {
     db.list = { data: divergentRows(), error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(10));
     fireEvent.click(screen.getByText('Load More History'));
     await waitFor(() => expect(renderedRows()).toBe(20));
@@ -908,7 +926,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
       ],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(4));
 
     // `slb` is not a substring of any fixture name — only the code arm can answer
@@ -946,7 +964,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
       data: [seriesBetween(1970, knicks, bombers), seriesBetween(1974, nets, bullets)],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(2));
 
     // Self-check on the fixture set: the measured live fact is that 0 seeded full
@@ -974,7 +992,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
       ],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(5));
 
     // A fragment of a name that is neither a code nor a whole name: the unchanged
@@ -997,7 +1015,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
       data: [{ ...archivedRow, id: 's-join-miss', year: 1962, team_a: undefined, team_b: undefined }],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(1));
 
     const row = rowByYear(1962);
@@ -1012,7 +1030,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
   it('falls through visibly when a joined row stores an empty abbreviation', async () => {
     const noCode: Team = { ...bullets, abbreviation: '' };
     db.list = { data: [seriesBetween(1978, noCode, warriors)], error: null };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(1));
 
     // Fail visible: the cell never renders blank, the name path prints `WB`.
@@ -1032,7 +1050,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
       data: [seriesBetween(1948, bombers, lakers), seriesBetween(1970, knicks, bombers), archivedRow],
       error: null,
     };
-    render(<HistoricalPage />);
+    renderPage();
     await waitFor(() => expect(renderedRows()).toBe(3));
 
     search('slb');
@@ -1047,7 +1065,7 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
   });
 
   it('reads the team rows through the whole-row embeds the code arm depends on', async () => {
-    render(<HistoricalPage />);
+    renderPage();
     await screen.findByText('1998');
 
     // U1: no query change. `abbreviation` reaches the predicate through these
@@ -1056,5 +1074,51 @@ describe('HistoricalPage stored team codes and code search (Story 2.11)', () => 
     // shape this file's header comment records for Story 2.2.
     expect(db.projection).toContain('team_a:team_a_id(*)');
     expect(db.projection).toContain('team_b:team_b_id(*)');
+  });
+});
+
+// Story 6.1: `/series/<year>/` redirects here as `?year=<year>`.
+describe('HistoricalPage ?year= arrival (Story 6.1)', () => {
+  beforeEach(() => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+  });
+
+  it('seeds the year filter from a year the archive has, with no analytics event, then drops ?year= from the URL', async () => {
+    renderPage('/historical?year=1976&utm_source=x');
+    await waitFor(() => expect(visibleYears()).toEqual(['1976']));
+    expect(renderedRows()).toBe(1);
+    // The arrival is not a user action: `historical_filter_applied` stays one.
+    expect(db.capture).not.toHaveBeenCalled();
+    // Read once, then removed (replace), so a reload cannot bring a stale filter back; other params stay.
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/historical?utm_source=x'));
+    expect(visibleYears()).toEqual(['1976']);
+  });
+
+  it('after a ?year= arrival, Reset leaves the page unfiltered and the URL without the param', async () => {
+    renderPage('/historical?year=1976');
+    await waitFor(() => expect(visibleYears()).toEqual(['1976']));
+    await waitFor(() => expect(screen.getByTestId('location-probe').textContent).toBe('/historical'));
+    fireEvent.click(resetButton() as HTMLButtonElement);
+    await waitFor(() => expect(renderedRows()).toBe(3));
+    expect(screen.getByTestId('location-probe').textContent).toBe('/historical');
+    // Only the user's Reset is counted.
+    expect(db.capture.mock.calls).toEqual([['historical_filter_applied', { filter_type: 'reset' }]]);
+  });
+
+  it('ignores a year the archive does not have', async () => {
+    renderPage('/historical?year=2099');
+    await screen.findByText('1948');
+    expect(renderedRows()).toBe(3);
+    expect(db.capture).not.toHaveBeenCalled();
+  });
+
+  it('ignores anything that is not a 4-digit year', async () => {
+    for (const value of ['abc', '19761', '976', '1976abc', '']) {
+      const { unmount } = renderPage(`/historical?year=${value}`);
+      await screen.findByText('1948');
+      expect(renderedRows()).toBe(3);
+      unmount();
+    }
+    expect(db.capture).not.toHaveBeenCalled();
   });
 });

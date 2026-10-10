@@ -597,9 +597,11 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
   // Story 2.16 (2026-10-06) dropped the venue probe and the stats.nba.com
   // adapter probe from this list: both were deleted with the adapter they imported.
   // Story 4.1 adds its deep-link probe, which imports the CDP session above.
+  // Story 6.1 adds Story 4.7's analytics walk, which no gate step checked.
   for (const script of [
     'probe-espn-adapter.mjs',
     'probe-deep-links.mjs',
+    'probe-analytics-walk.mjs',
     'rehearse-migration-00014.mjs',
     'measure-predict-latency.mjs',
     'drill-2-7-reconcile.mjs',
@@ -614,6 +616,22 @@ describe('the scripts/** coverage gap (E5)', { timeout: 30_000 }, () => {
       expect(res.status).toBe(0);
     });
   }
+
+  // Story 6.1: `--check` never resolves imports, and `probe-deep-links.mjs`
+  // imports `src/lib/series-slug.ts` under bare Node (type stripping). This runs
+  // that import the way the probe does and pins the 2016 Finals' slug path.
+  it('bare Node imports src/lib/series-slug.ts (as probe-deep-links.mjs does) and slugs the 2016 Finals', () => {
+    const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+    const code = [
+      "import { seriesPath } from './src/lib/series-slug.ts';",
+      'console.log(seriesPath({ year: 2016,',
+      "  team_a: { full_name: 'Golden State Warriors', nickname: 'Warriors' },",
+      "  team_b: { full_name: 'Cleveland Cavaliers', nickname: 'Cavaliers' } }));",
+    ].join('\n');
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: repoRoot, encoding: 'utf8' });
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout.trim()).toBe('/series/2016/warriors-cavaliers');
+  });
 
   // Story 2.7: `measure-predict-latency.mjs` runs `main()` only when executed
   // directly. A guard that misfires either way is silent — false on a direct run

@@ -62,11 +62,27 @@
 //      GitHub Pages 301s to): the `?method=` arrival renders client-side and
 //      redirects, and the reveal click from a hydrated preview focuses the
 //      result `<h1>`.
+//  13. (Story 6.1) Readable URLs. Every series page lives at
+//      `/series/<year>/<slug>/` (`src/lib/series-slug.ts`, imported here so
+//      the probe's expectation is the app's own rule); the rows above load the
+//      slug paths. Plain HTTP: every live series' old uuid URL (and each
+//      archived flagship's uuid result URL) answers a stub whose canonical and
+//      og:url are that series' slug URL, with a meta refresh and a link to it;
+//      `/series/` and one `/series/<year>/` per year with a series answer a
+//      noindex stub that refreshes to Historical (`?year=`); the sitemap lists
+//      slug URLs only — its count is 5 + one per live series + one per row
+//      that is archived AND `is_featured` (read live, not from a pinned list).
+//      In the browser: an old shared link `/series/<uuid>/?method=elo&utm_source=share`
+//      reaches Predict with all three parameters; an old uuid result URL ends
+//      on the slug result path; `/series/<year>/` lands on Historical filtered
+//      to that year (the page then drops `?year=` from its URL) with no
+//      `historical_filter_applied` event; an unknown slug
+//      renders the series 404.
 //  12. (Story 4.4) Share round-trip. From a completed series prediction (the
 //      known series, Elo) and from a custom one ("Montréal", Bayes), the
 //      detailed view's Share button is focusable with a >=44x44 box; a real
 //      CDP click with `navigator.share` removed and `navigator.clipboard.writeText`
-//      stubbed captures the URL (`…/series/<id>/?method=elo&utm_source=share`,
+//      stubbed captures the URL (`…/series/<year>/<slug>/?method=elo&utm_source=share`,
 //      `…/predict/?custom=<payload>&utm_source=share`), "Link copied." shows,
 //      and `prediction_shared` is decoded locally with its props. Each URL is
 //      then opened in a FRESH browser (new Chrome, new profile): the same
@@ -83,6 +99,8 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLedger, openBrowserSession } from "./measure-predict-latency.mjs";
+// Story 6.1: the app's one slug helper (dependency-free, run type-stripped by Node).
+import { seriesPath } from "../src/lib/series-slug.ts";
 
 const HEADLINE = "This series doesn't exist.";
 const ROUTES = [
@@ -124,7 +142,7 @@ async function readKnownSeries(seriesId) {
     throw new Error("no --series=<uuid> and no VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in .env");
   }
   // Same embed syntax as `src/lib/series-query.ts`.
-  const select = "id,year,round,team_a:team_a_id(abbreviation),team_b:team_b_id(abbreviation)";
+  const select = "id,year,round,team_a:team_a_id(abbreviation,full_name,nickname),team_b:team_b_id(abbreviation,full_name,nickname)";
   const filter = seriesId ? `id=eq.${encodeURIComponent(seriesId)}` : "winner_team_id=not.is.null&order=year.desc&limit=1";
   const res = await fetch(`${url}/rest/v1/series?select=${select}&${filter}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },
@@ -134,7 +152,19 @@ async function readKnownSeries(seriesId) {
   if (!rows.length) throw new Error(seriesId ? `--series=${seriesId} names no row` : "no archived series found");
   const row = rows[0];
   const codes = row.team_a?.abbreviation && row.team_b?.abbreviation ? [row.team_a.abbreviation, row.team_b.abbreviation] : null;
-  return { id: row.id, codes, label: `${row.year} ${row.round}` };
+  return { id: row.id, codes, label: `${row.year} ${row.round}`, path: seriesPath(row) };
+}
+
+/** Story 6.1: a row's slug directory path, base-relative and without a leading slash (`series/2016/x/`). */
+function slugDir(row, variant = "page") {
+  const path = row && seriesPath(row, variant);
+  return path ? `${path.slice(1)}/` : null;
+}
+
+/** Story 6.1: what a redirect stub at `html` forwards to (meta refresh target), or null. */
+function refreshTarget(html) {
+  const m = /<meta http-equiv="refresh" content="0; url=([^"]*)" \/>/.exec(html);
+  return m ? m[1].replace(/&amp;/g, "&") : null;
 }
 
 /** WCAG 2.1 contrast ratio between two computed `rgb(...)` colors. */
@@ -323,6 +353,17 @@ const READ_CUSTOM_ARRIVAL = `${WAIT}(() => {
 /** Story 4.4: the custom matchup row 12 shares, games 1–6 in grid order. */
 const CUSTOM_SCORES = [101, 91, 92, 102, 103, 93, 94, 104, 105, 95, 96, 106];
 
+/** Story 6.1: Historical's visible rows' years, once the archive has loaded. */
+const READ_HISTORICAL_YEARS = `${WAIT}(() => {
+  const n = ${norm};
+  if (!Array.from(document.querySelectorAll("h1")).some((h) => n(h.textContent) === "Archives")) return null;
+  // Historical drops ?year= (a replace) once it has seeded the filter; read the settled state.
+  if (new URLSearchParams(location.search).has("year")) return null;
+  const rows = Array.from(document.querySelectorAll("tbody tr"));
+  if (!rows.length) return null;
+  return { pathname: location.pathname, search: location.search, years: rows.map((tr) => n(tr.querySelector("td") && tr.querySelector("td").textContent)) };
+}, "the Historical archive rows", 30000)`;
+
 const READ_NOT_FOUND = `${WAIT}(() => {
   const n = ${norm};
   const h1 = document.querySelector("[data-series-not-found] h1");
@@ -404,6 +445,46 @@ const READ_SERIES_PAGE = (h1Pattern, titlePattern = "/./") => `${WAIT}(() => {
   };
 }, "a series page headline matching ${h1Pattern}", 30000)`;
 
+/** A promise that rejects after `ms` instead of pending forever (a CDP evaluate whose context navigates away never answers). */
+function bounded(promise, ms, what) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`timed out after ${Math.round(ms / 1000)} s: ${what}`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Every evaluate and navigate on a session is bounded, so a hung CDP call turns
+ * into a rejection — a ledger failure where the call site catches, a non-zero
+ * exit where it does not — and never a probe that runs forever.
+ */
+function boundSession(X) {
+  const evaluate = X.evaluate;
+  const navigate = X.navigate;
+  X.evaluate = (expression, ...rest) => bounded(evaluate(expression, ...rest), 120000, `evaluate ${String(expression).slice(0, 60)}`);
+  X.navigate = (url) => bounded(navigate(url), 120000, `navigate ${url}`);
+  return X;
+}
+
+/**
+ * Story 6.1: opens a redirect stub and waits until the browser has landed on a
+ * path containing `pathPart`. `S.navigate` cannot be used on a stub: it
+ * evaluates on the stub's document, which the 0-second refresh destroys.
+ */
+async function landOn(X, url, pathPart, ms = 15000) {
+  await X.cdp.send("Page.navigate", { url });
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const path = await bounded(X.evaluate("location.pathname"), 2000, "location.pathname").catch(() => null);
+    if (typeof path === "string" && path.includes(pathPart)) return path;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`${url} never landed on a ${pathPart} path within ${Math.round(ms / 1000)} s`);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help || !opts.base) {
@@ -413,7 +494,7 @@ async function main() {
   }
   const base = opts.base.endsWith("/") ? opts.base : `${opts.base}/`;
   const L = createLedger();
-  console.log(`Story 4.1/4.3/4.4/4.8 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
+  console.log(`Story 4.1/4.3/4.4/4.8/6.1 deep-link probe — ${base}  (${new Date().toISOString()})\n`);
 
   // Row 1: the fallback file itself.
   const shellRes = await fetch(base).catch((e) => ({ ok: false, status: e.message }));
@@ -425,13 +506,22 @@ async function main() {
 
   // Row 2 (HTTP half): every cold GET answers with the SPA shell.
   const known = await readKnownSeries(opts.series);
+  if (!known.path) throw new Error(`the known series ${known.id} has no slug (its team rows are needed — run with .env)`);
+  const knownDir = `${known.path.slice(1)}/`;
   const unknownId = randomUUID();
+  // Story 6.1: the 2016 Finals' slug pages, from the live row.
+  const flagship2016Row = await restSeries(
+    `id=eq.${FLAGSHIP_2016}`,
+    "id,year,team_a:team_a_id(abbreviation,full_name,nickname),team_b:team_b_id(abbreviation,full_name,nickname)"
+  );
+  const flagshipDir = slugDir(flagship2016Row);
+  const flagshipResultDir = slugDir(flagship2016Row, "result");
   const coldPaths = [
     ...ROUTES.map((r) => r.path),
-    `series/${known.id}?method=elo`,
+    `${knownDir.replace(/\/$/, "")}?method=elo`,
     `series/${unknownId}`,
-    `series/${FLAGSHIP_2016}`,
-    `series/${FLAGSHIP_2016}/result`,
+    flagshipDir.replace(/\/$/, ""),
+    flagshipResultDir.replace(/\/$/, ""),
   ];
   // Since Story 4.8 a path with a prerendered file may be answered by that file
   // (GitHub Pages 301s `/x` to `/x/`, which fetch follows); `vite preview`
@@ -452,7 +542,7 @@ async function main() {
   const flagshipIds = FLAGSHIPS.map(([id]) => id);
   const allRows = await restRows(
     "order=year.asc,id.asc",
-    "id,winner_team_id,league,team_a_id,team_b_id,team_a:team_a_id(abbreviation,full_name),team_b:team_b_id(abbreviation,full_name),series_game_scores(game_number,home_team_id,away_team_id,home_score,away_score)"
+    "id,year,winner_team_id,is_featured,league,team_a_id,team_b_id,team_a:team_a_id(abbreviation,full_name,nickname),team_b:team_b_id(abbreviation,full_name,nickname),series_game_scores(game_number,home_team_id,away_team_id,home_score,away_score)"
   ).catch((e) => ({ error: e.message }));
   const liveRows = Array.isArray(allRows) ? allRows : [];
   L.check("every series is readable over anon REST", liveRows.length > 0, allRows.error ?? `${liveRows.length} rows`);
@@ -467,14 +557,18 @@ async function main() {
     metaContent(html, "og:url") === `${SITE_URL}${path}` &&
     metaContent(html, "og:image") === `${SITE_URL}${image}` &&
     metaContent(html, "og:type") === "website" &&
+    // Story 6.1: a series card names its matchup in the image alt (never the winner); a shell's card has none.
+    (image === "og/fallback.png" ||
+      (/^Game 7 card: .+ vs .+, \d{4} /.test(metaContent(html, "og:image:alt") ?? "") &&
+        metaContent(html, "twitter:image:alt") === metaContent(html, "og:image:alt"))) &&
     metaContent(html, "twitter:card") === "summary_large_image" &&
     html.includes(`<link rel="canonical" href="${SITE_URL}${path}" />`);
 
   // Row 8: one page per variant, plus a shell.
   const variants = [
-    recordRow && ["record", `series/${recordRow.id}/`, `og/${recordRow.id}.png`, /win Game 7/],
-    ["flagship preview", `series/${FLAGSHIP_2016}/`, `og/${FLAGSHIP_2016}.png`, /stand three games apiece[\s\S]*See how the series ended/],
-    ["flagship result", `series/${FLAGSHIP_2016}/result/`, `og/${FLAGSHIP_2016}.png`, /win Game 7/],
+    recordRow && ["record", slugDir(recordRow), `og/${recordRow.id}.png`, /win Game 7/],
+    ["flagship preview", flagshipDir, `og/${FLAGSHIP_2016}.png`, /stand three games apiece[\s\S]*See how the series ended/],
+    ["flagship result", flagshipResultDir, `og/${FLAGSHIP_2016}.png`, /win Game 7/],
   ].filter(Boolean);
   L.check("an archived non-flagship series exists for the record row", !!recordRow);
   for (const [label, path, image, content] of variants) {
@@ -504,8 +598,8 @@ async function main() {
     }
     const [h, a] = [g7.home_score, g7.away_score];
     const pairs = [`${h}–${a}`, `${a}–${h}`, `${h}-${a}`, `${a}-${h}`];
-    const preview = await getPage(`series/${id}/`);
-    const result = await getPage(`series/${id}/result/`);
+    const preview = await getPage(slugDir(row) ?? `series/${id}/`);
+    const result = await getPage(slugDir(row, "result") ?? `series/${id}/result/`);
     // A Game 7 score can equal a games 1–6 score; only a score the preview cannot otherwise show is checked bare.
     const earlier = new Set(scores.filter((g) => g.game_number !== 7).flatMap((g) => [g.home_score, g.away_score]));
     const rootText = (rootMarkup(preview.html) ?? "").replace(/<[^>]*>/g, " ");
@@ -566,7 +660,8 @@ async function main() {
   // Row 10: sitemap and robots.
   const sitemap = await getPage("sitemap.xml");
   const locs = [...sitemap.html.matchAll(/<url><loc>([^<]+)<\/loc><\/url>/g)].map((m) => m[1]);
-  const archivedFlagships = flagshipIds.filter((id) => liveRows.some((r) => r.id === id && r.winner_team_id != null)).length;
+  // Story 6.1 carry-in: a result page exists for every row that is archived AND featured, read live.
+  const archivedFlagships = liveRows.filter((r) => r.winner_team_id != null && r.is_featured === true).length;
   const expectedUrls = 5 + liveRows.length + archivedFlagships;
   const wellFormed =
     sitemap.html.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">') &&
@@ -576,16 +671,62 @@ async function main() {
     locs.every((loc) => loc.startsWith(SITE_URL) && loc.endsWith("/"));
   L.check("sitemap.xml answers 200 and is well-formed", sitemap.status === 200 && wellFormed, `HTTP ${sitemap.status}, ${locs.length} URLs`);
   L.check(
-    `sitemap lists home, 4 app routes, every series and each flagship result (${expectedUrls} = 5 + ${liveRows.length} rows + ${archivedFlagships} flagships)`,
-    locs.length === expectedUrls && liveRows.every((r) => locs.includes(`${SITE_URL}series/${r.id}/`)) && locs.includes(SITE_URL),
+    `sitemap lists home, 4 app routes, every series and each featured archive's result (${expectedUrls} = 5 + ${liveRows.length} rows + ${archivedFlagships} featured archived)`,
+    locs.length === expectedUrls &&
+      liveRows.every((r) => locs.includes(`${SITE_URL}${slugDir(r)}`)) &&
+      liveRows.filter((r) => r.winner_team_id != null && r.is_featured === true).every((r) => locs.includes(`${SITE_URL}${slugDir(r, "result")}`)) &&
+      locs.includes(SITE_URL),
     `${locs.length} URLs`
+  );
+  // Story 6.1: slug URLs only — no uuid stub, no /series/ or /series/<year>/ redirect stub.
+  const stubLocs = locs.filter((loc) => /\/series\/[0-9a-f]{8}-|\/series\/(\d{4}\/)?$/.test(loc));
+  L.check("sitemap lists no uuid URL and no redirect stub", stubLocs.length === 0, stubLocs.slice(0, 3).join(", ") || "none");
+
+  // Row 13 (Story 6.1), plain HTTP: every uuid URL the previous sitemap listed still resolves to its series.
+  const uuidMisses = [];
+  const uuidTargets = liveRows.flatMap((r) => [
+    [`series/${r.id}/`, slugDir(r)],
+    ...(r.winner_team_id != null && r.is_featured === true ? [[`series/${r.id}/result/`, slugDir(r, "result")]] : []),
+  ]);
+  for (const [path, target] of uuidTargets) {
+    const stub = await getPage(path);
+    const ok =
+      stub.status === 200 &&
+      !!target &&
+      stub.html.includes(`<link rel="canonical" href="${SITE_URL}${target}" />`) &&
+      metaContent(stub.html, "og:url") === `${SITE_URL}${target}` &&
+      refreshTarget(stub.html) === `${new URL(SITE_URL).pathname}${target}` &&
+      stub.html.includes(`location.replace(${JSON.stringify(`${new URL(SITE_URL).pathname}${target}`)} + location.search + location.hash)`) &&
+      stub.html.includes(`<a href="${new URL(SITE_URL).pathname}${target}">`);
+    if (!ok) uuidMisses.push(`/${path} (HTTP ${stub.status})`);
+  }
+  L.check(
+    `every old uuid URL (${uuidTargets.length}) answers a stub canonical to its slug URL, with a refresh, a query-carrying script and a link`,
+    uuidMisses.length === 0,
+    uuidMisses.slice(0, 5).join(", ") || `${uuidTargets.length} stubs`
+  );
+  const years = [...new Set(liveRows.map((r) => r.year))].sort((a, b) => a - b);
+  const yearMisses = [];
+  for (const [path, target] of [["series/", "historical/"], ...years.map((y) => [`series/${y}/`, `historical/?year=${y}`])]) {
+    const stub = await getPage(path);
+    const ok =
+      stub.status === 200 &&
+      stub.html.includes('<meta name="robots" content="noindex" />') &&
+      refreshTarget(stub.html) === `${new URL(SITE_URL).pathname}${target}` &&
+      stub.html.includes(`<a href="${new URL(SITE_URL).pathname}${target.replace(/&/g, "&amp;")}">`);
+    if (!ok) yearMisses.push(`/${path} (HTTP ${stub.status})`);
+  }
+  L.check(
+    `/series/ and each /series/<year>/ (${years.length} years) are noindex redirect stubs to Historical`,
+    yearMisses.length === 0,
+    yearMisses.slice(0, 5).join(", ") || `${years.length + 1} stubs`
   );
   const robots = await getPage("robots.txt");
   L.check("robots.txt answers 200 and points at the sitemap", robots.status === 200 && robots.html.includes(`Sitemap: ${SITE_URL}sitemap.xml`), `HTTP ${robots.status}`);
 
   // Row 12 (Story 4.4): the URLs the two shares copy, opened afterwards in fresh browsers.
   const shared = { series: null, custom: null };
-  const S = await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null });
+  const S = boundSession(await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null }));
   // Row 11 (Story 4.8): uncaught exceptions and series reads, for the hydration rows.
   const exceptions = [];
   S.cdp.on("Runtime.exceptionThrown", (p) => exceptions.push(p.exceptionDetails?.exception?.description || p.exceptionDetails?.text || "exception"));
@@ -639,7 +780,8 @@ async function main() {
     // Row 3: the share arrival.
     const sentBefore = S.predictRequests.length;
     // Story 4.8: the prerendered file (the URL GitHub Pages 301s to) — main.tsx renders it client-side and redirects.
-    await S.navigate(`${base}series/${known.id}/?method=elo`);
+    // Story 6.1: at its slug URL.
+    await S.navigate(`${base}${knownDir}?method=elo`);
     const p = await S.evaluate(READ_PRELOAD).catch((e) => ({ error: e.message }));
     console.log(`     known series ${known.id}${known.label ? ` (${known.label})` : ""}: ${JSON.stringify(p)}`);
     L.check("share arrival redirects to /predict?series=<id>&method=elo", !p.error && p.search === `?series=${known.id}&method=elo`, p.error ?? `${p.pathname}${p.search}`);
@@ -653,6 +795,8 @@ async function main() {
     for (const [label, path] of [
       ["unknown id", `series/${unknownId}`],
       ["malformed id", "series/abc"],
+      // Story 6.1: an unknown slug in a year that has series.
+      ["unknown slug", `series/${flagship2016Row.year}/nope`],
     ]) {
       await S.navigate(`${base}${path}`);
       const nf = await S.evaluate(READ_NOT_FOUND).catch((e) => ({ error: e.message }));
@@ -714,7 +858,7 @@ async function main() {
       L.check("the 2016 flagship's Game 7 row is readable over REST", false, e.message);
     }
     // Story 4.8: the prerendered (hydrated) preview file.
-    await S.navigate(`${base}series/${FLAGSHIP_2016}/`);
+    await S.navigate(`${base}${flagshipDir}`);
     const pv = await S.evaluate(READ_SERIES_PAGE("/stand three games apiece$/")).catch((e) => ({ error: e.message }));
     console.log(`     flagship preview: ${pv.error ?? JSON.stringify({ h1: pv.h1, title: pv.title, games: pv.games })}`);
     L.check("flagship preview renders games 1–6 only", !pv.error && pv.games.length === 6 && !pv.games.some((g) => g.startsWith("Game 7")), pv.error ?? `${pv.games.length} rows`);
@@ -742,8 +886,9 @@ async function main() {
       const r = a.getBoundingClientRect();
       return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height, href: a.getAttribute("href") };
     })()`).catch((e) => ({ error: e.message }));
-    const boxOk = !!box && !box.error && box.h >= 44 && typeof box.href === "string" && box.href.endsWith(`/series/${FLAGSHIP_2016}/result`);
-    L.check("the reveal link is present, >=44px tall, and points at /result", boxOk, JSON.stringify(box));
+    const flagshipResultPath = `/${flagshipResultDir.replace(/\/$/, "")}`;
+    const boxOk = !!box && !box.error && box.h >= 44 && typeof box.href === "string" && box.href.endsWith(flagshipResultPath);
+    L.check(`the reveal link is present, >=44px tall, and points at ${flagshipResultPath}`, boxOk, JSON.stringify(box));
     if (box && !box.error) {
       for (const type of ["mousePressed", "mouseReleased"]) {
         await S.cdp.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
@@ -751,7 +896,7 @@ async function main() {
     }
     const rs = await S.evaluate(READ_SERIES_PAGE("/win Game 7$/", "/ win Game 7 · PredictGame7$/")).catch((e) => ({ error: e.message }));
     console.log(`     after reveal: ${rs.error ?? JSON.stringify({ pathname: rs.pathname, h1: rs.h1, title: rs.title, focused: rs.focused })}`);
-    L.check("the reveal lands on /series/<id>/result", !rs.error && rs.pathname.endsWith(`/series/${FLAGSHIP_2016}/result`), rs.error ?? rs.pathname);
+    L.check("the reveal lands on the slug result path", !rs.error && rs.pathname.endsWith(flagshipResultPath), rs.error ?? rs.pathname);
     L.check("document.activeElement is the result <h1>", !rs.error && rs.focused);
     L.check(
       "the result shows all seven games, Game 7 included",
@@ -761,27 +906,30 @@ async function main() {
     L.check("the result title carries the outcome", !rs.error && / win Game 7 · PredictGame7$/.test(rs.title), rs.error ?? rs.title);
 
     // Row 7 (Story 4.3): an ABA full-record page, then its /result (non-flagship) is the 404.
-    const aba = await restSeries("league=eq.ABA&winner_team_id=not.is.null&order=year.asc&limit=1", "id,year,round").catch((e) => ({ error: e.message }));
+    const aba = await restSeries(
+      "league=eq.ABA&winner_team_id=not.is.null&order=year.asc&limit=1",
+      "id,year,round,team_a:team_a_id(full_name,nickname),team_b:team_b_id(full_name,nickname)"
+    ).catch((e) => ({ error: e.message }));
     if (aba.error) {
       L.check("an archived ABA series is readable over REST", false, aba.error);
     } else {
-      await S.navigate(`${base}series/${aba.id}`);
+      await S.navigate(`${base}${slugDir(aba).replace(/\/$/, "")}`);
       const ab = await S.evaluate(READ_SERIES_PAGE("/win Game 7$/")).catch((e) => ({ error: e.message }));
       console.log(`     ABA ${aba.id} (${aba.year} ${aba.round}): ${ab.error ?? JSON.stringify({ eyebrow: ab.eyebrow, h1: ab.h1, title: ab.title })}`);
       L.check("ABA full record: eyebrow carries ABA", !ab.error && ab.eyebrow === `GAME 7 · ${aba.year} ABA ${aba.round}`.toUpperCase(), ab.error ?? ab.eyebrow);
       L.check("ABA full record: seven games, no reveal", !ab.error && ab.games.length === 7 && !/See how the series ended/.test(ab.mainText));
       L.check("ABA full record: no home/away/venue wording in the page content", !ab.error && !/\b(home|away|venue|arena)\b/i.test(ab.mainText));
 
-      await S.navigate(`${base}series/${aba.id}/result`);
+      await S.navigate(`${base}${slugDir(aba, "result").replace(/\/$/, "")}`);
       const nr = await S.evaluate(READ_NOT_FOUND).catch((e) => ({ error: e.message }));
       L.check("non-flagship /result renders the 404 with focus on the headline", !nr.error && nr.headline === HEADLINE && nr.focused, nr.error ?? nr.headline);
     }
 
     // Row 11 (Story 4.8): a cold load of each prerendered variant hydrates cleanly and never reads the series.
     const hydrationTargets = [
-      recordRow && ["record", `series/${recordRow.id}/`, "/win Game 7$/"],
-      ["flagship preview", `series/${FLAGSHIP_2016}/`, "/stand three games apiece$/"],
-      ["flagship result", `series/${FLAGSHIP_2016}/result/`, "/win Game 7$/"],
+      recordRow && ["record", slugDir(recordRow), "/win Game 7$/"],
+      ["flagship preview", flagshipDir, "/stand three games apiece$/"],
+      ["flagship result", flagshipResultDir, "/win Game 7$/"],
     ].filter(Boolean);
     // hydrateRoot adopts the server-rendered nodes; createRoot discards them and
     // mounts fresh ones (and sets `__reactContainer` on the root just the same).
@@ -819,6 +967,42 @@ async function main() {
       L.check(`${label}: zero console errors and zero uncaught exceptions on a prerendered load`, errors.length === 0 && thrown.length === 0, [...errors, ...thrown].join(" | ").slice(0, 400));
       L.check(`${label}: no rest/v1/series request (the preload serves the page)`, reads.length === 0, reads.join(", "));
     }
+    // Row 13 (Story 6.1), in the browser: old links keep working, year URLs land on Historical.
+    await S.navigate(`${base}series/${known.id}/?method=elo&utm_source=share`);
+    const old = await S.evaluate(READ_PRELOAD).catch((e) => ({ error: e.message }));
+    console.log(`     old shared link /series/${known.id}/?method=elo&utm_source=share: ${old.error ?? `${old.pathname}${old.search}`}`);
+    L.check(
+      "an old uuid share link reaches Predict with series, method and utm_source intact",
+      !old.error && old.search === `?series=${known.id}&method=elo&utm_source=share` && old.methodText.includes("Elo Rating"),
+      old.error ?? `${old.pathname}${old.search}`
+    );
+    await S.navigate(`${base}series/${FLAGSHIP_2016}/result/`);
+    const oldResult = await S.evaluate(READ_SERIES_PAGE("/win Game 7$/", "/ win Game 7 · PredictGame7$/")).catch((e) => ({ error: e.message }));
+    L.check(
+      "an old uuid result URL ends on the slug result path",
+      !oldResult.error && oldResult.pathname.replace(/\/+$/, "").endsWith(flagshipResultPath),
+      oldResult.error ?? oldResult.pathname
+    );
+    const yearMark = S.analytics.length;
+    const landingYear = flagship2016Row.year;
+    const hy = await landOn(S, `${base}series/${landingYear}/`, "/historical")
+      .then(() => S.evaluate(READ_HISTORICAL_YEARS))
+      .catch((e) => ({ error: e.message }));
+    // Settle window: an event fired a tick after the filter applied must still count.
+    await new Promise((r) => setTimeout(r, 1500));
+    const filterEvents = S.analytics.slice(yearMark).filter((e) => e.event === "historical_filter_applied");
+    console.log(`     /series/${landingYear}/: ${hy.error ?? `${hy.pathname}${hy.search} · years ${[...new Set(hy.years)].join(",")}`}`);
+    L.check(
+      `/series/${landingYear}/ lands on Historical filtered to ${landingYear}, with ?year= dropped from the URL`,
+      !hy.error &&
+        hy.pathname.replace(/\/+$/, "").endsWith("/historical") &&
+        !new URLSearchParams(hy.search).has("year") &&
+        hy.years.length > 0 &&
+        hy.years.every((y) => y === String(landingYear)),
+      hy.error ?? `${hy.search} ${[...new Set(hy.years)].join(",")}`
+    );
+    L.check("the year landing fires no historical_filter_applied", filterEvents.length === 0, `${filterEvents.length} event(s)`);
+
     // Row 12 (Story 4.4): share from a completed series prediction and from a custom one.
     const clickAt = async (box) => {
       for (const type of ["mousePressed", "mouseReleased"]) {
@@ -867,8 +1051,8 @@ async function main() {
       await generateAndOpenDetails();
       shared.series = await shareFromDetails("share (series)", "series");
       L.check(
-        "share (series): the copied URL is the trailing-slash series page with method and utm_source",
-        shared.series === `${site}series/${known.id}/?method=elo&utm_source=share`,
+        "share (series): the copied URL is the trailing-slash slug page with method and utm_source",
+        shared.series === `${site}${knownDir}?method=elo&utm_source=share`,
         shared.series ?? "nothing copied"
       );
     } catch (e) {
@@ -910,7 +1094,7 @@ async function main() {
       L.check(`fresh open (${label}): a shared URL to open`, false, "nothing was shared");
       return;
     }
-    const F = await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null });
+    const F = boundSession(await openBrowserSession({ viewport: "1440x900", analyticsHost: readEnv().VITE_POSTHOG_HOST || null }));
     try {
       await F.navigate(url);
       const r = await F.evaluate(read).catch((e) => ({ error: e.message }));

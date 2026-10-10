@@ -7,7 +7,9 @@
  *
  * The tree is DESIGN.md · OG card and `mockups/key-og-card.html`: an ink
  * field, two team blocks (logo on a white chip + mono abbreviation) around a
- * fixed-width center slot ({YEAR} over the stored round name over "GAME 7"),
+ * fixed-width center slot ({YEAR} over the stored round name — the stored
+ * league before it for a non-NBA row, as `yearRound` prints it (Story 6.1) —
+ * over "GAME 7"),
  * and a lower band (hairline rule, wordmark, tagline). The input type carries
  * no score, winner or prediction field, so none can reach a card.
  *
@@ -59,6 +61,8 @@ export interface SeriesCardInput {
   year: number;
   /** The stored round name — rendered uppercase and wrapped, never abbreviated. */
   round: string;
+  /** The stored league (`series.league`), verbatim; shown before the round unless it is `NBA`. */
+  league: string;
   teamA: CardTeam;
   teamB: CardTeam;
 }
@@ -160,7 +164,12 @@ function teamBlock(team: CardTeam): CardNode {
   ]);
 }
 
-function centerSlot(year: number, round: string): CardNode {
+/** The center slot's round line: `{LEAGUE }{ROUND}`, the league only for a non-NBA row (as `yearRound`). */
+export function roundLine(league: string, round: string): string {
+  return `${league !== 'NBA' ? `${league} ` : ''}${round}`.toUpperCase();
+}
+
+function centerSlot(year: number, league: string, round: string): CardNode {
   const context: Style = {
     display: 'flex',
     justifyContent: 'center',
@@ -174,7 +183,7 @@ function centerSlot(year: number, round: string): CardNode {
   return el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, width: CENTER_SLOT }, [
     el('div', { display: 'flex', flexDirection: 'column', alignItems: 'center', width: CENTER_SLOT }, [
       el('div', context, String(year)),
-      el('div', context, round.toUpperCase()),
+      el('div', context, roundLine(league, round)),
     ]),
     el('div', { fontSize: 20, fontWeight: 600, letterSpacing: 2.8, color: GAME_7_GREY }, 'GAME 7'),
   ]);
@@ -213,7 +222,7 @@ export function cardTree(input: CardInput): CardNode {
   return field([
     el('div', { display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between' }, [
       teamBlock(input.teamA),
-      centerSlot(input.year, input.round),
+      centerSlot(input.year, input.league, input.round),
       teamBlock(input.teamB),
     ]),
     el(

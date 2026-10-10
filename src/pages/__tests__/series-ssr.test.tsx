@@ -39,7 +39,8 @@ describe('series pages render without a browser (SSR)', () => {
     const { html, title } = ssr(`/series/${FLAGSHIP_2016_ID}`, <SeriesPreview series={flagship2016} />);
     expect(html).toContain('Cavaliers and Warriors stand three games apiece');
     expect(html).toContain('GAME 7 · 2016 FINALS');
-    expect(html).toContain(`href="/series/${FLAGSHIP_2016_ID}/result"`);
+    // Story 6.1: the reveal links the slug result path.
+    expect(html).toContain('href="/series/2016/cavaliers-warriors/result"');
     expect(html).not.toContain(String(FLAGSHIP_2016_GAME7.cle));
     expect(html).not.toContain('win Game 7');
     expect(html).not.toContain('4–3');

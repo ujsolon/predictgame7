@@ -27,16 +27,12 @@ import App from '@/App';
 import { AppWrapper } from '@/components/common/PageMeta';
 import {
   aba1970,
-  CONTENT_FLAGSHIP_ID,
-  CONTENT_RECORD_ID,
   contentFlagship,
   contentRecord,
-  FLAGSHIP_2016_ID,
   flagship2016,
-  NON_FLAGSHIP_ID,
   nonFlagship2018,
-  PENDING_NON_FLAGSHIP_ID,
   pendingNonFlagship,
+  SLUG_PATHS,
 } from '@/pages/__tests__/series-fixtures';
 import type { Series } from '@/types/types';
 import { prerenderSite } from '../entry-server';
@@ -57,7 +53,9 @@ const TEMPLATE = `<!DOCTYPE html>
 </html>
 `;
 
-let files: PrerenderFile[] = [];
+// Two builds: the content copies share a year and slug (Story 6.1) with the
+// rows they were copied from, and one build refuses a duplicate slug.
+let files: { bare: PrerenderFile[]; content: PrerenderFile[] } = { bare: [], content: [] };
 
 // What jsdom lacks and a browser has: act's environment flag, and `matchMedia`
 // (the toaster reads the color scheme in an effect).
@@ -82,12 +80,11 @@ beforeAll(() => {
   const canUseDOM = HelmetProvider.canUseDOM;
   HelmetProvider.canUseDOM = false;
   try {
-    const out = prerenderSite(
-      [flagship2016, nonFlagship2018, aba1970, pendingNonFlagship, contentFlagship, contentRecord],
-      TEMPLATE
-    );
-    expect(out.errors).toEqual([]);
-    files = out.files;
+    const bare = prerenderSite([flagship2016, nonFlagship2018, aba1970, pendingNonFlagship], TEMPLATE);
+    const content = prerenderSite([contentFlagship, contentRecord], TEMPLATE);
+    expect(bare.errors).toEqual([]);
+    expect(content.errors).toEqual([]);
+    files = { bare: bare.files, content: content.files };
   } finally {
     HelmetProvider.canUseDOM = canUseDOM;
   }
@@ -102,22 +99,23 @@ afterEach(() => {
   db.from.mockReset();
 });
 
-const VARIANTS: [label: string, route: string, live: Series | null][] = [
-  ['record', `/series/${NON_FLAGSHIP_ID}`, null],
-  ['flagship preview', `/series/${FLAGSHIP_2016_ID}`, null],
-  ['flagship result', `/series/${FLAGSHIP_2016_ID}/result`, null],
-  // A pending preview refreshes in the background; the live row is the same series.
-  ['pending preview', `/series/${PENDING_NON_FLAGSHIP_ID}`, pendingNonFlagship],
+const P = SLUG_PATHS;
+const VARIANTS: [label: string, route: string, live: Series | null, build: 'bare' | 'content'][] = [
+  ['record', P.nonFlagship2018, null, 'bare'],
+  ['flagship preview', P.flagship2016, null, 'bare'],
+  ['flagship result', `${P.flagship2016}/result`, null, 'bare'],
+  // A pending preview refreshes in the background (by id); the live row is the same series.
+  ['pending preview', P.pendingNonFlagship, pendingNonFlagship, 'bare'],
   // Story 4.5: editorial content (markdown, an editorial image, a video facade) hydrates as cleanly.
-  ['content flagship preview', `/series/${CONTENT_FLAGSHIP_ID}`, null],
-  ['content flagship result', `/series/${CONTENT_FLAGSHIP_ID}/result`, null],
-  ['content record', `/series/${CONTENT_RECORD_ID}`, null],
+  ['content flagship preview', P.flagship2016, null, 'content'],
+  ['content flagship result', `${P.flagship2016}/result`, null, 'content'],
+  ['content record', P.nonFlagship2018, null, 'content'],
 ];
 
 describe('prerendered pages hydrate against the client tree', () => {
-  for (const [label, route, live] of VARIANTS) {
+  for (const [label, route, live, build] of VARIANTS) {
     it(`${label}: no recoverable error, no console error, server nodes kept`, async () => {
-      const html = files.find((f) => f.path === `${route.slice(1)}/index.html`)?.content ?? '';
+      const html = files[build].find((f) => f.path === `${route.slice(1)}/index.html`)?.content ?? '';
       const rootMatch = /<div id="root">([\s\S]*)<\/div>\n\s*<script type="application\/json"/.exec(html);
       const preloadMatch = new RegExp(`<script type="application/json" id="${PRELOAD_ELEMENT_ID}">([^<]*)</script>`).exec(html);
       expect(rootMatch && preloadMatch).toBeTruthy();

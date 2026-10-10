@@ -12,7 +12,7 @@ export const MATCHUP_NOT_FOUND_LINE = 'It may be incomplete or mistyped. Pick a 
 
 interface SeriesNotFoundProps {
   /**
-   * `h1` when the block IS the page (`/series/<id>`): it sets the document
+   * `h1` when the block IS the page (`/series/<year>/<slug>`): it sets the document
    * title and takes focus, because react-router does neither on its own.
    * `h2` when it sits inside a page that owns its own `<h1>` (Predict's
    * series region): no title change and no focus theft.

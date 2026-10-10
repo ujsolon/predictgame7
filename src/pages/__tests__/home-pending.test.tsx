@@ -36,8 +36,8 @@ vi.mock('embla-carousel-react', () => ({ default: () => [() => {}, undefined] })
 
 import HomePage, { PendingGameSevens } from '@/pages/HomePage';
 
-const BOS = { id: 2, full_name: 'Boston Celtics', abbreviation: 'BOS', created_at: 'a' };
-const MIA = { id: 16, full_name: 'Miami Heat', abbreviation: 'MIA', created_at: 'b' };
+const BOS = { id: 2, full_name: 'Boston Celtics', nickname: 'Celtics', abbreviation: 'BOS', created_at: 'a' };
+const MIA = { id: 16, full_name: 'Miami Heat', nickname: 'Heat', abbreviation: 'MIA', created_at: 'b' };
 
 function seriesWith(id: string, gameNumbers: number[], winner: number | null = null): Series {
   return {
@@ -132,12 +132,13 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     const card = cards[0] as HTMLElement;
     expect(card.getAttribute('data-pending-series-id')).toBe(PENDING_ID);
     expect(card.querySelector('p')?.textContent).toBe('GAME 7 · 2027 EASTERN CONFERENCE FIRST ROUND');
-    expect(card.querySelector('h2')?.textContent).toBe('Miami Heat and Boston Celtics stand three games apiece');
+    expect(card.querySelector('h2')?.textContent).toBe('Heat and Celtics stand three games apiece');
     expect(card.textContent).toContain('Game 7 stands.');
 
     const series = card.querySelector('a[data-pending-series-link="series"]') as HTMLAnchorElement;
     const predict = card.querySelector('a[data-pending-series-link="predict"]') as HTMLAnchorElement;
-    expect(series.getAttribute('href')).toBe(`/series/${PENDING_ID}`);
+    // Story 6.1: the slug URL, from the teams' nicknames in stored order.
+    expect(series.getAttribute('href')).toBe('/series/2027/heat-celtics');
     expect(series.textContent).toBe('Read the series →');
     expect(predict.getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
     expect(predict.textContent).toBe('Model Game 7 →');
@@ -239,7 +240,7 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     );
     await waitFor(() => expect(container.querySelector('[data-home-pending-series] a')).not.toBeNull());
     const hrefs = Array.from(container.querySelectorAll('[data-home-pending-series] a')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toEqual([`/series/${PENDING_ID}`, `/predict?series=${PENDING_ID}`]);
+    expect(hrefs).toEqual(['/series/2027/celtics-heat', `/predict?series=${PENDING_ID}`]);
   });
 });
 

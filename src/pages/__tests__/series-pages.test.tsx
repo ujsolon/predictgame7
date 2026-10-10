@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SERIES_PAGE_SELECT } from '@/lib/series-query';
 import { routes } from '@/routes';
 import {
-  ABA_ID,
   BAD_YOUTUBE_ID,
   BEFORE_BODY_TEXT,
   BEFORE_HEADLINE,
@@ -22,15 +21,19 @@ import {
   RESOLUTION_HEADLINE,
   RESOLUTION_VIDEO_ID,
   FLAGSHIP_2016_GAME7,
-  FLAGSHIP_2016_HOME_FIRST_ID,
   FLAGSHIP_2016_ID,
   NON_FLAGSHIP_ID,
-  PENDING_ID,
-  PENDING_NON_FLAGSHIP_ID,
+  rowsForYear,
+  SLUG_PATHS,
 } from './series-fixtures';
 
+const P = SLUG_PATHS;
+
 // Story 4.3 · I/O matrix (every row except SSR, which `series-ssr.test.tsx`
-// renders in a node environment). Supabase answers from the fixture map by id.
+// renders in a node environment). Supabase answers from the fixture map by id,
+// and a year query (Story 6.1's slug lookup) from `SLUG_ROWS`. Canonical
+// entries are slug URLs; a uuid entry hops to the slug URL with the id handed
+// over, so it costs one more fetch (the uuid lookup, then the page's own).
 const db = vi.hoisted(() => ({
   fail: false,
   from: vi.fn(),
@@ -46,10 +49,16 @@ vi.mock('posthog-js', () => ({ default: { capture: db.capture, captureException:
 beforeEach(() => {
   vi.clearAllMocks();
   db.fail = false;
-  db.eq.mockImplementation((_column: string, id: string) => ({
-    maybeSingle: () =>
-      Promise.resolve(db.fail ? { data: null, error: new Error('network miss') } : { data: FIXTURES[id] ?? null, error: null }),
-  }));
+  db.eq.mockImplementation((column: string, value: string | number) =>
+    column === 'year'
+      ? Promise.resolve(db.fail ? { data: null, error: new Error('network miss') } : { data: rowsForYear(value), error: null })
+      : {
+          maybeSingle: () =>
+            Promise.resolve(
+              db.fail ? { data: null, error: new Error('network miss') } : { data: FIXTURES[value as string] ?? null, error: null }
+            ),
+        }
+  );
   db.select.mockImplementation(() => ({ eq: db.eq }));
   db.from.mockImplementation(() => ({ select: db.select }));
 });
@@ -111,14 +120,14 @@ function expectNoVenue() {
   expect(text()).not.toMatch(/\bat (Cleveland|Boston|Golden State|Oracle|Denver|Washington)\b/);
 }
 
-describe('/series/:id — non-flagship archive (full record)', () => {
+describe('/series/:year/:slug — non-flagship archive (full record)', () => {
   it('renders the full record with scores mapped by team id and an outcome title', async () => {
-    renderApp(`/series/${NON_FLAGSHIP_ID}`);
+    renderApp(P.nonFlagship2018);
     await headline('Cavaliers win Game 7');
 
     expect(db.from).toHaveBeenCalledTimes(1);
     expect(db.select).toHaveBeenCalledWith(SERIES_PAGE_SELECT);
-    expect(db.eq).toHaveBeenCalledWith('id', NON_FLAGSHIP_ID);
+    expect(db.eq).toHaveBeenCalledWith('year', 2018);
 
     expect(text()).toContain('GAME 7 · 2018 EASTERN CONFERENCE FINALS');
     expect(text()).toContain('Final series');
@@ -158,7 +167,7 @@ describe('/series/:id — non-flagship archive (full record)', () => {
   });
 
   it('labels an ABA series with its league and prints no venue', async () => {
-    renderApp(`/series/${ABA_ID}`);
+    renderApp(P.aba1970);
     await headline('Rockets win Game 7');
     expect(text()).toContain('GAME 7 · 1970 ABA WESTERN DIVISION SEMIFINALS');
     expect(gameRows()).toHaveLength(7);
@@ -170,7 +179,7 @@ describe('/series/:id — non-flagship archive (full record)', () => {
   });
 
   it('has no result page: /result is the 404 once its one fetch shows it is not featured (Story 4.5)', async () => {
-    renderApp(`/series/${NON_FLAGSHIP_ID}/result`);
+    renderApp(`${P.nonFlagship2018}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     // Focus moves in an effect after the commit that shows the heading, so wait for it too.
     await waitFor(() => expect(notFoundHeading()).toHaveFocus());
@@ -182,9 +191,9 @@ describe('/series/:id — non-flagship archive (full record)', () => {
   });
 });
 
-describe('/series/:id — flagship preview (spoiler-free)', () => {
+describe('/series/:year/:slug — flagship preview (spoiler-free)', () => {
   it('shows the 2016 Finals as 00020 stores it Warriors first — title, headline, game rows and CTA (Story 6.8)', async () => {
-    renderApp(`/series/${FLAGSHIP_2016_HOME_FIRST_ID}`);
+    renderApp(P.flagship2016HomeFirst);
     await headline('Warriors and Cavaliers stand three games apiece');
     expect(gameRows()).toEqual([
       'Game 1 Warriors 104–89 Cavaliers',
@@ -200,7 +209,7 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
   });
 
   it('renders games 1–6, the method links, the CTA and the reveal — and no Game 7 outcome in the DOM', async () => {
-    renderApp(`/series/${FLAGSHIP_2016_ID}`);
+    renderApp(P.flagship2016);
     await headline('Cavaliers and Warriors stand three games apiece');
 
     expect(text()).toContain('GAME 7 · 2016 FINALS');
@@ -248,7 +257,8 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
     // The CTA, then — below both — the reveal.
     const cta = anchors().find((a) => a.getAttribute('href') === `/predict?series=${FLAGSHIP_2016_ID}`) as HTMLAnchorElement;
     expect(text()).toContain('Model this matchup yourself');
-    const reveal = anchors().find((a) => a.getAttribute('href') === `/series/${FLAGSHIP_2016_ID}/result`) as HTMLAnchorElement;
+    // Story 6.1: the reveal links the slug result path.
+    const reveal = anchors().find((a) => a.getAttribute('href') === `${P.flagship2016}/result`) as HTMLAnchorElement;
     expect(reveal.textContent).toBe('See how the series ended →');
     expect(text()).toContain('Spoilers for Game 7 ahead.');
     const after = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -258,7 +268,7 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
   });
 
   it('reveal → the result page: full record, outcome title, focus on the <h1>', async () => {
-    renderApp(`/series/${FLAGSHIP_2016_ID}`);
+    renderApp(P.flagship2016);
     await headline('Cavaliers and Warriors stand three games apiece');
     fireEvent.click(screen.getByText('See how the series ended', { exact: false }).closest('a') as HTMLAnchorElement);
 
@@ -278,14 +288,14 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
   });
 
   it('a cold /result load renders the result without moving focus (POP)', async () => {
-    renderApp(`/series/${FLAGSHIP_2016_ID}/result`);
+    renderApp(`${P.flagship2016}/result`);
     const heading = await headline('Cavaliers win Game 7');
     expect(heading).not.toHaveFocus();
   });
 
   it('/result: a fetch error shows the retry panel, and Retry re-fetches', async () => {
     db.fail = true;
-    renderApp(`/series/${FLAGSHIP_2016_ID}/result`);
+    renderApp(`${P.flagship2016}/result`);
     await screen.findByText("Couldn't load this series.");
     db.fail = false;
     fireEvent.click(screen.getByText('Retry'));
@@ -294,9 +304,9 @@ describe('/series/:id — flagship preview (spoiler-free)', () => {
   });
 });
 
-describe('/series/:id — pending series', () => {
+describe('/series/:year/:slug — pending series', () => {
   it('renders the preview with no reveal; its /result is the 404', async () => {
-    renderApp(`/series/${PENDING_ID}`);
+    renderApp(P.pending2026);
     await headline('Thunder and Spurs stand three games apiece');
     // Stored order reaches the game rows, not just the headline and title
     // (Story 6.8): `team_a` (the Thunder) first in every row. The retired E14
@@ -318,7 +328,7 @@ describe('/series/:id — pending series', () => {
   });
 
   it('a pending non-flagship series renders the preview with no reveal', async () => {
-    renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}`);
+    renderApp(P.pendingNonFlagship);
     await headline('Celtics and Cavaliers stand three games apiece');
     // Stored order is Celtics first (`team_a`); nothing re-sorts it.
     expect(gameRows()).toEqual([
@@ -334,22 +344,22 @@ describe('/series/:id — pending series', () => {
   });
 
   it('/result for a pending non-flagship series is the 404 after its one fetch', async () => {
-    renderApp(`/series/${PENDING_NON_FLAGSHIP_ID}/result`);
+    renderApp(`${P.pendingNonFlagship}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     expect(db.from).toHaveBeenCalledTimes(1);
   });
 
   it('/result for a pending series (even a featured one) is the 404 (matrix: is_featured pending series)', async () => {
-    renderApp(`/series/${PENDING_ID}/result`);
+    renderApp(`${P.pending2026}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
     expect(db.from).toHaveBeenCalledTimes(1);
     expect(text()).not.toContain('win Game 7');
   });
 });
 
-describe('/series/:id — 404, redirect and retry rows', () => {
+describe('/series/:year/:slug — 404, redirect and retry rows', () => {
   it('share arrival still redirects to Predict (Story 4.1)', async () => {
-    renderApp(`/series/${FLAGSHIP_2016_ID}?method=elo`);
+    renderApp(`${P.flagship2016}?method=elo`);
     expect(await screen.findByTestId('predict-probe')).toHaveTextContent(`/predict?series=${FLAGSHIP_2016_ID}&method=elo`);
   });
 
@@ -367,9 +377,10 @@ describe('/series/:id — 404, redirect and retry rows', () => {
   });
 
   it('a row whose phase does not reconcile is the 404', async () => {
+    // Reached by uuid (it shares its year and slug with the 2018 record): the uuid lookup, then the hop's own fetch.
     renderApp(`/series/${BROKEN_ID}`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
-    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.from).toHaveBeenCalledTimes(2);
     expect(text()).not.toContain('win Game 7');
     // Reported, never silent — named by its id (as PredictPage reports non-reconciling rows).
     await waitFor(() => expect(db.captureException).toHaveBeenCalledTimes(1));
@@ -381,14 +392,14 @@ describe('/series/:id — 404, redirect and retry rows', () => {
     // the plain 404 before its phase is looked at, so `BROKEN_ID` cannot.
     renderApp(`/series/${BROKEN_FLAGSHIP_ID}/result`);
     await waitFor(() => expect(notFoundHeading()).not.toBeNull());
-    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.from).toHaveBeenCalledTimes(2);
     expect(text()).not.toContain('win Game 7');
     await waitFor(() => expect(db.captureException).toHaveBeenCalledTimes(1));
     expect(String(db.captureException.mock.calls[0][0])).toContain(BROKEN_FLAGSHIP_ID);
   });
 
   it('navigating to a second series does not redirect off the first one\'s state (KeyedById)', async () => {
-    renderApp(`/series/${NON_FLAGSHIP_ID}`, `/series/${FLAGSHIP_2016_ID}?method=elo`);
+    renderApp(P.nonFlagship2018, `${P.flagship2016}?method=elo`);
     await headline('Cavaliers win Game 7');
 
     fireEvent.click(screen.getByText('jump'));
@@ -401,7 +412,7 @@ describe('/series/:id — 404, redirect and retry rows', () => {
     // so the redirect timing is the half jsdom can actually see.
     expect(screen.queryByTestId('predict-probe')).toBeNull();
     expect(db.from).toHaveBeenCalledTimes(2);
-    expect(db.eq).toHaveBeenLastCalledWith('id', FLAGSHIP_2016_ID);
+    expect(db.eq).toHaveBeenLastCalledWith('year', 2016);
     expect(text()).toContain('Loading series…');
     expect(text()).not.toContain('Cavaliers win Game 7');
 
@@ -412,7 +423,7 @@ describe('/series/:id — 404, redirect and retry rows', () => {
 
   it('a fetch error shows the retry panel with its own title, and Retry re-fetches into the page', async () => {
     db.fail = true;
-    renderApp(`/series/${NON_FLAGSHIP_ID}`);
+    renderApp(P.nonFlagship2018);
     await screen.findByText("Couldn't load this series.");
     // The error state owns its title: without one the tab keeps whatever the
     // previous page set — an outcome title, on a page that failed to load.
@@ -445,20 +456,25 @@ describe('series header Share (Story 4.4)', () => {
     return writeText.mock.calls[0][0] as string;
   }
 
-  it('result page: …/series/<id>/result/?utm_source=share (matrix: series header share)', async () => {
-    const url = await shareFrom(`/series/${FLAGSHIP_2016_ID}/result`, 'Cavaliers win Game 7');
-    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/result/?utm_source=share`);
+  it('result page: …/series/<year>/<slug>/result/?utm_source=share (matrix: series header share)', async () => {
+    const url = await shareFrom(`${P.flagship2016}/result`, 'Cavaliers win Game 7');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/2016/cavaliers-warriors/result/?utm_source=share`);
     expect(db.capture.mock.calls[0]).toEqual(['prediction_shared', { surface: 'series', kind: 'series', channel: 'clipboard' }]);
   });
 
-  it('preview page: …/series/<id>/?utm_source=share', async () => {
-    const url = await shareFrom(`/series/${FLAGSHIP_2016_ID}`, 'Cavaliers and Warriors stand three games apiece');
-    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/?utm_source=share`);
+  it('preview page: …/series/<year>/<slug>/?utm_source=share', async () => {
+    const url = await shareFrom(P.flagship2016, 'Cavaliers and Warriors stand three games apiece');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/2016/cavaliers-warriors/?utm_source=share`);
   });
 
-  it('full-record page: …/series/<id>/?utm_source=share', async () => {
+  it('full-record page: …/series/<year>/<slug>/?utm_source=share', async () => {
+    const url = await shareFrom(P.nonFlagship2018, 'Cavaliers win Game 7');
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/2018/celtics-cavaliers/?utm_source=share`);
+  });
+
+  it('a page reached by its old uuid URL still shares the slug URL', async () => {
     const url = await shareFrom(`/series/${NON_FLAGSHIP_ID}`, 'Cavaliers win Game 7');
-    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${NON_FLAGSHIP_ID}/?utm_source=share`);
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/2018/celtics-cavaliers/?utm_source=share`);
   });
 });
 
@@ -479,14 +495,14 @@ describe('series header Share — native sheet title (Story 4.4)', () => {
   }
 
   it('flagship preview: the winner-free page title', async () => {
-    const { title, url } = await nativeTitleFrom(`/series/${FLAGSHIP_2016_ID}`, 'Cavaliers and Warriors stand three games apiece');
+    const { title, url } = await nativeTitleFrom(P.flagship2016, 'Cavaliers and Warriors stand three games apiece');
     expect(title).toBe('Cleveland Cavaliers vs Golden State Warriors — Game 7, 2016 Finals · PredictGame7');
     expect(title).not.toMatch(/win|over|4–3/);
-    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/${FLAGSHIP_2016_ID}/?utm_source=share`);
+    expect(url).toBe(`${window.location.origin}${import.meta.env.BASE_URL}series/2016/cavaliers-warriors/?utm_source=share`);
   });
 
   it('flagship result: the outcome title', async () => {
-    const { title } = await nativeTitleFrom(`/series/${FLAGSHIP_2016_ID}/result`, 'Cavaliers win Game 7');
+    const { title } = await nativeTitleFrom(`${P.flagship2016}/result`, 'Cavaliers win Game 7');
     expect(title).toBe('Cleveland Cavaliers vs Golden State Warriors, 2016 Finals: Cavaliers win Game 7 · PredictGame7');
   });
 });

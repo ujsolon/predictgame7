@@ -51,6 +51,7 @@ describe('runOgCards — stored (home-first) side order', () => {
           id: 'gsw-first',
           year: 2016,
           round: 'Finals',
+          league: 'NBA',
           winner_team_id: 1,
           team_a: { id: 2, full_name: 'Golden State Warriors', nickname: 'Warriors', abbreviation: 'GSW', logo_url: 'assets/teams/warriors.png' },
           team_b: { id: 1, full_name: 'Cleveland Cavaliers', nickname: 'Cavaliers', abbreviation: 'CLE', logo_url: 'assets/teams/cavaliers.png' },
@@ -62,9 +63,12 @@ describe('runOgCards — stored (home-first) side order', () => {
     });
     expect(code).toBe(0);
     const series = seen.inputs.find((i) => (i as { kind: string }).kind === 'series') as {
+      league: string;
       teamA: { abbreviation: string };
       teamB: { abbreviation: string };
     };
     expect([series.teamA.abbreviation, series.teamB.abbreviation]).toEqual(['GSW', 'CLE']);
+    // Story 6.1: the stored league reaches the card (its center slot prints it for a non-NBA row).
+    expect(series.league).toBe('NBA');
   }, 30_000);
 });

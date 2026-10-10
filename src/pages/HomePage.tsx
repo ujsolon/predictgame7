@@ -9,7 +9,7 @@ import { isSeriesPending } from '@/lib/series-phase';
 import { SERIES_SELECT } from '@/lib/series-query';
 import type { Series } from '@/types/types';
 import { matchupLabel } from '@/lib/matchup';
-import { predictHref, previewHeadline, type SeriesView, seriesEyebrow, toSeriesView } from '@/pages/series/series-view';
+import { predictHref, previewHeadline, type SeriesView, seriesEyebrow, seriesHref, toSeriesView } from '@/pages/series/series-view';
 import { captureError, EVENTS, track } from '@/lib/analytics';
 import {
   Trophy,
@@ -125,7 +125,7 @@ export function PendingGameSevens() {
             <p className="mt-2 text-on-muted">Game 7 stands.</p>
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
               <Link
-                to={`/series/${view.id}`}
+                to={seriesHref(view)}
                 data-pending-series-link="series"
                 className={`inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${HOME_FOCUS}`}
               >

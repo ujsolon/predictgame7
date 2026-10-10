@@ -112,7 +112,7 @@ export async function runPrerender(deps: PrerenderDeps): Promise<number> {
       `prerender: ${summary.record + summary.preview + summary.result} series pages ` +
         `(${summary.record} record + ${summary.preview} preview + ${summary.result} result) from ${summary.rows} series read ` +
         `(${summary.featured} featured), ` +
-        `${summary.shells} shells, sitemap ${summary.sitemapUrls} URLs, robots.txt — ${output.files.length} files, ${seconds} s`
+        `${summary.shells} shells, ${summary.stubs} redirect stubs, sitemap ${summary.sitemapUrls} URLs, robots.txt — ${output.files.length} files, ${seconds} s`
     );
     return 0;
   } catch (error) {

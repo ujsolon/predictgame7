@@ -260,6 +260,29 @@ export const invalidContent: Series = {
   ),
 };
 
+/**
+ * Story 6.1: the rows a `/series/<year>/<slug>` lookup can see — one per
+ * `year/slug`, as production guarantees (the prerender fails on a duplicate).
+ * The copies above (`broken`, the content rows, …) share a year and slug with
+ * their source row, so they are reached by uuid, which hands the id over.
+ */
+export const SLUG_ROWS: Series[] = [flagship2016, flagship2016HomeFirst, nonFlagship2018, aba1970, pending2026, pendingNonFlagship];
+
+/** A year query, as `useSeriesRecord` makes it, answered from `SLUG_ROWS`. */
+export function rowsForYear(year: unknown): Series[] {
+  return SLUG_ROWS.filter((row) => row.year === year);
+}
+
+/** Each `SLUG_ROWS` row's canonical router path (`seriesPath`). */
+export const SLUG_PATHS = {
+  flagship2016: '/series/2016/cavaliers-warriors',
+  flagship2016HomeFirst: '/series/2016/warriors-cavaliers',
+  nonFlagship2018: '/series/2018/celtics-cavaliers',
+  aba1970: '/series/1970/rockets-caps',
+  pending2026: '/series/2026/thunder-spurs',
+  pendingNonFlagship: '/series/2027/celtics-cavaliers',
+} as const;
+
 export const FIXTURES: Record<string, Series> = {
   [FLAGSHIP_2016_ID]: flagship2016,
   [FLAGSHIP_2016_HOME_FIRST_ID]: flagship2016HomeFirst,

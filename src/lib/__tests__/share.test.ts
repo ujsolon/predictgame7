@@ -11,6 +11,14 @@ import { decodeSharePayload } from '@/lib/share-payload';
 import type { SharePayload } from '@/types/prediction';
 
 const ID = '06715a85-ec33-46a4-8383-d058055eefe6';
+// The 2016 Finals as stored since `00020`: the Warriors (home court) first.
+const FINALS_2016 = {
+  id: ID,
+  year: 2016,
+  team_a: { full_name: 'Golden State Warriors', nickname: 'Warriors' },
+  team_b: { full_name: 'Cleveland Cavaliers', nickname: 'Cavaliers' },
+};
+const SLUG_URL = `${'https://ujsolon.github.io'}/predictgame7/series/2016/warriors-cavaliers/`;
 const ORIGIN = 'https://ujsolon.github.io';
 const BASE = '/predictgame7/';
 
@@ -23,10 +31,16 @@ const payload: SharePayload = {
 };
 
 describe('share URLs (AD-6, Story 4.4)', () => {
-  it('series prediction: the trailing-slash series page with the method and utm_source', () => {
-    expect(absoluteShareUrl(seriesPredictionSharePath(ID, 'elo'), ORIGIN, BASE)).toBe(
-      `${ORIGIN}/predictgame7/series/${ID}/?method=elo&utm_source=share`
+  it('series prediction: the trailing-slash slug page with the method and utm_source (Story 6.1)', () => {
+    expect(absoluteShareUrl(seriesPredictionSharePath(FINALS_2016, 'elo'), ORIGIN, BASE)).toBe(
+      `${SLUG_URL}?method=elo&utm_source=share`
     );
+  });
+
+  it('falls back to the uuid page only for a series with no slug', () => {
+    const noTeams = { id: ID, year: 2016 };
+    expect(seriesPredictionSharePath(noTeams, 'elo')).toBe(`series/${ID}/?method=elo&utm_source=share`);
+    expect(seriesPageSharePath(noTeams, 'result')).toBe(`series/${ID}/result/?utm_source=share`);
   });
 
   it('custom prediction: /predict/ with the decodable payload and utm_source', () => {
@@ -38,11 +52,9 @@ describe('share URLs (AD-6, Story 4.4)', () => {
   });
 
   it('series page header: the canonical page or result URL plus utm_source (matrix: series header share)', () => {
-    expect(absoluteShareUrl(seriesPageSharePath(ID, 'page'), ORIGIN, BASE)).toBe(
-      `${ORIGIN}/predictgame7/series/${ID}/?utm_source=share`
-    );
-    expect(absoluteShareUrl(seriesPageSharePath(ID, 'result'), ORIGIN, BASE)).toBe(
-      `${ORIGIN}/predictgame7/series/${ID}/result/?utm_source=share`
+    expect(absoluteShareUrl(seriesPageSharePath(FINALS_2016, 'page'), ORIGIN, BASE)).toBe(`${SLUG_URL}?utm_source=share`);
+    expect(absoluteShareUrl(seriesPageSharePath(FINALS_2016, 'result'), ORIGIN, BASE)).toBe(
+      `${SLUG_URL}result/?utm_source=share`
     );
   });
 

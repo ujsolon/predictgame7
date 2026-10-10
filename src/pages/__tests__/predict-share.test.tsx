@@ -100,7 +100,7 @@ const montreal: SharePayload = {
 };
 
 describe('Share on the Predict detailed result (Story 4.4)', SUITE, () => {
-  it('series result, desktop: copies …/series/<id>/?method=elo&utm_source=share and toasts "Link copied." (matrix row 1)', async () => {
+  it('series result, desktop: copies …/series/<year>/<slug>/?method=elo&utm_source=share and toasts "Link copied." (matrix row 1)', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     setNavigator(undefined, writeText);
     renderPage(`/predict?series=${SERIES_ID}&method=elo`);
@@ -115,7 +115,7 @@ describe('Share on the Predict detailed result (Story 4.4)', SUITE, () => {
     fireEvent.click(button as HTMLButtonElement);
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText).toHaveBeenCalledWith(`${ORIGIN}${BASE}series/s-1/?method=elo&utm_source=share`);
+    expect(writeText).toHaveBeenCalledWith(`${ORIGIN}${BASE}series/2022/boston-celtics-miami-heat/?method=elo&utm_source=share`);
     await waitFor(() => expect(db.toast.success).toHaveBeenCalledWith('Link copied.', { duration: 2000 }));
     expect(sharedEvents()).toEqual([['prediction_shared', { surface: 'predict', kind: 'series', channel: 'clipboard' }]]);
     // Sharing never re-runs or leaves the result.
@@ -135,7 +135,7 @@ describe('Share on the Predict detailed result (Story 4.4)', SUITE, () => {
 
     fireEvent.click(shareButton() as HTMLButtonElement);
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-    expect(share.mock.calls[0][0].url).toBe(`${ORIGIN}${BASE}series/s-1/?method=elo&utm_source=share`);
+    expect(share.mock.calls[0][0].url).toBe(`${ORIGIN}${BASE}series/2022/boston-celtics-miami-heat/?method=elo&utm_source=share`);
     expect(share.mock.calls[0][0].title).toBe('Boston Celtics vs Miami Heat — Game 7 on PredictGame7');
     await waitFor(() => expect(sharedEvents()).toHaveLength(1));
     expect(sharedEvents()[0][1]).toEqual({ surface: 'predict', kind: 'series', channel: 'native' });

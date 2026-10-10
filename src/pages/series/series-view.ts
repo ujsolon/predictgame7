@@ -20,6 +20,7 @@
  */
 import { matchupLabel } from '@/lib/matchup';
 import { deriveSeriesPhase, type SeriesPhase } from '@/lib/series-phase';
+import { type SeriesPathVariant, seriesPath } from '@/lib/series-slug';
 import type { Series, Team } from '@/types/types';
 
 export interface GameView {
@@ -134,8 +135,21 @@ export function outcomeDescription(view: SeriesView, winner: Team, loser: Team):
   return `${winner.full_name} over ${loser.full_name}, 4–3, in the ${yearRound(view)}. Every game of the series.`;
 }
 
-export function resultHref(id: string): string {
-  return `/series/${id}/result`;
+/**
+ * A series page's canonical router path (Story 6.1): `/series/<year>/<slug>`
+ * (or `…/result`) through `seriesPath`, the one slug helper. The uuid form is
+ * only the fallback for a pair that slugs to nothing (a name with no ASCII
+ * letter or digit — none exists today); the uuid routes forward to the slug.
+ */
+export function seriesHref(view: SeriesView, variant: SeriesPathVariant = 'page'): string {
+  return (
+    seriesPath({ year: view.year, team_a: view.teamA, team_b: view.teamB }, variant) ??
+    `/series/${view.id}${variant === 'result' ? '/result' : ''}`
+  );
+}
+
+export function resultHref(view: SeriesView): string {
+  return seriesHref(view, 'result');
 }
 
 export function predictHref(id: string, method?: string): string {

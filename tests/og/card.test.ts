@@ -19,6 +19,7 @@ import {
   layoutCard,
   normaliseLogo,
   renderCard,
+  roundLine,
   type SeriesCardInput,
   TAGLINE,
   WORDMARK,
@@ -38,11 +39,13 @@ async function seriesInput(
   round: string,
   a: [string, string],
   b: [string, string],
+  league = 'NBA',
 ): Promise<SeriesCardInput> {
   return {
     kind: 'series',
     year,
     round,
+    league,
     teamA: { abbreviation: a[0], logoPng: await logo(a[1]) },
     teamB: { abbreviation: b[0], logoPng: await logo(b[1]) },
   };
@@ -122,7 +125,8 @@ async function expectSeriesCard(input: SeriesCardInput) {
   }
 
   // Every text node on the card, in order — nothing else can be there (no score, no winner, no prediction).
-  const round = input.round.toUpperCase();
+  // Story 6.1: the stored league precedes the round on a non-NBA card, as `yearRound` prints it.
+  const round = `${input.league !== 'NBA' ? `${input.league} ` : ''}${input.round}`.toUpperCase();
   expect(texts(nodes)).toEqual([
     input.teamA.abbreviation,
     String(input.year),
@@ -151,19 +155,27 @@ async function expectSeriesCard(input: SeriesCardInput) {
 }
 
 describe('renderCard — series cards', () => {
-  it('wraps "Western Division Semifinals" inside the 296 px slot, never abbreviated', async () => {
-    const input = await seriesInput(1969, 'Western Division Semifinals', ['OAK', 'OaklandOaks.png'], ['DNR', 'Denver_Rockets.webp']);
+  it('wraps "ABA Western Division Semifinals" inside the 296 px slot, league first, never abbreviated (Story 6.1)', async () => {
+    const input = await seriesInput(1969, 'Western Division Semifinals', ['OAK', 'OaklandOaks.png'], ['DNR', 'Denver_Rockets.webp'], 'ABA');
     const { roundNode } = await expectSeriesCard(input);
+    expect(roundNode?.textContent).toBe('ABA WESTERN DIVISION SEMIFINALS');
     expect(CENTER_SLOT).toBe(296);
     // More than one line: the 30 px line box is ~35 px tall.
     expect(roundNode?.height).toBeGreaterThan(60);
   }, 20_000);
 
-  it('wraps "Western Conference Finals" inside the slot', async () => {
+  it('wraps "Western Conference Finals" inside the slot, with no league on an NBA card', async () => {
     const input = await seriesInput(2026, 'Western Conference Finals', ['OKC', 'thunder.png'], ['SAS', 'spurs.png']);
     const { roundNode } = await expectSeriesCard(input);
     expect(roundNode?.height).toBeGreaterThan(60);
+    expect(roundNode?.textContent).toBe('WESTERN CONFERENCE FINALS');
   }, 20_000);
+
+  it('prints a BAA or ABA league verbatim before its round, never folded into NBA', () => {
+    expect(roundLine('BAA', 'Finals')).toBe('BAA FINALS');
+    expect(roundLine('ABA', 'Finals')).toBe('ABA FINALS');
+    expect(roundLine('NBA', 'Finals')).toBe('FINALS');
+  });
 
   it('negative control: an unwrappable single-word round spills into a gutter and is caught', async () => {
     const input = await seriesInput(1970, 'Supercalifragilisticexpialidociouslyxyz', ['OAK', 'OaklandOaks.png'], ['DNR', 'Denver_Rockets.webp']);
@@ -225,6 +237,7 @@ function row(id: string, overrides: Partial<OgSeriesRow> = {}): OgSeriesRow {
     id,
     year: 2016,
     round: 'Finals',
+    league: 'NBA',
     winner_team_id: 1,
     team_a: { abbreviation: 'CLE', logo_url: 'assets/teams/cavaliers.png' },
     team_b: { abbreviation: 'GSW', logo_url: 'assets/teams/warriors.png' },

@@ -24,6 +24,7 @@ import {
   seriesCard,
   shellDocument,
   sitemapXml,
+  stubDocument,
 } from './document';
 import { planSeriesPages, routeFile } from './plan';
 import { PreloadContext, type SeriesPreload } from './preload';
@@ -75,6 +76,7 @@ export function prerenderSite(rows: readonly Series[], template: string): Preren
     preview: 0,
     result: 0,
     shells: 0,
+    stubs: 0,
     sitemapUrls: 0,
   };
   if (plan.errors.length > 0) return { files: [], cards: [], assets: [], errors: plan.errors, summary };
@@ -106,7 +108,13 @@ export function prerenderSite(rows: readonly Series[], template: string): Preren
         content: pageDocument({
           template,
           helmetHead,
-          og: { title: page.ogTitle, description: HISTORIC_OG_DESCRIPTION, route: page.route, image: card },
+          og: {
+            title: page.ogTitle,
+            description: HISTORIC_OG_DESCRIPTION,
+            route: page.route,
+            image: card,
+            imageAlt: page.ogImageAlt,
+          },
           body: html,
           preload: page.preload,
         }),
@@ -124,6 +132,23 @@ export function prerenderSite(rows: readonly Series[], template: string): Preren
     }
   } catch (error) {
     errors.push(`shells: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Story 6.1: the old uuid pages and `/series/`, `/series/<year>/` are
+  // redirect stubs — written, never listed in the sitemap.
+  for (const stub of plan.stubs) {
+    // A uuid stub unfurls as its slug page does: same title, description, card and alt.
+    const og = stub.og
+      ? {
+          title: stub.og.title,
+          description: HISTORIC_OG_DESCRIPTION,
+          route: stub.target,
+          image: seriesCard(stub.og.seriesId),
+          imageAlt: stub.og.imageAlt,
+        }
+      : undefined;
+    files.push({ path: stub.file, content: stubDocument({ target: stub.target, kind: stub.kind, og }) });
+    summary.stubs += 1;
   }
 
   const sitemapRoutes = ['/', ...SHELL_ROUTES, ...plan.pages.map((page) => page.route)];

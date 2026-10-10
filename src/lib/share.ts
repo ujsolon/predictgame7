@@ -9,13 +9,29 @@
  * they are called from a click handler only.
  */
 import { encodeSharePayload } from '@/lib/share-payload';
+import { type SeriesPathVariant, type SlugSeries, seriesPath } from '@/lib/series-slug';
 import type { MethodSlug, SharePayload } from '@/types/prediction';
 
 export const SHARE_UTM = 'utm_source=share';
 
+/** The share target of a stored series: its id (uuid fallback) and the two team embeds the slug is built from. */
+export type ShareSeries = SlugSeries & { id: string };
+
+/**
+ * A series page's directory path, base-relative (Story 6.1): the slug path
+ * `series/<year>/<slug>/` (or `…/result/`) from `seriesPath`, the one slug
+ * helper. The uuid form is only the fallback for a pair with no slug; the uuid
+ * pages stay emitted as stubs that forward to the slug page.
+ */
+function seriesDirectory(series: ShareSeries, variant: SeriesPathVariant): string {
+  const path = seriesPath(series, variant);
+  if (path) return `${path.replace(/^\/+/, '')}/`;
+  return `series/${series.id}/${variant === 'result' ? 'result/' : ''}`;
+}
+
 /** Predict with a stored series: lands on the series page, which redirects to Predict preloaded. */
-export function seriesPredictionSharePath(seriesId: string, method: MethodSlug): string {
-  return `series/${seriesId}/?method=${method}&${SHARE_UTM}`;
+export function seriesPredictionSharePath(series: ShareSeries, method: MethodSlug): string {
+  return `${seriesDirectory(series, 'page')}?method=${method}&${SHARE_UTM}`;
 }
 
 /** Predict with a custom matchup: the payload prefills the form (unfurls with the fallback card). */
@@ -23,9 +39,9 @@ export function customPredictionSharePath(payload: SharePayload): string {
   return `predict/?custom=${encodeSharePayload(payload)}&${SHARE_UTM}`;
 }
 
-/** A series page's own canonical URL (`/series/<id>/` or `/series/<id>/result/`). */
-export function seriesPageSharePath(seriesId: string, variant: 'page' | 'result'): string {
-  return `series/${seriesId}/${variant === 'result' ? 'result/' : ''}?${SHARE_UTM}`;
+/** A series page's own canonical URL (`/series/<year>/<slug>/` or `…/result/`). */
+export function seriesPageSharePath(series: ShareSeries, variant: 'page' | 'result'): string {
+  return `${seriesDirectory(series, variant)}?${SHARE_UTM}`;
 }
 
 /** `origin` + the app base (`import.meta.env.BASE_URL`) + a share path. */

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,6 +13,7 @@ import { getRoundImportance, getTeamCode } from '@/lib/nba-utils';
 import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { matchupLabel } from '@/lib/matchup';
 import { EVENTS, track } from '@/lib/analytics';
+import { parseSeriesYear } from '@/lib/series-slug';
 
 interface SeriesWithNestedTeams extends Series {
   team_a?: Team;
@@ -52,9 +54,31 @@ export default function HistoricalPage() {
   const [selectedSeries, setSelectedSeries] = useState<SeriesWithNestedTeams | null>(null);
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [teamSearch, setTeamSearch] = useState<string>('');
+  // Story 6.1: `/series/<year>/` lands here as `?year=<year>`. Read once, at
+  // the first load: a 4-digit year the archive has seeds the year filter;
+  // anything else is ignored. The arrival is not a user action, so it emits
+  // no `historical_filter_applied`. Once read (and the filter seeded), `year`
+  // is removed from the URL with a replace, so a later Reset or pick is not
+  // undone by a reload; the page never writes a filter into the URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [arrivalYear] = useState(() => parseSeriesYear(searchParams.get('year')));
+  const [hadYearParam] = useState(() => searchParams.has('year'));
 
   useEffect(() => {
-    fetchHistoricalSeries().finally(() => setLoading(false));
+    fetchHistoricalSeries().finally(() => {
+      setLoading(false);
+      if (hadYearParam) {
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev);
+            next.delete('year');
+            return next;
+          },
+          { replace: true }
+        );
+      }
+    });
+    // The archive is read once, on mount.
   }, []);
 
   const fetchHistoricalSeries = async () => {
@@ -74,6 +98,9 @@ export default function HistoricalPage() {
           return getRoundImportance(b.round) - getRoundImportance(a.round);
         });
         setSeriesList(sortedData);
+        if (arrivalYear !== null && sortedData.some((series) => series.year === arrivalYear)) {
+          setYearFilter(String(arrivalYear));
+        }
       }
     } catch (err) {
       console.error('Error fetching historical series:', err);
