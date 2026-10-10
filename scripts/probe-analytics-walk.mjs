@@ -460,11 +460,11 @@ async function main() {
       "historical_filter_applied/reset",
       "historical_filter_applied",
       async () => {
+        // Story 6.2 named the icon-only reset ("Reset filters": `aria-label` plus
+        // an `sr-only` text node), so it is located by that name, not by the
+        // empty text it used to have.
         const box = await S.evaluate(
-          centerOf(
-            `Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").trim() === "" && b.querySelector("svg") && /hover:text-destructive/.test(b.className))`,
-            "the icon-only reset button"
-          )
+          centerOf(`document.querySelector('button[aria-label="Reset filters"]')`, "the icon-only reset button")
         );
         await clickAt(box);
       },

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,6 +14,8 @@ import { getTeamLogo, resolveTeamLogoUrl } from '@/lib/team-logos';
 import { matchupLabel } from '@/lib/matchup';
 import { EVENTS, track } from '@/lib/analytics';
 import { parseSeriesYear } from '@/lib/series-slug';
+import SeriesTitle from '@/components/common/SeriesTitle';
+import { seriesPageLink, seriesTitleLine } from '@/pages/series/series-view';
 
 interface SeriesWithNestedTeams extends Series {
   team_a?: Team;
@@ -228,9 +230,21 @@ export default function HistoricalPage() {
             />
           </div>
         </div>
+        {/* Story 6.2: the icon-only reset gets an accessible name (the
+            `aria-label`, with an `sr-only` text node for anything that reads
+            content rather than attributes) and a 44×44 target (`h-11 w-11`,
+            `shrink-0` so the flex row cannot squeeze it) at every breakpoint. */}
         {(yearFilter !== 'all' || teamSearch !== '') && (
-          <Button variant="ghost" size="icon" onClick={resetFilters} className="h-10 w-10 text-muted-foreground hover:text-destructive transition-colors">
-            <FilterX className="h-5 w-5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={resetFilters}
+            aria-label="Reset filters"
+            data-reset-filters=""
+            className="h-11 w-11 shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <FilterX className="h-5 w-5" aria-hidden="true" />
+            <span className="sr-only">Reset filters</span>
           </Button>
         )}
       </div>
@@ -379,9 +393,9 @@ export default function HistoricalPage() {
       {selectedSeries && (
         <div className="fixed inset-x-0 bottom-0 z-50 p-4 md:p-8 pointer-events-none flex justify-center">
           <Card className="w-full max-w-2xl shadow-2xl border-border/50 pointer-events-auto animate-in slide-in-from-bottom-8 duration-500 bg-background/95 backdrop-blur-md">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-2">
+            <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="flex shrink-0 -space-x-2">
                   {resolveTeamLogoUrl(selectedSeries.team_a?.logo_url) && (
                     <img src={resolveTeamLogoUrl(selectedSeries.team_a?.logo_url)} alt={selectedSeries.team_a?.full_name ?? 'Team A logo'} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
@@ -389,18 +403,32 @@ export default function HistoricalPage() {
                     <img src={resolveTeamLogoUrl(selectedSeries.team_b?.logo_url)} alt={selectedSeries.team_b?.full_name ?? 'Team B logo'} className="h-10 w-10 rounded-full border-2 border-background bg-white p-1" />
                   )}
                 </div>
-                <div className="space-y-1">
-                  {/* Story 2.9 (D1) / 2.10 (D1'): the same conditional marker the
-                      row carries, so the record repeats it rather than dropping
-                      it. The game tiles below are untouched. */}
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl">{selectedSeries.year} {selectedSeries.round}</CardTitle>
-                    {showsLeagueChip(selectedSeries.league) && <LeagueChip league={selectedSeries.league} />}
-                  </div>
-                  <CardDescription>{matchupLabel(selectedSeries.team_a?.full_name ?? 'Team A', selectedSeries.team_b?.full_name ?? 'Team B')}</CardDescription>
+                {/* Story 2.9 (D1) / 2.10 (D1'): the same conditional marker the
+                    row carries, so the record repeats it rather than dropping
+                    it. Story 6.2: the title line and the matchup line are one
+                    link to the series page (`seriesPageLink`, the preview page for
+                    a flagship too — never `/result/`), for every series; the
+                    logos, the chip and the close × stay outside it. A row with
+                    no derivable slug prints the same two lines unlinked. The
+                    overlay closes on navigation. The game tiles below are
+                    untouched. */}
+                <div className="flex min-w-0 items-start gap-2">
+                  <SeriesTitle
+                    title={seriesTitleLine(selectedSeries)}
+                    matchup={matchupLabel(selectedSeries.team_a?.full_name ?? 'Team A', selectedSeries.team_b?.full_name ?? 'Team B')}
+                    to={seriesPageLink(selectedSeries)}
+                    onNavigate={() => setSelectedSeries(null)}
+                    titleClassName="text-xl font-semibold leading-tight tracking-tight"
+                    matchupClassName="mt-1 text-sm"
+                  />
+                  {showsLeagueChip(selectedSeries.league) && (
+                    <div className="mt-1.5 shrink-0">
+                      <LeagueChip league={selectedSeries.league} />
+                    </div>
+                  )}
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedSeries(null)} className="h-8 w-8 p-0 rounded-full">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedSeries(null)} className="h-8 w-8 shrink-0 p-0 rounded-full">
                 <span className="sr-only">Close</span>
                 ×
               </Button>

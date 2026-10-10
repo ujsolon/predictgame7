@@ -137,7 +137,7 @@ New surface layouts:
 
 ## Elevation & Depth
 
-The existing two-level vocabulary, unchanged: flat hairline-bordered cards by default; `bg-background/95 backdrop-blur-md shadow-2xl` reserved for the archive overlay (and the series-page overlay link derived from it). New surfaces add no elevation levels. The OG card is flat — it is an image, not a UI layer. The retry panel is a `muted` fill, no shadow.
+The existing two-level vocabulary, unchanged: flat hairline-bordered cards by default; `bg-background/95 backdrop-blur-md shadow-2xl` reserved for the archive overlay, whose two-line title is itself the link to the series page (Story 6.2, 2026-10-10; it adds no elevation of its own). New surfaces add no elevation levels. The OG card is flat — it is an image, not a UI layer. The retry panel is a `muted` fill, no shadow.
 
 ## Shapes
 

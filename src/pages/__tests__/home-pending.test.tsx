@@ -138,7 +138,7 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     const series = card.querySelector('a[data-pending-series-link="series"]') as HTMLAnchorElement;
     const predict = card.querySelector('a[data-pending-series-link="predict"]') as HTMLAnchorElement;
     // Story 6.1: the slug URL, from the teams' nicknames in stored order.
-    expect(series.getAttribute('href')).toBe('/series/2027/heat-celtics');
+    expect(series.getAttribute('href')).toBe('/series/2027/heat-celtics/');
     expect(series.textContent).toBe('Read the series →');
     expect(predict.getAttribute('href')).toBe(`/predict?series=${PENDING_ID}`);
     expect(predict.textContent).toBe('Model Game 7 →');
@@ -240,7 +240,7 @@ describe('Home pending-Game-7 highlight (Story 2.7 data reach, Story 4.5 treatme
     );
     await waitFor(() => expect(container.querySelector('[data-home-pending-series] a')).not.toBeNull());
     const hrefs = Array.from(container.querySelectorAll('[data-home-pending-series] a')).map((a) => a.getAttribute('href'));
-    expect(hrefs).toEqual(['/series/2027/celtics-heat', `/predict?series=${PENDING_ID}`]);
+    expect(hrefs).toEqual(['/series/2027/celtics-heat/', `/predict?series=${PENDING_ID}`]);
   });
 });
 

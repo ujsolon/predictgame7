@@ -289,3 +289,123 @@ describe('?custom= share arrival (Story 4.4)', SUITE, () => {
     await waitFor(() => expect(screen.queryByText("This matchup link doesn't work.")).toBeNull());
   });
 });
+
+// Story 6.2: the detailed result names a series-backed prediction's series
+// under "Prediction Result" — the title line and the matchup as one link to
+// the series page — and a custom matchup's typed names as plain text. Read
+// through `textContent` and literal attributes, never a computed name (F16).
+describe('Series title on the Predict detailed result (Story 6.2)', SUITE, () => {
+  const nicknamed = {
+    ...seriesFixture,
+    team_a: { ...seriesFixture.team_a, nickname: 'Celtics' },
+    team_b: { ...seriesFixture.team_b, nickname: 'Heat' },
+  } as typeof seriesFixture;
+
+  const readableText = (el: Element) => {
+    const clone = el.cloneNode(true) as Element;
+    for (const hidden of Array.from(clone.querySelectorAll('[aria-hidden="true"]'))) hidden.remove();
+    return clone.textContent ?? '';
+  };
+  const seriesLinks = () =>
+    Array.from(document.querySelectorAll('a')).filter((a) => (a.getAttribute('href') ?? '').includes('/series/'));
+
+  it('series result: links "{year} {round}" and the matchup to the series page, once (matrix: Predict, a series)', async () => {
+    db.list = { data: [nicknamed], error: null };
+    db.single = { data: nicknamed, error: null };
+    renderPage(`/predict?series=${SERIES_ID}&method=elo`);
+    await screen.findByText('BOS vs MIA', {}, SLOW);
+    await flushEffects();
+    db.invoke.mockResolvedValue({ data: { ...conformingResult, method_used: 'elo' }, error: null });
+    submitPrediction();
+    await openDetails();
+
+    const block = document.querySelector('[data-series-title]') as HTMLElement;
+    expect(block.tagName).toBe('A');
+    expect(block.getAttribute('href')).toBe('/series/2022/celtics-heat/');
+    expect(block.classList.contains('min-h-11')).toBe(true);
+    expect(readableText(block)).toBe('2022 Finals, Boston Celtics vs Miami Heat');
+    expect(block.querySelector('span.sr-only')?.textContent).toBe(', ');
+    expect(block.querySelector('[aria-hidden="true"]')?.textContent).toBe('→');
+    // Under the heading, in the header; the only series-page link on Predict.
+    const heading = screen.getByText('Prediction Result');
+    expect(heading.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(seriesLinks()).toEqual([block]);
+    // The rest of the header is unchanged.
+    expect(shareButton()?.textContent).toBe('Share');
+    expect(screen.getByText(/^Method: /)).toBeInTheDocument();
+    expect(screen.getByText('View Maths')).toBeInTheDocument();
+  });
+
+  it('a 2026 Western Conference Finals-shaped pending series, OKC stored first, links to /series/2026/thunder-spurs/ (matrix: Predict, 2026 WCF)', async () => {
+    const wcf = {
+      ...seriesFixture,
+      year: 2026,
+      round: 'Western Conference Finals',
+      team_a: { ...seriesFixture.team_a, full_name: 'Oklahoma City Thunder', abbreviation: 'OKC', nickname: 'Thunder' },
+      team_b: { ...seriesFixture.team_b, full_name: 'San Antonio Spurs', abbreviation: 'SAS', nickname: 'Spurs' },
+    } as typeof seriesFixture;
+    expect(wcf.winner_team_id ?? null).toBeNull();
+    db.list = { data: [wcf], error: null };
+    db.single = { data: wcf, error: null };
+    renderPage(`/predict?series=${SERIES_ID}&method=elo`);
+    await screen.findByText('OKC vs SAS', {}, SLOW);
+    await flushEffects();
+    db.invoke.mockResolvedValue({
+      data: {
+        ...conformingResult,
+        method_used: 'elo',
+        team_a: 'Oklahoma City Thunder',
+        team_b: 'San Antonio Spurs',
+        predicted_winner: 'San Antonio Spurs',
+      },
+      error: null,
+    });
+    submitPrediction();
+    await openDetails();
+
+    const block = document.querySelector('[data-series-title]') as HTMLElement;
+    expect(block.tagName).toBe('A');
+    expect(block.getAttribute('href')).toBe('/series/2026/thunder-spurs/');
+    expect(readableText(block)).toBe('2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs');
+    expect(seriesLinks()).toEqual([block]);
+  });
+
+  it('a series-backed result whose team embed is missing renders its title unlinked, with no uuid fallback (matrix: no derivable slug)', async () => {
+    const noEmbed = { ...nicknamed, team_b: undefined } as typeof seriesFixture;
+    db.list = { data: [noEmbed], error: null };
+    db.single = { data: noEmbed, error: null };
+    renderPage(`/predict?series=${SERIES_ID}&method=elo`);
+    await screen.findByText(/^BOS vs /, {}, SLOW);
+    await flushEffects();
+    db.invoke.mockResolvedValue({ data: { ...conformingResult, method_used: 'elo' }, error: null });
+    submitPrediction();
+    await openDetails();
+
+    const block = document.querySelector('[data-series-title]') as HTMLElement;
+    expect(block.tagName).toBe('SPAN');
+    expect(block.closest('a')).toBeNull();
+    expect(block.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(block.textContent).toBe('2022 Finals, Boston Celtics vs Miami Heat');
+    expect(seriesLinks()).toEqual([]);
+  });
+
+  it('custom result: the typed "{A} vs {B}" as plain text, no year line, no link (matrix: Predict, custom)', async () => {
+    renderPage(`/predict?custom=${encodeSharePayload(montreal)}`);
+    await waitFor(() => expect((document.getElementById('team_a') as HTMLInputElement | null)?.value).toBe('Montréal'), SLOW);
+    await flushEffects();
+    db.invoke.mockResolvedValue({
+      data: { ...conformingResult, method_used: 'bayes', team_a: 'Montréal', team_b: 'Miami Heat', predicted_winner: 'Montréal' },
+      error: null,
+    });
+    submitPrediction();
+    await openDetails();
+
+    const block = document.querySelector('[data-series-title]') as HTMLElement;
+    expect(block.tagName).toBe('SPAN');
+    expect(block.textContent).toBe('Montréal vs Miami Heat');
+    expect(block.querySelector('[data-series-title-line]')).toBeNull();
+    expect(block.querySelector('[aria-hidden="true"]')).toBeNull();
+    expect(block.closest('a')).toBeNull();
+    expect(seriesLinks()).toEqual([]);
+  });
+});

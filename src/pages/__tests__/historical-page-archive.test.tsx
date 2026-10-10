@@ -168,14 +168,18 @@ describe('HistoricalPage archive read (Story 2.2)', () => {
 const nets: Team = { id: 66, full_name: 'New York Nets', abbreviation: 'NYN', created_at: 'h' };
 const colonels: Team = { id: 77, full_name: 'Kentucky Colonels', abbreviation: 'KEN', created_at: 'i' };
 
+// Story 6.2: `round` is stored bare, as live rows store it (`00021` writes
+// 1968's ABA Finals as round 'Finals', league 'ABA'); the overlay's title line
+// (`seriesTitleLine`) puts the league before the round, so these fixtures used
+// to carry the league inside `round` and would now print it twice.
 /** The 1948 BAA finals row — the archive's single `BAA` series. */
-const baaRow: Series = { ...archivedRow, id: 's-baa', year: 1948, round: 'BAA Finals', league: 'BAA' };
+const baaRow: Series = { ...archivedRow, id: 's-baa', year: 1948, round: 'Finals', league: 'BAA' };
 /** One of the 18 ABA rows, on teams no other fixture in this file uses. */
 const abaRow: Series = {
   ...archivedRow,
   id: 's-aba',
   year: 1976,
-  round: 'ABA Finals',
+  round: 'Finals',
   league: 'ABA',
   team_a: nets,
   team_b: colonels,
@@ -413,7 +417,7 @@ describe('HistoricalPage with no league control (Story 2.10 D3\', supersedes 2.9
         {
           series_id: 's-aba',
           series_year: 1976,
-          series_round: 'ABA Finals',
+          series_round: 'Finals',
           team_a: 'New York Nets',
           team_b: 'Kentucky Colonels',
           winner: 'New York Nets',
@@ -1120,5 +1124,231 @@ describe('HistoricalPage ?year= arrival (Story 6.1)', () => {
       unmount();
     }
     expect(db.capture).not.toHaveBeenCalled();
+  });
+});
+
+// Story 6.2: the record overlay's two-line header is one link to the series
+// page, for every series. Read through `textContent` (aria-hidden nodes — the
+// "→" cue — stripped, as AT strips them) and literal attributes only: never a
+// jsdom-computed accessible name (AGENTS.md · Evidence discipline, F16).
+describe('HistoricalPage series-page entry points (Story 6.2)', () => {
+  const lakersN: Team = { ...lakers, nickname: 'Lakers', logo_url: 'logos/lal.png' };
+  const warriorsN: Team = { ...warriors, nickname: 'Warriors', logo_url: 'logos/gsw.png' };
+  const cavaliers: Team = { id: 55, full_name: 'Cleveland Cavaliers', abbreviation: 'CLE', nickname: 'Cavaliers', created_at: 'j' };
+  const pipers: Team = { id: 88, full_name: 'Pittsburgh Pipers', abbreviation: 'PTP', nickname: 'Pipers', created_at: 'k' };
+  const buccaneers: Team = { id: 99, full_name: 'New Orleans Buccaneers', abbreviation: 'NOB', nickname: 'Buccaneers', created_at: 'l' };
+
+  /** The 1998 Lakers row of the matrix: a non-flagship. */
+  const lakers1998: Series = {
+    ...archivedRow,
+    round: 'Western Conference Semifinals',
+    team_a: lakersN,
+    team_b: warriorsN,
+    winner_team: lakersN,
+  };
+  /** 2016 Finals, featured: a flagship links to its preview page, never `/result/`. */
+  const flagship2016: Series = {
+    ...archivedRow,
+    id: 's-2016',
+    year: 2016,
+    round: 'Finals',
+    is_featured: true,
+    team_a: warriorsN,
+    team_b: cavaliers,
+    team_a_id: 44,
+    team_b_id: 55,
+    winner_team: cavaliers,
+    winner_team_id: 55,
+  };
+  /** 1968 ABA Finals, stored as `00021` writes it. */
+  const aba1968: Series = {
+    ...archivedRow,
+    id: 's-1968',
+    year: 1968,
+    round: 'Finals',
+    league: 'ABA',
+    team_a: pipers,
+    team_b: buccaneers,
+    team_a_id: 88,
+    team_b_id: 99,
+    winner_team: pipers,
+    winner_team_id: 88,
+  };
+
+  function renderWithSeriesRoute() {
+    return render(
+      <MemoryRouter initialEntries={['/historical']}>
+        <Routes>
+          <Route path="/historical" element={<HistoricalPage />} />
+          <Route path="/series/:year/:slug" element={<p data-testid="series-page">series page</p>} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    );
+  }
+
+  /** What AT reads from the link's content: `textContent` minus `aria-hidden` subtrees. */
+  function readableText(el: Element): string {
+    const clone = el.cloneNode(true) as Element;
+    for (const hidden of Array.from(clone.querySelectorAll('[aria-hidden="true"]'))) hidden.remove();
+    return clone.textContent ?? '';
+  }
+
+  function sheet(): HTMLElement {
+    const el = document.querySelector('[data-series-title]')?.closest('.rounded-xl');
+    if (!el) throw new Error('no record sheet open');
+    return el as HTMLElement;
+  }
+
+  function titleLink(): HTMLAnchorElement | null {
+    return sheet().querySelector('a[data-series-title-link]');
+  }
+
+  it('links a non-flagship record to its slug page, title line and matchup as one link (matrix: 1998 Lakers)', async () => {
+    db.list = { data: [lakers1998], error: null };
+    renderPage();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+
+    const link = titleLink() as HTMLAnchorElement;
+    expect(link).toBeInstanceOf(HTMLAnchorElement);
+    expect(link.getAttribute('href')).toBe('/series/1998/lakers-warriors/');
+    // The separator is real text, so the raw concatenation already reads as two phrases.
+    expect(readableText(link)).toBe('1998 Western Conference Semifinals, Los Angeles Lakers vs Golden State Warriors');
+    expect(link.textContent).toBe('1998 Western Conference Semifinals→, Los Angeles Lakers vs Golden State Warriors');
+    const separator = Array.from(link.querySelectorAll('span.sr-only')).map((s) => s.textContent);
+    expect(separator).toEqual([', ']);
+    // The cue is always present (no hover-only affordance) and hidden from AT.
+    const cue = link.querySelector('[aria-hidden="true"]');
+    expect(cue?.textContent).toBe('→');
+    // Exactly one link in the header: the logos, the × and the chip are not in it.
+    expect(sheet().querySelectorAll('a')).toHaveLength(1);
+  });
+
+  it('keeps the logos and the close × outside the link', async () => {
+    db.list = { data: [lakers1998], error: null };
+    renderPage();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+
+    const link = titleLink() as HTMLAnchorElement;
+    const logos = Array.from(sheet().querySelectorAll('img'));
+    expect(logos).toHaveLength(2);
+    for (const img of logos) expect(link.contains(img)).toBe(false);
+    const close = Array.from(sheet().querySelectorAll('button')).find((b) => b.textContent?.includes('Close')) as HTMLButtonElement;
+    expect(close).toBeInstanceOf(HTMLButtonElement);
+    expect(link.contains(close)).toBe(false);
+    expect(close.contains(link)).toBe(false);
+  });
+
+  it('links a flagship to its preview page, never to /result/ (matrix: 2016 Finals)', async () => {
+    db.list = { data: [flagship2016], error: null };
+    renderPage();
+    await screen.findByText('2016');
+    await openRecord(2016, '2016 Finals');
+
+    const href = titleLink()?.getAttribute('href');
+    expect(href).toBe('/series/2016/warriors-cavaliers/');
+    expect(href).not.toMatch(/result/);
+    expect(readableText(titleLink() as HTMLAnchorElement)).toBe('2016 Finals, Golden State Warriors vs Cleveland Cavaliers');
+  });
+
+  it('titles an ABA record with the league before the round and keeps the chip outside the link (matrix: 1968 ABA Finals)', async () => {
+    db.list = { data: [aba1968], error: null };
+    renderPage();
+    await screen.findByText('1968');
+    await openRecord(1968, '1968 ABA Finals');
+
+    const link = titleLink() as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/series/1968/pipers-buccaneers/');
+    expect(readableText(link)).toBe('1968 ABA Finals, Pittsburgh Pipers vs New Orleans Buccaneers');
+    const chip = within(sheet()).getByText('ABA');
+    expect(link.contains(chip)).toBe(false);
+  });
+
+  it('renders the title as plain text, with no link and no uuid fallback, when no slug derives (matrix: team embed missing)', async () => {
+    db.list = { data: [{ ...lakers1998, team_b: undefined }], error: null };
+    renderPage();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+
+    expect(titleLink()).toBeNull();
+    expect(sheet().querySelector('a')).toBeNull();
+    expect(sheet().querySelector('[data-series-title] [aria-hidden="true"]')).toBeNull();
+    expect((sheet().querySelector('[data-series-title]') as HTMLElement).textContent).toBe(
+      '1998 Western Conference Semifinals, Los Angeles Lakers vs Team B'
+    );
+    expect(document.body.innerHTML).not.toContain('/series/s-archive');
+  });
+
+  // The destination here is a stub route, so "no new event" only proves the
+  // link's click emits nothing synchronously; the real page's `$pageview` is
+  // covered by the deep-link and analytics probes, not here.
+  it('navigates to the series page and closes the overlay; the click itself emits no analytics event (destination is a stub)', async () => {
+    db.list = { data: [lakers1998], error: null };
+    renderWithSeriesRoute();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+    db.capture.mockClear();
+
+    fireEvent.click(titleLink() as HTMLAnchorElement);
+    await screen.findByTestId('series-page');
+    expect(screen.getByTestId('location-probe').textContent).toBe('/series/1998/lakers-warriors/');
+    expect(document.querySelector('[data-series-title]')).toBeNull();
+    expect(db.capture).not.toHaveBeenCalled();
+  });
+
+  it('leaves the overlay open on a ctrl-click (a new tab), and does not navigate this tab', async () => {
+    db.list = { data: [lakers1998], error: null };
+    renderWithSeriesRoute();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+
+    fireEvent.click(titleLink() as HTMLAnchorElement, { ctrlKey: true, button: 0 });
+    expect(document.querySelector('a[data-series-title-link]')).toBeInstanceOf(HTMLAnchorElement);
+    expect(screen.getByTestId('location-probe').textContent).toBe('/historical');
+    expect(screen.queryByTestId('series-page')).toBeNull();
+  });
+
+  it('gives the link a visible focus ring and an underline on hover and focus', async () => {
+    db.list = { data: [lakers1998], error: null };
+    renderPage();
+    await screen.findByText('1998');
+    await openRecord(1998, '1998 Western Conference Semifinals');
+
+    const link = titleLink() as HTMLAnchorElement;
+    expect(link.className).toContain('focus-visible:ring-2');
+    // NFR-U1: the link is at least 44px tall wherever it is placed.
+    expect(link.classList.contains('min-h-11')).toBe(true);
+    const title = link.querySelector('[data-series-title-line] > span:not([aria-hidden])') as HTMLElement;
+    const matchup = link.querySelector('[data-series-matchup-line]') as HTMLElement;
+    for (const line of [title, matchup]) {
+      expect(line.className).toContain('group-hover:underline');
+      expect(line.className).toContain('group-focus-visible:underline');
+    }
+    // The matchup line sits on the AA-safe token, not `muted-foreground`.
+    expect(matchup.classList.contains('text-on-muted')).toBe(true);
+  });
+
+  it('names the reset button "Reset filters" and gives it a 44×44 target; the reset event is unchanged (matrix: reset)', async () => {
+    db.list = { data: [archivedRow, baaRow, abaRow], error: null };
+    renderPage();
+    await screen.findByText('1948');
+    await chooseYear('1976');
+
+    const reset = resetButton() as HTMLButtonElement;
+    expect(reset.getAttribute('aria-label')).toBe('Reset filters');
+    expect(reset.querySelector('.sr-only')?.textContent).toBe('Reset filters');
+    expect(reset.textContent).toBe('Reset filters');
+    expect(reset.classList.contains('h-11')).toBe(true);
+    expect(reset.classList.contains('w-11')).toBe(true);
+    expect(reset.classList.contains('shrink-0')).toBe(true);
+    expect(reset.className).not.toMatch(/\b[hw]-(9|10)\b/);
+    expect(reset.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+
+    db.capture.mockClear();
+    fireEvent.click(reset);
+    await waitFor(() => expect(renderedRows()).toBe(3));
+    expect(db.capture.mock.calls).toEqual([['historical_filter_applied', { filter_type: 'reset' }]]);
   });
 });

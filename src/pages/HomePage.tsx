@@ -125,7 +125,7 @@ export function PendingGameSevens() {
             <p className="mt-2 text-on-muted">Game 7 stands.</p>
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
               <Link
-                to={seriesHref(view)}
+                to={`${seriesHref(view)}/`}
                 data-pending-series-link="series"
                 className={`inline-flex min-h-11 items-center gap-2 rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-primary/90 ${HOME_FOCUS}`}
               >

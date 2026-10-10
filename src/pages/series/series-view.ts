@@ -20,7 +20,7 @@
  */
 import { matchupLabel } from '@/lib/matchup';
 import { deriveSeriesPhase, type SeriesPhase } from '@/lib/series-phase';
-import { type SeriesPathVariant, seriesPath } from '@/lib/series-slug';
+import { type SeriesPathVariant, type SlugSeries, seriesPath } from '@/lib/series-slug';
 import type { Series, Team } from '@/types/types';
 
 export interface GameView {
@@ -99,9 +99,18 @@ export function toSeriesView(series: Series): SeriesView | null {
   };
 }
 
-/** "{Year} {Round}", with the stored league before the round when it is not NBA (as 2.10's chip). */
+/**
+ * "{Year} {Round}", with the stored league before the round when it is not NBA
+ * (as 2.10's chip). Takes any row carrying the three fields, so a raw `Series`
+ * (Historical's record overlay, Predict's detailed result — Story 6.2) prints
+ * the same title line as the series pages.
+ */
+export function seriesTitleLine(series: Pick<SeriesView, 'year' | 'league' | 'round'>): string {
+  return `${series.year} ${series.league !== 'NBA' ? `${series.league} ` : ''}${series.round}`;
+}
+
 export function yearRound(view: SeriesView): string {
-  return `${view.year} ${view.league !== 'NBA' ? `${view.league} ` : ''}${view.round}`;
+  return seriesTitleLine(view);
 }
 
 /** `GAME 7 · {YEAR} {LEAGUE }{ROUND}`, uppercase in the text itself so it survives without CSS. */
@@ -146,6 +155,18 @@ export function seriesHref(view: SeriesView, variant: SeriesPathVariant = 'page'
     seriesPath({ year: view.year, team_a: view.teamA, team_b: view.teamB }, variant) ??
     `/series/${view.id}${variant === 'result' ? '/result' : ''}`
   );
+}
+
+/**
+ * An in-app link to a series page (Story 6.2): `seriesPath(series, 'page')` in
+ * its trailing-slash directory form, the canonical URL the prerender writes, so
+ * a new tab or a copied link costs no GitHub Pages 301 hop. `null` when the row
+ * has no slug — never a uuid fallback. (`seriesHref` stays slash-free: it is
+ * also the prerender's route key.)
+ */
+export function seriesPageLink(series: SlugSeries): string | null {
+  const path = seriesPath(series, 'page');
+  return path ? `${path}/` : null;
 }
 
 export function resultHref(view: SeriesView): string {

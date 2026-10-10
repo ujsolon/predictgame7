@@ -1,11 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import SeriesTitle from '@/components/common/SeriesTitle';
 import ShareButton from '@/components/common/ShareButton';
 import { EVENTS, track } from '@/lib/analytics';
 import { matchupLabel } from '@/lib/matchup';
 import { METHOD_LABELS, METHOD_MATHS_ANCHORS } from '@/lib/method-display';
 import { customPredictionSharePath, seriesPredictionSharePath } from '@/lib/share';
+import { seriesPageLink, seriesTitleLine } from '@/pages/series/series-view';
 import { sharePayloadFromForm } from '@/lib/share-payload';
 import type { PredictionForm, PredictionResult } from '@/types/prediction';
 import { ChevronRight, Trophy } from 'lucide-react';
@@ -50,12 +52,32 @@ export default function DetailedResult({
       ? customPredictionSharePath(sharedPayload)
       : null;
   const shareTitle = `${matchupLabel(teamAName, teamBName)} — Game 7 on PredictGame7`;
+  // Story 6.2: a series-backed result names its series under the heading —
+  // the title line and the matchup, together one link to the series page
+  // (`seriesPageLink`, never `/result/`). A custom matchup prints only the typed
+  // names, unlinked: it has no series page. So does a series-backed selection
+  // whose row is absent — the plain "{A} vs {B}", no year line, no link.
+  const seriesRow = selectedSeries?.data;
+  const titleBlock = seriesRow ? (
+    <SeriesTitle
+      title={seriesTitleLine(seriesRow)}
+      matchup={matchupLabel(seriesRow.team_a?.full_name ?? teamAName, seriesRow.team_b?.full_name ?? teamBName)}
+      to={seriesPageLink(seriesRow)}
+      titleClassName="text-base font-medium leading-snug"
+      matchupClassName="text-sm"
+    />
+  ) : selectedSeries ? (
+    <SeriesTitle title={null} matchup={matchupLabel(teamAName, teamBName)} to={null} matchupClassName="text-sm" />
+  ) : null;
   return (
     <div className="space-y-8">
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
-            <CardTitle>Prediction Result</CardTitle>
+            <div className="min-w-0 space-y-2">
+              <CardTitle>Prediction Result</CardTitle>
+              {titleBlock}
+            </div>
             {sharePath && (
               <ShareButton
                 appearance="labelled"

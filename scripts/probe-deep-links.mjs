@@ -1010,6 +1010,62 @@ async function main() {
       }
     };
     const findButton = (pattern) => `Array.from(document.querySelectorAll("button")).find((b) => ${pattern}.test(b.textContent || ""))`;
+
+    // Story 6.2: Historical's record overlay title is one link to the series
+    // page. Open the 2016 flagship's record through the team search, then a
+    // real pointer click on the title link must land on the slug preview page
+    // (never /result/) with the series <h1>. Every wait is bounded.
+    {
+      const basePath = new URL(base).pathname;
+      try {
+        await S.navigate(`${base}historical`);
+        const query = flagship2016Row.team_b?.nickname || flagship2016Row.team_b?.full_name || "";
+        const codes = [flagship2016Row.team_a?.abbreviation, flagship2016Row.team_b?.abbreviation];
+        const rowBox = await S.evaluate(`(async () => {
+          const input = await ${WAIT}(() => document.querySelector('input[placeholder^="Search by team"]'), "the team search", 30000);
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+          setter.call(input, ${JSON.stringify(query)});
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          const codes = ${JSON.stringify(codes)};
+          const row = await ${WAIT}(() => Array.from(document.querySelectorAll("tbody tr")).find((tr) => {
+            const cells = tr.querySelectorAll("td");
+            return cells.length > 1 && (cells[0].textContent || "").trim() === ${JSON.stringify(String(flagship2016Row.year))} &&
+              codes.every((c) => c && (cells[1].textContent || "").includes(c));
+          }), "the 2016 flagship row", 15000);
+          row.scrollIntoView({ block: "center" });
+          const r = row.getBoundingClientRect();
+          return { x: r.left + Math.min(r.width / 2, 120), y: r.top + r.height / 2 };
+        })()`);
+        await clickAt(rowBox);
+        const link = await S.evaluate(`(async () => {
+          const a = await ${WAIT}(() => document.querySelector("a[data-series-title-link]"), "the overlay title link", 15000);
+          await new Promise((r) => setTimeout(r, 600));
+          const r = a.getBoundingClientRect();
+          return { x: r.left + Math.min(r.width / 2, 60), y: r.top + 12, h: r.height, href: a.getAttribute("href") };
+        })()`);
+        const want = `${basePath}${flagshipDir}`;
+        L.check(
+          "Historical overlay title link points at the flagship's trailing-slash preview page (never /result/) and is >=44px tall",
+          link.href === want && !/\/result/.test(link.href) && link.h >= 44,
+          `${link.href} (h=${link.h})`
+        );
+        await clickAt(link);
+        const landed = await S.evaluate(READ_SERIES_PAGE("/stand three games apiece$/")).catch((e) => ({ error: e.message }));
+        console.log(`     overlay title link -> ${landed.error ?? `${landed.pathname} · ${landed.h1}`}`);
+        L.check(
+          "Historical overlay title link lands on the slug preview page with the series <h1>",
+          !landed.error && landed.pathname === want,
+          landed.error ?? landed.pathname
+        );
+        L.check(
+          "the overlay is gone after navigating",
+          (await S.evaluate(`!document.querySelector("[data-series-title]")`)) === true
+        );
+      } catch (e) {
+        L.check("Historical overlay title link: open the 2016 record and follow its link", false, e.message);
+      }
+    }
+
     const generateAndOpenDetails = async () => {
       await S.evaluate("window.__p1RunSample(60000)");
       await S.evaluate(`${WAIT}(() => !!${findButton("/View Detailed Analysis/")}, "View Detailed Analysis", 30000)`);
@@ -1055,6 +1111,31 @@ async function main() {
         shared.series === `${site}${knownDir}?method=elo&utm_source=share`,
         shared.series ?? "nothing copied"
       );
+      // Story 6.2: the detailed result's series title is one link to the series
+      // page; a real pointer click must land there with the series <h1>.
+      const titleLink = await S.evaluate(`(() => {
+        const a = document.querySelector("a[data-series-title-link]");
+        if (!a) return null;
+        a.scrollIntoView({ block: "center" });
+        const r = a.getBoundingClientRect();
+        return { x: r.left + Math.min(r.width / 2, 60), y: r.top + 12, h: r.height, href: a.getAttribute("href") };
+      })()`);
+      const wantKnown = `${new URL(base).pathname}${knownDir}`;
+      L.check(
+        "Predict detailed-result title link points at the trailing-slash slug page and is >=44px tall",
+        !!titleLink && titleLink.href === wantKnown && titleLink.h >= 44,
+        JSON.stringify(titleLink)
+      );
+      if (titleLink) {
+        await clickAt(titleLink);
+        const landed = await S.evaluate(READ_SERIES_PAGE("/(stand three games apiece|win Game 7)$/")).catch((e) => ({ error: e.message }));
+        console.log(`     Predict title link -> ${landed.error ?? `${landed.pathname} · ${landed.h1}`}`);
+        L.check(
+          "Predict detailed-result title link lands on the series page with its <h1>",
+          !landed.error && landed.pathname === wantKnown,
+          landed.error ?? landed.pathname
+        );
+      }
     } catch (e) {
       L.check("share (series): drive the series to a shared result", false, e.message);
     }
