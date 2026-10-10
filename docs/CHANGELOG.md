@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.12] - 2026-10-10
+
+### Added
+
+- The 1968 ABA Finals: Pittsburgh Pipers over the New Orleans Buccaneers 4–3, with all seven games at their real venues and a Pipers logo. The archive now holds 179 series (19 ABA), with a series page and a share card for the new one (migration `00021`, Story 6.11).
+
+### Changed
+
+- Every archived series now stores the home-court team, which hosted Game 7, as its first team, and every Game 7 venue is real, the 18 ABA series included. Before, the winner was usually stored first. Results and the NBA/BAA home-court figures are unchanged (migration `00020`, Stories 6.9 and 6.10).
+- Predict was split into smaller parts with no visible change (Story 6.0).
+
 ## [0.2.11] - 2026-10-08
 
 ### Removed
