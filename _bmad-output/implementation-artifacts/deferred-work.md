@@ -790,6 +790,7 @@ External fresh-context review, four layers (blind hunter, edge-case hunter, veri
 - source_spec: `spec-6-8-one-team-order-home-team-first.md` — analytics continuity — target: the next release's docs/CHANGELOG.md entry (0.2.13)
   summary: `banner_hotspot_clicked`'s `caption` value for the 2016 hotspot changes from `'Cavs vs Warriors, 2016'` to `'Warriors vs Cavs, 2016'` (home-first: Golden State hosted Game 7). The event name, its properties and the other three captions are unchanged.
   evidence: Spec 6.8 (Always). Any PostHog insight that filters or breaks down on the 2016 caption must match both values across the release boundary; record it in the next `docs/CHANGELOG.md` entry.
+  closed: **DONE 2026-10-10** — recorded in `docs/CHANGELOG.md` [0.2.13] (Changed, "Analytics continuity").
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-6-8-one-team-order-home-team-first.md`
   summary: The team-logos migration oracle reads `INSERT INTO teams` rows but not later `UPDATE teams` statements (e.g. `00009` rewrites id 13's name and code), so the U16 name↔code pairing is checked against insert-time values, not the stored table.

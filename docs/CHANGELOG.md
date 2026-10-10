@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.13] - 2026-10-10
+
+### Added
+
+- Readable series URLs: every series page lives at `/series/<year>/<home>-<away>/` (for example `/series/2016/warriors-cavaliers/`), with `…/result/` for a flagship's result page. The sitemap, `og:url`, canonical and the Share button use it (Story 6.1).
+- `/series/` and `/series/<year>/` lead to Historical, filtered to that year; Historical reads `?year=` and then drops it from the address. A year arrival fires no analytics event (Story 6.1).
+- Share cards carry alt text naming the matchup ("Game 7 card: Golden State Warriors vs Cleveland Cavaliers, 2016 Finals"), never the winner, and ABA/BAA cards show the league (Story 6.1).
+
+### Changed
+
+- Old `/series/<id>/` links keep working: each is now a small page that forwards to the readable URL, keeps the share-card tags, and carries `?method=…&utm_source=share` through to Predict (Story 6.1).
+- One team order everywhere: every "X vs Y" shows the home-court team (the Game 7 host) first. Previews, share cards, page titles and the Home cards used alphabetical order before; 90 of 179 series change order. Previews still hide the Game 7 score and winner (Story 6.8).
+- Analytics continuity: the 2016 banner caption, sent as `caption` on `banner_hotspot_clicked`, changes from `Cavs vs Warriors, 2016` to `Warriors vs Cavs, 2016`. The event name and its properties are unchanged (Story 6.8).
+- Custom matchups recognise "Pittsburgh Pipers" and "PTP"; a bare "Pipers" stays with the Minnesota Pipers (Story 6.8).
+
 ## [0.2.12] - 2026-10-10
 
 ### Added
