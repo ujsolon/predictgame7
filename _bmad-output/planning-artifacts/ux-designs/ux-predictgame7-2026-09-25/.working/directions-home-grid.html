@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home Grid Directions</title>
+<style>
+/*
+  Home first-screen layout directions: photo-editorial Game 7 grid (UX session 2026-10-21)
+  Governing: .memlog.md entries dated 2026-10-21 (grid, no captions, three states, photos as colour exception,
+  How It Works stacked, History & Insights kept, Our Story + Contact -> About); DESIGN.md tokens.
+
+  TOKENS (DESIGN.md, hex):
+    background #FFFFFF  foreground #262626  primary/ink #1A1A1A  primary-foreground #FAFAFA
+    muted #F5F5F5  accent #F0F0F0  border/hairline #E6E6E6  on-muted #595959 (text on #F5F5F5)
+    muted-foreground small-text floor #767676 (the app-wide retune target; #808080 is large-text only)
+    destructive #DC3C3C, used here ONLY as the live dot (>=3:1 on its #FFFFFF pill, never the sole carrier: the label says "Game 7 is live")
+    ring #262626 / #1A1A1A
+  NEW IN THIS MOCK (flag for ratification):
+    photo-scrim  rgba(0,0,0,0) -> rgba(0,0,0,.72)  bottom scrim behind on-photo controls (contrast device, not decoration)
+    reveal-panel rgba(26,26,26,.82) behind the hover/focus series name, text #FAFAFA, eyebrow #D4D4D4 (~11:1 on #1A1A1A)
+    browse-count #D4D4D4 on #1A1A1A
+    focus-ring-on-photo: inset 3px #FFFFFF + 3px #1A1A1A
+  MOCK-ONLY (never shipped): every .ph-* gradient (photo stand-ins), crest colours (team-logo stand-ins),
+    the dashed .mock-note annotations (#9A9A9A dashed border, #595959 text, #FFFDF5 fill).
+  Team colour stand-ins: BOS #007A33, LAL #552583/#FDB927, DET #C8102E/#1D42BA, SAS #C4CED4, DAL #00538C,
+    MIA #98002E, GSW #1D428A/#FFC72C, CLE #860038, TOR #CE1141, OKC #007AC1/#EF3B24, IND #002D62/#FDBB30,
+    HOU #CE1141, NYK #006BB6/#F58426.
+  Type: system UI sans stands in for Montserrat Variable (h1 30px/500/-0.01em; label 12px/600/0.1em uppercase);
+    mono = ui-monospace, tabular-nums.
+*/
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { background: #FFFFFF; }
+body { font-family: Montserrat, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #FFFFFF; color: #262626; font-size: 16px; line-height: 1.6; }
+ul, ol { list-style: none; }
+a { color: inherit; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #767676; line-height: 1.4; }
+
+/* ---------- document chrome (mock page, not product) ---------- */
+.doc { max-width: 1120px; margin: 0 auto; padding: 48px 16px 96px; }
+.doc-head h1 { font-size: 36px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; line-height: 1.1; }
+.doc-head p { max-width: 72ch; margin-top: 12px; color: #595959; }
+.doc-toc { margin-top: 16px; display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+.dir { margin-top: 72px; padding-top: 32px; border-top: 1px solid #E6E6E6; }
+.dir-title { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; line-height: 1.2; }
+.dir-title .mono { color: #767676; font-size: 20px; margin-right: 8px; }
+.rationale { max-width: 72ch; margin-top: 12px; }
+.personality { margin-top: 8px; font-size: 14px; color: #595959; }
+.state-h { margin-top: 40px; font-size: 18px; font-weight: 600; color: #1A1A1A; }
+.state-sub { font-size: 14px; color: #595959; max-width: 72ch; }
+.row { margin-top: 16px; display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+.frame-tag { font-size: 12px; color: #767676; margin-bottom: 6px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.col-notes { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 704px; }
+
+/* mock-only annotation: dashed, outside every tile */
+.mock-note { border: 1px dashed #9A9A9A; background: #FFFDF5; color: #595959; padding: 8px 10px; font-size: 12px; line-height: 1.5; border-radius: 4px; max-width: 704px; }
+.mock-note .mn-head { display: block; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #595959; margin-bottom: 4px; }
+.mock-note ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 3px 16px; }
+.mock-note li { display: flex; gap: 8px; align-items: center; }
+.mock-note p { margin-top: 4px; }
+.mn-strong { border-color: #1A1A1A; }
+.sw { flex: none; width: 16px; height: 16px; border-radius: 2px; position: relative; overflow: hidden; display: inline-block; }
+.sw-browse { background: #1A1A1A; }
+.sw.dz .dz-crests, .sw.dz .dz-year { display: none; }
+
+/* ---------- desktop frame (1280 canvas at 55%) ---------- */
+.dframe { width: 1280px; zoom: 0.55; border: 2px solid #1A1A1A; border-radius: 12px; overflow: hidden; background: #FFFFFF; }
+.dframe.crop { height: 760px; }
+.chrome { height: 44px; background: #F0F0F0; border-bottom: 1px solid #E6E6E6; display: flex; align-items: center; gap: 16px; padding: 0 16px; }
+.dots { display: flex; gap: 8px; } .dots i { width: 12px; height: 12px; border-radius: 50%; background: #C8C8C8; display: block; }
+.urlbar { flex: 1; max-width: 560px; height: 28px; border-radius: 6px; background: #FFFFFF; border: 1px solid #E6E6E6; font-size: 14px; color: #595959; display: flex; align-items: center; padding: 0 12px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.app-header { height: 64px; border-bottom: 1px solid #E6E6E6; display: flex; align-items: center; padding: 0 24px; }
+.wordmark { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; }
+.shell { display: flex; align-items: stretch; }
+.rail { width: 256px; flex: none; border-right: 1px solid #E6E6E6; padding: 24px 16px; }
+.rail-item { display: block; padding: 8px 12px; border-radius: 0.375rem; font-size: 14px; color: #595959; text-decoration: none; margin-bottom: 4px; }
+.rail-item.active { background: #F5F5F5; color: #1A1A1A; font-weight: 500; }
+.new-tag { font-size: 10px; border: 1px dashed #9A9A9A; color: #595959; padding: 0 4px; border-radius: 3px; margin-left: 6px; }
+.main { flex: 1; min-width: 0; }
+
+/* ---------- phone frame (390 canvas at 80%) ---------- */
+.pframe { width: 390px; zoom: 0.8; border: 10px solid #1A1A1A; border-radius: 44px; overflow: hidden; background: #FFFFFF; }
+.pframe.crop { height: 900px; }
+.p-status { height: 40px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; font-size: 13px; color: #1A1A1A; }
+.p-notch { width: 110px; height: 26px; border-radius: 14px; background: #1A1A1A; }
+.p-header { height: 56px; border-bottom: 1px solid #E6E6E6; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.burger { display: flex; flex-direction: column; gap: 4px; width: 44px; height: 44px; justify-content: center; align-items: center; }
+.burger i { display: block; width: 20px; height: 2px; background: #1A1A1A; }
+
+/* ---------- tiles (shared) ---------- */
+.tile { display: block; position: relative; width: 100%; height: 100%; overflow: hidden; text-decoration: none; isolation: isolate; }
+.tile:focus { outline: none; }
+.tile:focus-visible, .tile.is-focus { box-shadow: inset 0 0 0 3px #1A1A1A, inset 0 0 0 6px #FFFFFF; }
+.tile:focus-visible::after, .tile.is-focus::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 3px #1A1A1A, inset 0 0 0 6px #FFFFFF; z-index: 5; pointer-events: none; }
+.ph { background-color: #111111; }
+.ph::before { /* film grain + vignette: part of the photo stand-in, mock-only */
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: repeating-radial-gradient(circle at 17% 32%, rgba(255,255,255,.05) 0 1px, transparent 1px 4px), radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,.38) 100%);
+}
+
+/* PHOTO STAND-INS: mock-only gradients, one per series. Full colour = owner-approved Home-tile exception. */
+/* 2013 Heat–Spurs: MIA red #98002E, black, warm spotlight, wood floor */
+.ph-2013 { background: radial-gradient(ellipse 9% 12% at 44% 30%, rgba(10,4,4,.92) 0 60%, transparent 62%), radial-gradient(ellipse 20% 36% at 44% 60%, rgba(10,4,4,.92) 0 55%, transparent 57%), radial-gradient(ellipse 55% 60% at 45% 38%, rgba(255,200,140,.75), transparent 62%), linear-gradient(180deg, #120306 0%, #6D0020 38%, #98002E 55%, #3A0A10 70%, #A8733F 71%, #5E3A1F 100%); }
+/* 2016 Warriors–Cavaliers: GSW blue #1D428A, gold #FFC72C flare, CLE wine #860038 */
+.ph-2016 { background: radial-gradient(ellipse 6% 9% at 63% 28%, rgba(8,10,20,.92) 0 60%, transparent 62%), radial-gradient(ellipse 14% 32% at 62% 56%, rgba(8,10,20,.92) 0 55%, transparent 57%), radial-gradient(ellipse 30% 25% at 82% 16%, rgba(255,199,44,.9), transparent 70%), radial-gradient(ellipse 70% 55% at 25% 70%, rgba(134,0,56,.75), transparent 70%), linear-gradient(160deg, #0B1D4A 0%, #1D428A 40%, #2B1530 66%, #C08A52 67%, #7A4E2A 100%); }
+/* 2019 Raptors–76ers: the bounce, ball #E86A1C over rim #FF6A00, TOR red #CE1141 */
+.ph-2019 { background: radial-gradient(circle at 70% 24%, #E86A1C 0 3.2%, #9B3A0A 3.5%, transparent 3.9%), radial-gradient(ellipse 12% 2.2% at 72% 33%, #FF6A00 0 70%, transparent 72%), radial-gradient(ellipse 40% 50% at 70% 30%, rgba(255,235,200,.55), transparent 65%), radial-gradient(ellipse 14% 32% at 30% 62%, rgba(12,8,8,.92) 0 55%, transparent 57%), linear-gradient(180deg, #0D0D0F 0%, #3A0D14 30%, #CE1141 52%, #20151A 68%, #B98A5A 69%, #6D4A2C 100%); }
+/* 2025 Thunder–Pacers: confetti OKC orange #EF3B24 + IND gold #FDBB30, navy #002D62 into OKC blue #007AC1 */
+.ph-2025 { background: radial-gradient(circle at 20% 30%, #EF3B24 0 2px, transparent 3px), radial-gradient(circle at 60% 70%, #FDBB30 0 2px, transparent 3px), radial-gradient(circle at 80% 20%, #FFFFFF 0 1.5px, transparent 2.5px), radial-gradient(ellipse 50% 45% at 50% 35%, rgba(255,255,255,.45), transparent 70%), radial-gradient(ellipse 16% 34% at 50% 64%, rgba(4,10,24,.9) 0 55%, transparent 57%), linear-gradient(180deg, #002D62 0%, #007AC1 48%, #0F2238 70%, #C9A06B 71%, #7E5833 100%); background-size: 46px 46px, 38px 38px, 30px 30px, auto, auto, auto; }
+/* 2026 Thunder–Spurs: OKC blue #007AC1, SAS silver #C4CED4 light, two silhouettes */
+.ph-2026 { background: radial-gradient(ellipse 6% 9% at 38% 30%, rgba(5,10,20,.92) 0 60%, transparent 62%), radial-gradient(ellipse 12% 30% at 38% 57%, rgba(5,10,20,.92) 0 55%, transparent 57%), radial-gradient(ellipse 12% 30% at 58% 59%, rgba(5,10,20,.85) 0 55%, transparent 57%), radial-gradient(ellipse 60% 50% at 50% 28%, rgba(196,206,212,.75), transparent 65%), linear-gradient(180deg, #050A14 0%, #007AC1 40%, #1B2A38 66%, #C79B67 67%, #84603C 100%); }
+/* 2027 Celtics–Knicks (SIMULATED pending): BOS green #007A33 crowd, parquet #8A5A2E/#A87240, NYK orange #F58426 flare */
+.ph-2027 { background: radial-gradient(ellipse 30% 22% at 85% 12%, rgba(245,132,38,.75), transparent 70%), radial-gradient(ellipse 6% 9% at 46% 28%, rgba(4,14,8,.92) 0 60%, transparent 62%), radial-gradient(ellipse 13% 30% at 46% 56%, rgba(4,14,8,.92) 0 55%, transparent 57%), radial-gradient(ellipse 50% 50% at 46% 32%, rgba(255,240,210,.6), transparent 65%), linear-gradient(180deg, #06140C 0%, #007A33 38%, #0B2A18 66%, transparent 66.5%), repeating-conic-gradient(#8A5A2E 0 25%, #A87240 0 50%); background-size: auto, auto, auto, auto, auto, 40px 40px; }
+/* 2010 Lakers–Celtics: LAL purple #552583, gold #FDB927 */
+.ph-2010 { background: radial-gradient(ellipse 14% 32% at 55% 60%, rgba(12,6,20,.9) 0 55%, transparent 57%), radial-gradient(ellipse 40% 30% at 20% 20%, rgba(253,185,39,.8), transparent 70%), linear-gradient(200deg, #1A0B2E 0%, #552583 45%, #1E1030 66%, #C9A06B 67%, #7E5833 100%); }
+/* 2018 Rockets–Warriors: HOU red #CE1141, cool blue rim light */
+.ph-2018 { background: radial-gradient(ellipse 30% 40% at 75% 30%, rgba(120,170,255,.55), transparent 70%), radial-gradient(ellipse 15% 34% at 40% 60%, rgba(14,4,6,.9) 0 55%, transparent 57%), linear-gradient(170deg, #2A0208 0%, #CE1141 42%, #2A0A10 66%, #B8885A 67%, #6E4A2A 100%); }
+/* 2023 Celtics–Heat: BOS green #007A33 vs MIA red #98002E split light */
+.ph-2023 { background: radial-gradient(ellipse 45% 60% at 15% 40%, rgba(0,122,51,.85), transparent 70%), radial-gradient(ellipse 45% 60% at 85% 40%, rgba(152,0,46,.85), transparent 70%), radial-gradient(ellipse 13% 30% at 50% 60%, rgba(6,6,6,.9) 0 55%, transparent 57%), linear-gradient(180deg, #080808 0%, #202020 60%, #A87240 66%, #6B4426 100%); }
+/* History tile: sepia 1969 archive feel #3B2F25 -> #C8B8A0 */
+.ph-hist { background: radial-gradient(ellipse 14% 32% at 40% 60%, rgba(30,22,16,.85) 0 55%, transparent 57%), radial-gradient(ellipse 60% 50% at 50% 30%, rgba(240,228,205,.7), transparent 65%), linear-gradient(180deg, #3B2F25 0%, #8C7A62 55%, #C8B8A0 66%, #6E5C47 100%); }
+/* Insights tile: top-down court, lines #FFFFFF on wood #B5834F */
+.ph-ins { background: radial-gradient(circle at 50% 100%, transparent 0 30%, rgba(255,255,255,.9) 30.5% 31.5%, transparent 32%), linear-gradient(90deg, transparent 49.6%, rgba(255,255,255,.9) 49.6% 50.4%, transparent 50.4%), repeating-linear-gradient(90deg, #B5834F 0 22px, #A9774A 22px 44px); }
+
+/* designed tiles (no acceptable photo): crest stand-ins + mono year */
+.dz { background: #1A1A1A; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+.dz-duo { background: linear-gradient(rgba(26,26,26,.6), rgba(26,26,26,.6)), linear-gradient(135deg, var(--d1) 0 50%, var(--d2) 50% 100%); }
+.dz-crests { display: flex; }
+.crest { width: 76px; height: 76px; border-radius: 50%; background: var(--c); color: var(--t); display: flex; align-items: center; justify-content: center; font: 700 17px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.04em; border: 3px solid #1A1A1A; }
+.crest + .crest { margin-left: -12px; }
+.dz-year { color: #FAFAFA; font-size: 28px; font-weight: 500; letter-spacing: 0.02em; }
+.b-p .crest { width: 56px; height: 56px; font-size: 13px; }
+.b-p .dz-year { font-size: 22px; }
+
+/* browse tile: the one text tile; a link to /historical */
+.browse { background: #1A1A1A; color: #FAFAFA; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px; gap: 6px; }
+.browse-t { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; }
+.browse-n { font-size: 14px; color: #D4D4D4; }
+.browse:hover .browse-t { text-decoration: underline; }
+
+/* pending tile: badge + two actions are the ONLY on-tile text */
+.pending { display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+.pending::after { content: ""; position: absolute; inset: 45% 0 0 0; background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.72)); z-index: 0; }
+.live-badge { position: relative; z-index: 1; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; background: #FFFFFF; color: #1A1A1A; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 12px; border-radius: 9999px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #DC3C3C; }
+.pending-actions { position: relative; z-index: 1; display: flex; gap: 10px; flex-wrap: wrap; }
+.btn { min-height: 44px; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 0.375rem; font-size: 15px; font-weight: 500; text-decoration: none; }
+.btn-solid { background: #FFFFFF; color: #1A1A1A; }
+.btn-ghost { border: 1.5px solid #FFFFFF; color: #FFFFFF; background: rgba(0,0,0,.25); }
+.btn:focus-visible { outline: 3px solid #FFFFFF; outline-offset: 2px; box-shadow: 0 0 0 6px #1A1A1A; }
+
+.text-link { font-size: 15px; font-weight: 500; color: #1A1A1A; text-decoration: underline; text-underline-offset: 4px; white-space: nowrap; }
+.text-link:focus-visible { outline: 2px solid #262626; outline-offset: 3px; border-radius: 2px; }
+
+/* state 3 strip: muted fill, on-muted text */
+.playoffs-strip { background: #F5F5F5; border-bottom: 1px solid #E6E6E6; padding: 12px 24px; font-size: 15px; color: #595959; }
+.playoffs-strip strong { color: #1A1A1A; font-weight: 600; }
+.pframe .playoffs-strip { padding: 12px 16px; font-size: 14px; }
+
+/* ---------- A: Bento ---------- */
+.a-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding: 28px 24px 16px; }
+.h1 { font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.2; color: #1A1A1A; margin-top: 4px; }
+.pframe .a-head { padding: 18px 16px 12px; }
+.pframe .h1 { font-size: 24px; }
+.a-grid { display: grid; gap: 4px; padding: 0 4px; }
+.a-off { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 252px); }
+.a-off .lead { grid-column: span 2; grid-row: span 2; }
+.a-pend { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 226px); }
+.a-pend .lead { grid-column: span 2; grid-row: span 2; }
+.a-off-p { grid-template-columns: 1fr 1fr; gap: 3px; padding: 0 3px; }
+.a-off-p li { aspect-ratio: 1 / 1; }
+.a-off-p .lead { grid-column: span 2; aspect-ratio: 4 / 5; }
+.a-off-p .wide { grid-column: span 2; aspect-ratio: 2 / 1; }
+.p-browse { padding: 14px 16px 4px; }
+/* hover/focus reveal (A variant only) */
+.reveal-name { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 14px 18px; background: rgba(26,26,26,.82); display: flex; flex-direction: column; gap: 2px; opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+.rv-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #D4D4D4; }
+.rv-pair { font-size: 20px; font-weight: 500; color: #FAFAFA; letter-spacing: -0.01em; }
+@media (hover: hover) { .reveal-grid .tile:hover .reveal-name { opacity: 1; transform: none; } }
+.reveal-grid .tile:focus-visible .reveal-name, .reveal-grid .is-hover .reveal-name, .reveal-grid .is-focus .reveal-name { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal-name { transition: none; } }
+
+/* ---------- B: Mosaic wall ---------- */
+.b-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 254px; gap: 2px; }
+.b-grid .lead { grid-column: span 2; grid-row: span 2; }
+.b-p { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; }
+.b-p li { aspect-ratio: 1 / 1; }
+.b-p .lead { grid-column: span 2; grid-row: auto; aspect-ratio: 1 / 1; }
+.b-p .browse-t { font-size: 18px; }
+.b-p .browse { padding: 14px; }
+
+/* ---------- C: Filmstrip ---------- */
+.c-lead { height: 440px; }
+.c-lead-p { height: auto; aspect-ratio: 4 / 5; }
+.c-row { display: flex; justify-content: space-between; align-items: baseline; padding: 24px 24px 12px; }
+.pframe .c-row { padding: 18px 16px 10px; }
+.strip-wrap { position: relative; }
+.strip { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px 4px; scroll-padding-left: 24px; scrollbar-width: none; }
+.strip::-webkit-scrollbar { display: none; }
+.strip:focus-visible { outline: 2px solid #262626; outline-offset: 2px; }
+.strip li { flex: 0 0 272px; height: 340px; scroll-snap-align: start; }
+.strip-p .strip { gap: 10px; padding: 0 16px 4px; scroll-padding-left: 16px; }
+.strip-p .strip li { flex: 0 0 152px; height: 190px; }
+.strip-p .browse-t { font-size: 16px; }
+.strip-p .browse { padding: 12px; }
+.strip-wrap::after { /* overflow cue: right-edge fade on the page background, outside tile content */ content: ""; position: absolute; top: 0; right: 0; bottom: 4px; width: 48px; background: linear-gradient(90deg, rgba(255,255,255,0), #FFFFFF); pointer-events: none; }
+.track { margin: 10px 24px 20px; height: 3px; background: #E6E6E6; border-radius: 2px; position: relative; }
+.track-p { margin: 10px 16px 16px; }
+.thumb { position: absolute; left: 0; top: 0; bottom: 0; width: 34%; background: #1A1A1A; border-radius: 2px; }
+
+/* ---------- lower Home sections (shared sketch) ---------- */
+.lower { padding: 56px 48px 40px; }
+.lower section + section { margin-top: 56px; }
+.steps { margin-top: 16px; border-top: 1px solid #E6E6E6; }
+.step { display: grid; grid-template-columns: 72px 1fr auto; gap: 16px; align-items: center; padding: 22px 0; border-bottom: 1px solid #E6E6E6; }
+.step-n { font-size: 28px; color: #1A1A1A; }
+.step-body { display: flex; flex-direction: column; }
+.step-t { font-size: 24px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; line-height: 1.2; }
+.step-d { color: #595959; margin-top: 4px; }
+.step-link { font-size: 14px; font-weight: 500; color: #1A1A1A; text-underline-offset: 4px; white-space: nowrap; }
+.hi-grid { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.hi-img { display: block; aspect-ratio: 4 / 3; border-radius: 1rem; position: relative; overflow: hidden; }
+.hi-item h3 { font-size: 24px; font-weight: 500; letter-spacing: -0.01em; color: #1A1A1A; margin-top: 16px; line-height: 1.2; }
+.hi-item p { color: #595959; margin-top: 6px; }
+.foot { margin-top: 56px; padding-top: 20px; border-top: 1px solid #E6E6E6; display: flex; justify-content: space-between; font-size: 14px; }
+.foot-tag { color: #767676; }
+.lower-p { padding: 40px 16px 32px; }
+.lower-p .step { grid-template-columns: 44px 1fr; }
+.lower-p .step-link { grid-column: 2; }
+.lower-p .step-n { font-size: 20px; }
+.lower-p .step-t { font-size: 20px; }
+.lower-p .hi-grid { grid-template-columns: 1fr; gap: 28px; }
+.lower-p .hi-item h3 { font-size: 20px; }
+.lower-p .foot { flex-direction: column; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <header class="doc-head">
+    <span class="label">UX session · Story 6.3 · 2026-10-21 · design directions</span>
+    <h1>Home's first screen: three grid layouts</h1>
+    <p>Same content, three layouts for the photo-editorial Game 7 grid. Every tile links to its series page and carries no visible caption; its accessible name (<span class="mono">aria-label</span>) holds the series name. Each direction shows state 1 (offseason) and state 2 (Game 7 pending, SIMULATED with the 2027 Eastern Conference Finals, Celtics vs Knicks) on desktop and phone. State 3 (playoffs on, nothing pending) is a one-line strip, shown once at the end for all three. Photos are CSS stand-ins; the dashed boxes are mock notes, never shipped.</p>
+    <nav class="doc-toc" aria-label="Directions"><a href="#dir-a">A. Bento</a><a href="#dir-b">B. Mosaic wall</a><a href="#dir-c">C. Filmstrip</a><a href="#state3">State 3 strip</a></nav>
+  </header>
+
+  <section class="dir" id="dir-a" aria-labelledby="a-t">
+    <h2 class="dir-title" id="a-t"><span class="mono">A</span>Bento</h2>
+    <p class="rationale">Bento gives the five flagships a hierarchy: one Game 7 at poster scale and four supporting shots, all on the first screen at 1280 with no scrolling. It is the most magazine-cover of the three and the most predictable to load, since the grid never grows beyond five or six images with exactly one large. The cost is that only flagships fit; the rest of the archive sits behind one text link.</p>
+    <p class="personality">Personality: a magazine cover. Curated, still, one hero and its supporting cast.</p>
+
+    <h3 class="state-h">State 1 · Offseason</h3>
+    <p class="state-sub">Flagships only; "Browse every Game 7" is a text link beside the heading (desktop) or under the grid (phone).</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <ul class="a-grid a-off" aria-label="Featured Game 7s">
+    <li class="lead"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li>
+  </ul><div class="lower">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div></div>
+  <ul class="a-grid a-off-p" aria-label="Featured Game 7s">
+    <li class="lead"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li>
+  </ul><div class="p-browse"><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div><div class="lower lower-p">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li></ul><p>Lead tile = most recent flagship (assumed rule). Order: lead, then top-right, then left to right, top to bottom.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Lower Home sections, identical in all three directions. How It Works is three stacked rows (no carousel, no step images: zero image cost). History &amp; Insights keeps its two photo tiles, lazy-loaded below the fold. Our Story and Contact are gone from Home; they live on <span class="mono">/about</span>, reached from the rail and the footer.</p></aside></div></div>
+
+    <h3 class="state-h">State 2 · Game 7 pending</h3>
+    <p class="state-sub">The pending series takes the large slot; all five flagships stay.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <ul class="a-grid a-pend" aria-label="Game 7s">
+    <li class="lead"><div class="tile ph ph-2027 pending " role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></li><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li>
+  </ul></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div></div>
+  <ul class="a-grid a-off-p" aria-label="Game 7s">
+    <li class="lead"><div class="tile ph ph-2027 pending " role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></li><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li class="wide"><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li>
+  </ul><div class="p-browse"><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2027"></span><span>2027 Celtics–Knicks, ECF (SIMULATED pending series): badge + two actions are the only on-tile text</span></li><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li></ul><p>Desktop switches from the 4×2 template (large + 4) to the 3×3 template (large + 5) so no flagship drops. On phone the fifth flagship goes wide (2:1).</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Below the grid: How It Works and History &amp; Insights continue exactly as in state 1.</p></aside></div></div>
+
+    <h3 class="state-h">Variant · desktop hover / keyboard focus reveals the series name</h3>
+    <p class="state-sub">Same offseason grid. Two tiles are frozen in their states; the others respond to real hover and Tab in this file.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <ul class="a-grid a-off reveal-grid" aria-label="Featured Game 7s">
+    <li class="lead"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"><span class="reveal-name" aria-hidden="true"><span class="rv-eyebrow">2026 West Finals · Game 7</span><span class="rv-pair">Thunder vs Spurs</span></span></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"><span class="reveal-name" aria-hidden="true"><span class="rv-eyebrow">2025 Finals · Game 7</span><span class="rv-pair">Thunder vs Pacers</span></span></a></li><li><a class="tile ph ph-2019 is-focus" href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"><span class="reveal-name" aria-hidden="true"><span class="rv-eyebrow">2019 East Semifinals · Game 7</span><span class="rv-pair">Raptors vs 76ers</span></span></a></li><li><a class="tile ph ph-2016 is-hover" href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"><span class="reveal-name" aria-hidden="true"><span class="rv-eyebrow">2016 Finals · Game 7</span><span class="rv-pair">Warriors vs Cavaliers</span></span></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"><span class="reveal-name" aria-hidden="true"><span class="rv-eyebrow">2013 Finals · Game 7</span><span class="rv-pair">Heat vs Spurs</span></span></a></li>
+  </ul></main>
+    </div>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note mn-strong"><span class="mn-head">Mock note, not shipped</span><p><strong>Desktop/keyboard enhancement only; the accessible name (aria-label) always carries the series name; phones show no caption.</strong> Overlay appears on <span class="mono">:hover</span> under <span class="mono">@media (hover: hover)</span> and on <span class="mono">:focus-visible</span>; it is <span class="mono">aria-hidden</span> so the name is not read twice. Frozen here: 2016 Warriors–Cavaliers in hover state; 2019 Raptors–76ers in keyboard-focus state (double ring: 3px <span class="mono">#FFFFFF</span> inset inside a 3px <span class="mono">#1A1A1A</span> ring, legible on any photo). Hover the live tiles in this frame to try it.</p></aside></div></div>
+  </section>
+
+  <section class="dir" id="dir-b" aria-labelledby="b-t">
+    <h2 class="dir-title" id="b-t"><span class="mono">B</span>Mosaic wall</h2>
+    <p class="rationale">The mosaic wall treats Home as the front door to the whole archive: an even, dense, edge-to-edge field of Game 7s where the volume is itself the message (after HTML5 UP Multiverse). It is the only direction that needs designed tiles at scale, so it tests whether crest-and-year tiles can sit beside photos without reading as placeholders. It has the highest image cost (about eight photos on the first screen) and the weakest hierarchy until a Game 7 goes live and claims the 2×2 slot.</p>
+    <p class="personality">Personality: an archive wall. Dense, even, browsing over reading.</p>
+
+    <h3 class="state-h">State 1 · Offseason</h3>
+    <p class="state-sub">Five flagships, three non-flagship photo tiles and three designed tiles, ending in the "Browse every Game 7" tile. The page heading is visually hidden; the wall starts directly under the header.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><h1 class="sr-only">PredictGame7: every Game 7, from 1947 to today</h1><ul class="b-grid" aria-label="Game 7s"><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/1962/celtics-lakers/" aria-label="1962 NBA Finals, Boston Celtics vs Los Angeles Lakers, Game 7"><span class="dz-crests"><span class="crest" style="--c:#007A33;--t:#FFFFFF">BOS</span><span class="crest" style="--c:#552583;--t:#FFFFFF">LAL</span></span><span class="dz-year mono">1962</span></a></li><li><a class="tile ph ph-2010 " href="/predictgame7/series/2010/lakers-celtics/" aria-label="2010 NBA Finals, Los Angeles Lakers vs Boston Celtics, Game 7"></a></li><li><a class="tile dz dz-duo " style="--d1:#552583;--d2:#1D42BA" href="/predictgame7/series/1988/lakers-pistons/" aria-label="1988 NBA Finals, Los Angeles Lakers vs Detroit Pistons, Game 7"><span class="dz-crests"><span class="crest" style="--c:#FDB927;--t:#1A1A1A">LAL</span><span class="crest" style="--c:#C8102E;--t:#FFFFFF">DET</span></span><span class="dz-year mono">1988</span></a></li><li><a class="tile ph ph-2018 " href="/predictgame7/series/2018/rockets-warriors/" aria-label="2018 Western Conference Finals, Houston Rockets vs Golden State Warriors, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/2006/spurs-mavericks/" aria-label="2006 Western Conference Semifinals, San Antonio Spurs vs Dallas Mavericks, Game 7"><span class="dz-crests"><span class="crest" style="--c:#C4CED4;--t:#1A1A1A">SAS</span><span class="crest" style="--c:#00538C;--t:#FFFFFF">DAL</span></span><span class="dz-year mono">2006</span></a></li><li><a class="tile ph ph-2023 " href="/predictgame7/series/2023/celtics-heat/" aria-label="2023 Eastern Conference Finals, Boston Celtics vs Miami Heat, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul><div class="lower">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><h1 class="sr-only">PredictGame7: every Game 7, from 1947 to today</h1><ul class="b-grid b-p" aria-label="Game 7s"><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/1962/celtics-lakers/" aria-label="1962 NBA Finals, Boston Celtics vs Los Angeles Lakers, Game 7"><span class="dz-crests"><span class="crest" style="--c:#007A33;--t:#FFFFFF">BOS</span><span class="crest" style="--c:#552583;--t:#FFFFFF">LAL</span></span><span class="dz-year mono">1962</span></a></li><li><a class="tile ph ph-2010 " href="/predictgame7/series/2010/lakers-celtics/" aria-label="2010 NBA Finals, Los Angeles Lakers vs Boston Celtics, Game 7"></a></li><li><a class="tile dz dz-duo " style="--d1:#552583;--d2:#1D42BA" href="/predictgame7/series/1988/lakers-pistons/" aria-label="1988 NBA Finals, Los Angeles Lakers vs Detroit Pistons, Game 7"><span class="dz-crests"><span class="crest" style="--c:#FDB927;--t:#1A1A1A">LAL</span><span class="crest" style="--c:#C8102E;--t:#FFFFFF">DET</span></span><span class="dz-year mono">1988</span></a></li><li><a class="tile ph ph-2018 " href="/predictgame7/series/2018/rockets-warriors/" aria-label="2018 Western Conference Finals, Houston Rockets vs Golden State Warriors, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/2006/spurs-mavericks/" aria-label="2006 Western Conference Semifinals, San Antonio Spurs vs Dallas Mavericks, Game 7"><span class="dz-crests"><span class="crest" style="--c:#C4CED4;--t:#1A1A1A">SAS</span><span class="crest" style="--c:#00538C;--t:#FFFFFF">DAL</span></span><span class="dz-year mono">2006</span></a></li><li><a class="tile ph ph-2023 " href="/predictgame7/series/2023/celtics-heat/" aria-label="2023 Eastern Conference Finals, Boston Celtics vs Miami Heat, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul><div class="lower lower-p">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw dz dz-ink"></span><span>1962 Celtics–Lakers (designed tile: ink)</span></li><li><span class="sw ph ph-2010"></span><span>2010 Lakers–Celtics (photo, non-flagship)</span></li><li><span class="sw dz dz-duo" style="--d1:#552583;--d2:#1D42BA"></span><span>1988 Lakers–Pistons (designed tile: duotone)</span></li><li><span class="sw ph ph-2018"></span><span>2018 Rockets–Warriors (photo, non-flagship)</span></li><li><span class="sw dz dz-ink"></span><span>2006 Spurs–Mavericks (designed tile: ink)</span></li><li><span class="sw ph ph-2023"></span><span>2023 Celtics–Heat (photo, non-flagship)</span></li><li><span class="sw sw-browse"></span><span>“Browse every Game 7” end tile → /historical (the one text tile; it is a link, not a caption)</span></li></ul><p>Reading order: left to right, top to bottom. Flagships fill row 1 and the start of row 2; the non-flagship picks are illustrative, and their selection rule is an open question.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Designed tiles (1962 Celtics–Lakers, 1988 Lakers–Pistons, 2006 Spurs–Mavericks): two crest circles stand in for team logos (real logos render as-is, no container, per DESIGN.md Shapes), with the year in mono on ink <span class="mono">#1A1A1A</span> or an ink-veiled duotone of the two team colours. No other text. The crests and year are not the accessible name; <span class="mono">aria-label</span> is.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Lower Home sections, identical in all three directions. How It Works is three stacked rows (no carousel, no step images: zero image cost). History &amp; Insights keeps its two photo tiles, lazy-loaded below the fold. Our Story and Contact are gone from Home; they live on <span class="mono">/about</span>, reached from the rail and the footer.</p></aside></div></div>
+
+    <h3 class="state-h">State 2 · Game 7 pending</h3>
+    <p class="state-sub">The pending series claims a 2×2 slot at the top left (full width on phone).</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><h1 class="sr-only">PredictGame7: every Game 7, from 1947 to today</h1><ul class="b-grid" aria-label="Game 7s"><li class="lead"><div class="tile ph ph-2027 pending lead" role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></li><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/1962/celtics-lakers/" aria-label="1962 NBA Finals, Boston Celtics vs Los Angeles Lakers, Game 7"><span class="dz-crests"><span class="crest" style="--c:#007A33;--t:#FFFFFF">BOS</span><span class="crest" style="--c:#552583;--t:#FFFFFF">LAL</span></span><span class="dz-year mono">1962</span></a></li><li><a class="tile dz dz-duo " style="--d1:#552583;--d2:#1D42BA" href="/predictgame7/series/1988/lakers-pistons/" aria-label="1988 NBA Finals, Los Angeles Lakers vs Detroit Pistons, Game 7"><span class="dz-crests"><span class="crest" style="--c:#FDB927;--t:#1A1A1A">LAL</span><span class="crest" style="--c:#C8102E;--t:#FFFFFF">DET</span></span><span class="dz-year mono">1988</span></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><h1 class="sr-only">PredictGame7: every Game 7, from 1947 to today</h1><ul class="b-grid b-p" aria-label="Game 7s"><li class="lead"><div class="tile ph ph-2027 pending lead" role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></li><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/1962/celtics-lakers/" aria-label="1962 NBA Finals, Boston Celtics vs Los Angeles Lakers, Game 7"><span class="dz-crests"><span class="crest" style="--c:#007A33;--t:#FFFFFF">BOS</span><span class="crest" style="--c:#552583;--t:#FFFFFF">LAL</span></span><span class="dz-year mono">1962</span></a></li><li><a class="tile dz dz-duo " style="--d1:#552583;--d2:#1D42BA" href="/predictgame7/series/1988/lakers-pistons/" aria-label="1988 NBA Finals, Los Angeles Lakers vs Detroit Pistons, Game 7"><span class="dz-crests"><span class="crest" style="--c:#FDB927;--t:#1A1A1A">LAL</span><span class="crest" style="--c:#C8102E;--t:#FFFFFF">DET</span></span><span class="dz-year mono">1988</span></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2027"></span><span>2027 Celtics–Knicks, ECF (SIMULATED pending series): badge + two actions are the only on-tile text</span></li><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw dz dz-ink"></span><span>1962 Celtics–Lakers (designed tile: ink)</span></li><li><span class="sw dz dz-duo" style="--d1:#552583;--d2:#1D42BA"></span><span>1988 Lakers–Pistons (designed tile: duotone)</span></li><li><span class="sw sw-browse"></span><span>Browse every Game 7 → /historical</span></li></ul><p>The pending series takes a 2×2 slot (full width on phone); the wall drops its last non-flagship tiles to keep three rows on desktop.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Below the grid: How It Works and History &amp; Insights continue exactly as in state 1.</p></aside></div></div>
+  </section>
+
+  <section class="dir" id="dir-c" aria-labelledby="c-t">
+    <h2 class="dir-title" id="c-t"><span class="mono">C</span>Filmstrip</h2>
+    <p class="rationale">The filmstrip is cinematic: one wide lead frame owns the first screen and the rest of the story waits in a sideways reel beneath it. It gives the pending state the clearest single focal point and the cheapest first paint (one large image; strip tiles lazy-load as they scroll in). Its risk is discoverability, since tiles hidden to the side get fewer taps, so the peek, the edge fade and the track bar all have to work.</p>
+    <p class="personality">Personality: a film premiere. One frame at a time, the reel waiting below.</p>
+
+    <h3 class="state-h">State 1 · Offseason</h3>
+    <p class="state-sub">The lead is the most recent flagship; the other four plus a "Browse every Game 7" end card ride the strip. The browse link also sits as text above the strip.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><h1 class="sr-only">PredictGame7: Game 7s, from the archive and live</h1><div class="c-lead"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></div><div class="c-row"><h2 class="label">More Game 7s</h2><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <div class="strip-wrap"><ul class="strip" tabindex="0" aria-label="More Game 7s, scrolls sideways"><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></div>
+  <div class="track" aria-hidden="true"><span class="thumb"></span></div><div class="lower">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><h1 class="sr-only">PredictGame7: Game 7s, from the archive and live</h1><div class="c-lead c-lead-p"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></div><div class="c-row"><h2 class="label">More Game 7s</h2><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <div class="strip-wrap strip-p"><ul class="strip" tabindex="0" aria-label="More Game 7s, scrolls sideways"><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></div>
+  <div class="track track-p" aria-hidden="true"><span class="thumb"></span></div><div class="lower lower-p">
+    <section class="hiw">
+      <h2 class="label">How It Works</h2>
+      <ol class="steps"><li class="step"><span class="step-n mono">01</span><span class="step-body"><span class="step-t">Select the Series</span><span class="step-d">Select a live Game 7 or browse our deep historical archives.</span></span><a class="step-link" href="#">Pick a series &rarr;</a></li><li class="step"><span class="step-n mono">02</span><span class="step-body"><span class="step-t">Choose the Strategy</span><span class="step-d">Pick from multiple predictive models.</span></span><a class="step-link" href="#">See the models &rarr;</a></li><li class="step"><span class="step-n mono">03</span><span class="step-body"><span class="step-t">Reveal the Outcome</span><span class="step-d">Instantly see the win probability and the key metrics driving it.</span></span><a class="step-link" href="#">Run a prediction &rarr;</a></li></ol>
+    </section>
+    <section class="hi">
+      <h2 class="label">History &amp; Insights</h2>
+      <div class="hi-grid">
+        <div class="hi-item"><a class="hi-img ph ph-hist" href="/predictgame7/historical" aria-label="Explore historical data"></a><h3>Deep Dive into NBA History</h3><p>Explore our database of every Game 7 in NBA history: patterns, upsets and the performances that defined the playoffs.</p></div>
+        <div class="hi-item"><a class="hi-img ph ph-ins" href="/predictgame7/insights" aria-label="View the insights dashboard"></a><h3>Statistical Patterns Revealed</h3><p>See how home court, momentum and point differentials actually influence the final outcome.</p></div>
+      </div>
+    </section>
+    <footer class="foot"><a href="/predictgame7/about">About: our story and contact</a><span class="foot-tag">Where data meets playoff drama</span></footer>
+  </div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li><li><span class="sw sw-browse"></span><span>End card: Browse every Game 7 → /historical</span></li></ul><p>Lead = most recent flagship (assumed rule). Strip scrolls for real in this file: drag or shift-scroll it.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Overflow cue, all outside the tiles: (1) the next tile peeks past the edge; (2) a 48px fade to <span class="mono">#FFFFFF</span> at the right edge; (3) a 3px track (<span class="mono">#E6E6E6</span>) with an ink thumb (<span class="mono">#1A1A1A</span>), static in this mock and scroll-linked in build. The strip is a focusable region (<span class="mono">tabindex="0"</span>, labelled) so arrow keys scroll it; each tile is a link, so Tab also brings it into view. No arrow buttons, because they need JS.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Lower Home sections, identical in all three directions. How It Works is three stacked rows (no carousel, no step images: zero image cost). History &amp; Insights keeps its two photo tiles, lazy-loaded below the fold. Our Story and Contact are gone from Home; they live on <span class="mono">/about</span>, reached from the rail and the footer.</p></aside></div></div>
+
+    <h3 class="state-h">State 2 · Game 7 pending</h3>
+    <p class="state-sub">The pending series becomes the lead; all five flagships move into the strip.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><h1 class="sr-only">PredictGame7: Game 7s, from the archive and live</h1><div class="c-lead"><div class="tile ph ph-2027 pending " role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></div><div class="c-row"><h2 class="label">More Game 7s</h2><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <div class="strip-wrap"><ul class="strip" tabindex="0" aria-label="More Game 7s, scrolls sideways"><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></div>
+  <div class="track" aria-hidden="true"><span class="thumb"></span></div></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">Phone · 390 wide, shown at 80%</div>
+  <div class="pframe">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><h1 class="sr-only">PredictGame7: Game 7s, from the archive and live</h1><div class="c-lead c-lead-p"><div class="tile ph ph-2027 pending " role="group" aria-label="Game 7 is live: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">
+      <span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Game 7 is live</span>
+      <span class="pending-actions">
+        <a class="btn btn-solid" href="/predictgame7/series/2027/celtics-knicks/" aria-label="Read the series: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Read the series</a>
+        <a class="btn btn-ghost" href="/predictgame7/predict/?series=2027-ecf-bos-nyk" aria-label="Simulate Game 7: 2027 Eastern Conference Finals, Boston Celtics vs New York Knicks">Simulate Game 7</a>
+      </span>
+    </div></div><div class="c-row"><h2 class="label">More Game 7s</h2><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <div class="strip-wrap strip-p"><ul class="strip" tabindex="0" aria-label="More Game 7s, scrolls sideways"><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></div>
+  <div class="track track-p" aria-hidden="true"><span class="thumb"></span></div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><ul><li><span class="sw ph ph-2027"></span><span>2027 Celtics–Knicks, ECF (SIMULATED pending series): badge + two actions are the only on-tile text</span></li><li><span class="sw ph ph-2026"></span><span>2026 Thunder–Spurs (flagship)</span></li><li><span class="sw ph ph-2025"></span><span>2025 Thunder–Pacers (flagship)</span></li><li><span class="sw ph ph-2019"></span><span>2019 Raptors–76ers (flagship)</span></li><li><span class="sw ph ph-2016"></span><span>2016 Warriors–Cavaliers (flagship)</span></li><li><span class="sw ph ph-2013"></span><span>2013 Heat–Spurs (flagship)</span></li><li><span class="sw sw-browse"></span><span>End card: Browse every Game 7</span></li></ul><p>The pending series replaces the lead; every flagship moves into the strip, so none drops.</p></aside><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Below the grid: How It Works and History &amp; Insights continue exactly as in state 1.</p></aside></div></div>
+  </section>
+
+  <section class="dir" id="state3" aria-labelledby="s3-t">
+    <h2 class="dir-title" id="s3-t"><span class="mono">+</span>State 3 · Playoffs on, nothing pending</h2>
+    <p class="rationale">One strip above the grid, the same in every direction; the grid below stays the offseason grid. It renders only when the owner's manual "playoffs running" flag is on and no series has <span class="mono">winner_team_id IS NULL</span>. Muted fill <span class="mono">#F5F5F5</span>, text <span class="mono">#595959</span> with the lead clause in ink.</p>
+    <div class="row"><div class="dframe-wrap"><div class="frame-tag">A. Bento · Desktop · 1280 wide, shown at 55%</div>
+  <div class="dframe crop">
+    <div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="urlbar">ujsolon.github.io/predictgame7/</span></div>
+    <header class="app-header"><span class="wordmark">PredictGame7</span></header>
+    <div class="shell">
+      <nav class="rail" aria-label="Main"><a class="rail-item active" href="#">Home</a><a class="rail-item" href="#">Predict</a><a class="rail-item" href="#">Historical</a><a class="rail-item" href="#">Insights</a><a class="rail-item" href="#">Maths</a><a class="rail-item" href="#">About <span class="new-tag">new</span></a></nav>
+      <main class="main"><div class="playoffs-strip" role="status"><strong>Playoffs are on.</strong> No series has reached Game 7 yet.</div><div class="a-head"><div><span class="label">Featured Game 7s</span><h1 class="h1">Where data meets playoff drama</h1></div><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div><ul class="a-grid a-off" aria-label="Featured Game 7s"><li class="lead"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li></ul></main>
+    </div>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">B. Mosaic wall · Phone · 390 wide, shown at 80%</div>
+  <div class="pframe crop">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><div class="playoffs-strip" role="status"><strong>Playoffs are on.</strong> No series has reached Game 7 yet.</div><h1 class="sr-only">PredictGame7: every Game 7, from 1947 to today</h1><ul class="b-grid b-p" aria-label="Game 7s"><li><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/1962/celtics-lakers/" aria-label="1962 NBA Finals, Boston Celtics vs Los Angeles Lakers, Game 7"><span class="dz-crests"><span class="crest" style="--c:#007A33;--t:#FFFFFF">BOS</span><span class="crest" style="--c:#552583;--t:#FFFFFF">LAL</span></span><span class="dz-year mono">1962</span></a></li><li><a class="tile ph ph-2010 " href="/predictgame7/series/2010/lakers-celtics/" aria-label="2010 NBA Finals, Los Angeles Lakers vs Boston Celtics, Game 7"></a></li><li><a class="tile dz dz-duo " style="--d1:#552583;--d2:#1D42BA" href="/predictgame7/series/1988/lakers-pistons/" aria-label="1988 NBA Finals, Los Angeles Lakers vs Detroit Pistons, Game 7"><span class="dz-crests"><span class="crest" style="--c:#FDB927;--t:#1A1A1A">LAL</span><span class="crest" style="--c:#C8102E;--t:#FFFFFF">DET</span></span><span class="dz-year mono">1988</span></a></li><li><a class="tile ph ph-2018 " href="/predictgame7/series/2018/rockets-warriors/" aria-label="2018 Western Conference Finals, Houston Rockets vs Golden State Warriors, Game 7"></a></li><li><a class="tile dz dz-ink " href="/predictgame7/series/2006/spurs-mavericks/" aria-label="2006 Western Conference Semifinals, San Antonio Spurs vs Dallas Mavericks, Game 7"><span class="dz-crests"><span class="crest" style="--c:#C4CED4;--t:#1A1A1A">SAS</span><span class="crest" style="--c:#00538C;--t:#FFFFFF">DAL</span></span><span class="dz-year mono">2006</span></a></li><li><a class="tile ph ph-2023 " href="/predictgame7/series/2023/celtics-heat/" aria-label="2023 Eastern Conference Finals, Boston Celtics vs Miami Heat, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></main>
+  </div></div><div class="pframe-wrap"><div class="frame-tag">C. Filmstrip · Phone · 390 wide, shown at 80%</div>
+  <div class="pframe crop">
+    <div class="p-status"><span class="mono">9:41</span><span class="p-notch"></span><span class="mono">5G</span></div>
+    <header class="p-header"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><span class="wordmark">PredictGame7</span></header>
+    <main><div class="playoffs-strip" role="status"><strong>Playoffs are on.</strong> No series has reached Game 7 yet.</div><h1 class="sr-only">PredictGame7: Game 7s, from the archive and live</h1><div class="c-lead c-lead-p"><a class="tile ph ph-2026 " href="/predictgame7/series/2026/thunder-spurs/" aria-label="2026 Western Conference Finals, Oklahoma City Thunder vs San Antonio Spurs, Game 7"></a></div><div class="c-row"><h2 class="label">More Game 7s</h2><a class="text-link" href="/predictgame7/historical">Browse every Game 7 &rarr;</a></div>
+  <div class="strip-wrap strip-p"><ul class="strip" tabindex="0" aria-label="More Game 7s, scrolls sideways"><li><a class="tile ph ph-2025 " href="/predictgame7/series/2025/thunder-pacers/" aria-label="2025 NBA Finals, Oklahoma City Thunder vs Indiana Pacers, Game 7"></a></li><li><a class="tile ph ph-2019 " href="/predictgame7/series/2019/raptors-76ers/" aria-label="2019 Eastern Conference Semifinals, Toronto Raptors vs Philadelphia 76ers, Game 7"></a></li><li><a class="tile ph ph-2016 " href="/predictgame7/series/2016/warriors-cavaliers/" aria-label="2016 NBA Finals, Golden State Warriors vs Cleveland Cavaliers, Game 7"></a></li><li><a class="tile ph ph-2013 " href="/predictgame7/series/2013/heat-spurs/" aria-label="2013 NBA Finals, Miami Heat vs San Antonio Spurs, Game 7"></a></li><li><a class="tile browse " href="/predictgame7/historical"><span class="browse-t">Browse every Game 7</span><span class="browse-n mono">178 series &rarr;</span></a></li></ul></div>
+  <div class="track track-p" aria-hidden="true"><span class="thumb"></span></div></main>
+  </div></div></div>
+    <div class="row"><div class="col-notes"><aside class="mock-note"><span class="mn-head">Mock note, not shipped</span><p>Cropped frames: Bento on desktop, then Mosaic wall and Filmstrip on phone. <span class="mono">role="status"</span> is shown, but a static strip arguably needs no live region; settle that at build.</p></aside></div></div>
+  </section>
+</div>
+</body>
+</html>

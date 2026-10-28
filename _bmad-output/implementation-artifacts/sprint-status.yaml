@@ -418,7 +418,7 @@ development_status:
   6-8-one-team-order-home-team-first: done
   # 2026-10-10: built + reviewed (10 patches + a probe-hang fix, 6 rejected); 935 tests. Deployed in 0.2.13 (184 pages, 253 stubs, 189 sitemap URLs); live deep-links (134 ok) + analytics walk GREEN.
   6-1-readable-series-urls: done
-  # 2026-10-10: built + reviewed (10 patches, 1 deferred, 3 rejected); 950 tests; probes GREEN locally (139 + 63). Stays at review until the owner signs off the screenshots and it is deployed.
+  # 2026-10-10: built + reviewed (10 patches, 1 deferred, 3 rejected); 950 tests; probes GREEN locally (139 + 63). Owner signed off the screenshots 2026-10-10. Stays at review until deployed.
   6-2-series-page-entry-points: review
   6-3-home-design-session: backlog
   6-4-home-build: backlog
